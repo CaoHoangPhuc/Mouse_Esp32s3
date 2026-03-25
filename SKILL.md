@@ -13,18 +13,22 @@ Use it when you need to:
 
 ## Mental Model
 
-Think of the project as 5 layers:
-1. low-level hardware drivers
-2. shared robot state
-3. primitive motion control
-4. maze observation and floodfill planning
-5. operator tools: serial commands, web explorer, OTA/logging
+Think of the project as 6 layers:
+1. Arduino entrypoint wrapper
+2. app runtime/orchestration
+3. low-level hardware drivers
+4. shared robot state
+5. primitive motion control
+6. maze observation and floodfill planning
 
 Changes should usually respect those boundaries.
 
 ## Core Files
 
-- `Mouse_esp32s3.ino`: top-level integration and task logic
+- `Mouse_esp32s3.ino`: keep thin; Arduino-facing entrypoints and task wrappers only
+- `main.h`: bridge between Arduino wrapper and app module
+- `main.cpp`: top-level runtime logic, serial commands, tasks, planner coordination
+- `Config.h`: hardware pins, calibration values, and runtime tuning defaults
 - `Battery.*`: battery health and thresholds
 - `DcMotor.*`: motor/encoder speed loop
 - `MotionController.*`: physical primitive execution
@@ -38,6 +42,7 @@ Changes should usually respect those boundaries.
 - Start in `status`, `test battery`, `test sensors`, `test encoders`.
 - Verify motor direction with `test motorl` and `test motorr` before trying `move`.
 - Only enable `explore` after one-cell moves and 90-degree turns are reliable.
+- Do first-pass tuning in `Config.h`, not scattered through source files.
 
 ### 2. Motion tuning
 - Tune `mmPerTick` first.
@@ -63,14 +68,16 @@ Changes should usually respect those boundaries.
 - Motion executor should be the only layer deciding primitive success/failure.
 - Pose should only advance when the primitive really completes.
 - Prefer conservative behavior over speed when adding new capabilities.
+- Keep tunables in `Config.h` unless there is a strong reason not to.
+- Keep `Mouse_esp32s3.ino` minimal.
 
 ## Good Next Enhancements
 
-- separate config constants into a `Config.h`
 - add persistent storage for tuning values
 - improve front-wall alignment
 - add compressed action sequences for second run
 - add richer web telemetry for live tuning
+- add config validation / startup sanity checks
 
 ## Anti-Patterns To Avoid
 
@@ -79,3 +86,4 @@ Changes should usually respect those boundaries.
 - Mixing simulator truth walls with hardware observations in the same run
 - Adding aggressive speed-run logic before reliable one-cell behavior exists
 - Hiding calibration assumptions in random source files without updating docs
+- Growing the `.ino` back into the main implementation file

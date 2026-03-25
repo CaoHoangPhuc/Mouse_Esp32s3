@@ -24,7 +24,10 @@ When changing this code, prefer reliability and observability over aggressive op
 
 ## Important Files
 
-- `Mouse_esp32s3.ino`: runtime orchestration, serial command surface, task scheduling
+- `Mouse_esp32s3.ino`: thin Arduino entrypoint only
+- `main.h`: app interface between Arduino entrypoints and the main application module
+- `main.cpp`: runtime orchestration, serial command surface, startup flow, background task bodies, planner integration
+- `Config.h`: centralized hardware and tuning configuration
 - `RobotTypes.h`: shared state and enums
 - `MotionController.*`: motion primitive executor
 - `MultiVL53L0X.*`: wall observation generation
@@ -36,15 +39,18 @@ When changing this code, prefer reliability and observability over aggressive op
 - `RobotState` is the shared snapshot for telemetry and coordination.
 - `MotionController` owns primitive execution and timeout/stall logic.
 - `FloodFillExplorer` owns maze memory and next-action choice.
-- `Mouse_esp32s3.ino` is responsible for wiring sensor data into the explorer and acknowledging actions when physical motion finishes.
+- `main.cpp` wires sensor data into the explorer and acknowledges actions when physical motion finishes.
+- `Mouse_esp32s3.ino` should stay minimal and only expose Arduino entrypoints plus task wrappers.
+- `Config.h` is the single source of truth for pins, calibration constants, and runtime tuning defaults.
 
 ## Safe Change Guidelines
 
-- If changing wheel geometry, update both tuning docs and `MotionController::Config` defaults.
+- If changing wheel geometry, update both tuning docs and `AppConfig::Motion` values.
 - If changing TOF mapping, keep `left/front/right` semantics stable for the planner.
 - If changing floodfill action names or behavior, keep the planner output limited to turn-left, turn-right, and move-forward unless the executor is extended too.
 - If adding faster movement, do not remove the current primitive path; keep it as a reliable fallback.
 - If adjusting battery thresholds, note the measured pack voltage and calibration source in docs or commit message.
+- Keep `Mouse_esp32s3.ino` small; do not move general application logic back into it.
 
 ## Validation Expectations
 

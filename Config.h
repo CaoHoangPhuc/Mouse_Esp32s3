@@ -13,6 +13,12 @@ namespace Battery {
 // Affects: Battery.cpp sampling and motion safety gating.
 static constexpr uint8_t ADC_PIN = 3;
 
+// Physical divider currently expected:
+// battery+ -> 47k -> ADC node -> 18k -> GND
+// Divider ratio at ADC ~= 18 / (47 + 18) = 0.2769
+// Battery voltage ~= ADC voltage * 3.6111
+// This keeps a 2S pack in a safe ADC input range.
+
 // Two-point ADC calibration.
 // Measure pack voltage with a multimeter and record the matching ADC raw values.
 // Affects: reported battery voltage and battery percentage.

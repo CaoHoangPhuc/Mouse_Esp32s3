@@ -4,6 +4,7 @@
 
 - Compile the project against the intended ESP32-S3 board and fix any board/core compile issues.
 - Verify all new source files are included by the Arduino build.
+- Update docs/examples if the Arduino builder needs any filename/layout adjustments.
 - Replace remaining mojibake / encoding corruption in comments and UI strings.
 - Confirm the battery ADC pin is correct for the real board.
 - Confirm the current Wi-Fi credentials strategy is acceptable for development.
@@ -16,6 +17,7 @@
 - Verify right motor direction matches commanded forward motion.
 - Verify encoder sign and tick counts for both motors.
 - Tune `mmPerTick` from measured travel distance.
+- Verify the `47k / 18k` battery divider reading matches the expected ADC range.
 
 ## Motion Tuning
 
@@ -25,6 +27,7 @@
 - Tune `stallTimeoutMs` so valid slow motion does not false-fail.
 - Tune `frontStopMm` for safe wall approach.
 - Tune `centeringGain` so corridor tracking is stable and does not oscillate.
+- Mark final tuned values clearly in `Config.h`.
 
 ## Sensor Tuning
 
@@ -49,11 +52,11 @@
 - Add more compact serial status output for tuning sessions.
 - Add explicit fault codes / categories instead of only free-form strings.
 - Log primitive start/end timing for motion tuning.
+- Consider a dedicated calibration printout grouped around values from `Config.h`.
 
 ## Nice To Have
 
-- Move configuration constants into a dedicated config header.
 - Add EEPROM / NVS storage for tuned values.
-- Move Wi-Fi credentials out of the sketch.
-- Add an optional simulator mode switch in the main sketch.
+- Move Wi-Fi credentials out of the sketch/config for safer sharing.
+- Add an optional simulator mode switch in the main app.
 - Add automated test scaffolding for maze-state updates and planner decisions.

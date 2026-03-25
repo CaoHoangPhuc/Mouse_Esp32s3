@@ -12,13 +12,17 @@ This repository now includes the first integrated hardware-oriented control stac
 - floodfill maze state and web visualizer
 - task-based planner / executor / telemetry flow
 - Wi-Fi OTA and web serial logging
+- centralized configuration for hardware and tuning values
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
 ## Architecture
 
-### Main runtime
-- [Mouse_esp32s3.ino](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Mouse_esp32s3.ino): task wiring, serial commands, planner loop, startup checks, state updates
+### Entry and application split
+- [Mouse_esp32s3.ino](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Mouse_esp32s3.ino): thin Arduino entrypoint with `setup()`, `loop()`, `userTask()`, and `plannerTask()` wrappers only
+- [main.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\main.h): app interface exposed to the `.ino` wrapper
+- [main.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\main.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
+- [Config.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
 - [RobotTypes.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\RobotTypes.h): shared enums and `RobotState`
 
 ### Motion and hardware
@@ -41,13 +45,28 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 
 ## Runtime Flow
 
-1. `setup()` brings up Wi-Fi, motors, TOF, battery, floodfill explorer, and tasks.
-2. `tofTask` continuously updates TOF readings.
-3. `motorTask` continuously updates motor PID loops.
-4. `userTask` updates shared `RobotState`, motion progress, and handles serial commands.
-5. `plannerTask` converts current pose + sensed walls into floodfill actions and dispatches motion primitives.
-6. `telemetryTask` prints compact runtime state to serial.
-7. `explorerTask` serves the web maze view.
+1. `setup()` in the `.ino` forwards to `MainApp::setupApp(...)`.
+2. `main.cpp` initializes Wi-Fi, motors, TOF, battery, floodfill explorer, and tasks.
+3. `tofTask` continuously updates TOF readings.
+4. `motorTask` continuously updates motor PID loops.
+5. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
+6. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
+7. `telemetryTask` prints compact runtime state to serial.
+8. `explorerTask` serves the web maze view.
+
+## Configuration
+
+All hard configuration now lives in [Config.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Config.h).
+
+Key sections:
+- `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
+- `AppConfig::Maze`: start pose and goal rectangle
+- `AppConfig::Wifi`: Wi-Fi / OTA / web logging settings
+- `AppConfig::I2C`: SDA/SCL and bus speed
+- `AppConfig::Tof`: sensor addresses, XSHUT pins, wall threshold
+- `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
+- `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning
+- `AppConfig::Explorer`: web floodfill UI settings
 
 ## Robot Modes
 
@@ -104,7 +123,7 @@ Expected use:
 
 ## Hardware / Tuning Notes
 
-Current values are placeholders and will need on-robot tuning:
+Current values are placeholders and will need on-robot tuning in [Config.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Config.h):
 - battery ADC pin and calibration values
 - `cellDistanceMm`
 - `turnTicks90`
@@ -113,7 +132,8 @@ Current values are placeholders and will need on-robot tuning:
 - front stop distance
 - `mmPerTick`
 
-Hardcoded Wi-Fi credentials still exist in the sketch and should eventually move to a safer config path.
+Battery divider note:
+- current comments assume a `47k / 18k` divider into `GPIO 3`
 
 ## Known Limitations
 
