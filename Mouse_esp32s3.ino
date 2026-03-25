@@ -3,22 +3,13 @@
 #include <driver/gpio.h>
 
 #include "Battery.h"
+#include "Config.h"
 #include "DcMotor.h"
 #include "FloodFillExplorer.h"
 #include "MotionController.h"
 #include "MultiVL53L0X.h"
 #include "RobotTypes.h"
 #include "WiFiOtaWebSerial.h"
-
-static const uint8_t BATTERY_ADC_PIN = 3;
-static const uint8_t START_X = 0;
-static const uint8_t START_Y = 15;
-static const FloodFillExplorer::Dir START_H = FloodFillExplorer::NORTH;
-
-static const uint8_t GOAL_X0 = 7;
-static const uint8_t GOAL_Y0 = 7;
-static const uint8_t GOAL_W = 2;
-static const uint8_t GOAL_H = 2;
 
 WiFiOtaWebSerial dbg;
 FloodFillExplorer explorer;
@@ -35,36 +26,10 @@ static bool batteryOk = false;
 static bool wifiOk = false;
 static uint32_t lastStatusMs = 0;
 
-static DcMotor::Pins R_PINS = {
-  .in1 = 10,
-  .in2 = 11,
-  .pwm = 7,
-  .encA = 12,
-  .encB = 13,
-  .invertDir = false,
-  .invertEnc = false
-};
-
-static DcMotor::Pins L_PINS = {
-  .in1 = 5,
-  .in2 = 6,
-  .pwm = 4,
-  .encA = 1,
-  .encB = 2,
-  .invertDir = true,
-  .invertEnc = true
-};
-
-#define I2C_SDA 8
-#define I2C_SCL 9
-
-static const uint8_t xshutPins[5] = {0, 1, 2, 3, 4};
-static const uint8_t tofAddr[5] = {0x30, 0x31, 0x32, 0x33, 0x34};
-
 MultiVL53L0X tofArray(
-  0x20, 5,
-  xshutPins, tofAddr,
-  20,
+  AppConfig::Tof::PCF_ADDRESS, AppConfig::Tof::SENSOR_COUNT,
+  AppConfig::Tof::XSHUT_PINS, AppConfig::Tof::SENSOR_ADDR,
+  AppConfig::Tof::UPDATE_INTERVAL_MS,
   Wire
 );
 
@@ -164,7 +129,8 @@ static void beginExplore(bool clearMaze) {
   robotState.lastFault = "";
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
-  explorer.setGoalRect(GOAL_X0, GOAL_Y0, GOAL_W, GOAL_H);
+  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
+                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
@@ -304,54 +270,63 @@ static void applyWallsToExplorer() {
 void setup() {
   Serial.begin(921600);
   vTaskDelay(pdMS_TO_TICKS(200));
-  i2cRecover(I2C_SDA, I2C_SCL);
-  setPose(START_X, START_Y, START_H);
+  i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
+  setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
 
   WiFiOtaWebSerial::Config wifiCfg;
-  wifiCfg.ssid = "PhucWifi";
-  wifiCfg.pass = "000000001";
-  wifiCfg.hostname = "PhucC_Esp32s3_mice";
-  wifiCfg.otaPassword = "";
-  wifiCfg.wifiCore = 0;
-  wifiCfg.wifiTaskStack = 10 * 1024;
-  wifiCfg.wifiTaskPrio = 3;
-  wifiCfg.serviceDelayMs = 5;
+  wifiCfg.ssid = AppConfig::Wifi::SSID;
+  wifiCfg.pass = AppConfig::Wifi::PASS;
+  wifiCfg.hostname = AppConfig::Wifi::HOSTNAME;
+  wifiCfg.otaPassword = AppConfig::Wifi::OTA_PASSWORD;
+  wifiCfg.wifiCore = AppConfig::Wifi::CORE;
+  wifiCfg.wifiTaskStack = AppConfig::Wifi::TASK_STACK;
+  wifiCfg.wifiTaskPrio = AppConfig::Wifi::TASK_PRIORITY;
+  wifiCfg.serviceDelayMs = AppConfig::Wifi::SERVICE_DELAY_MS;
   wifiOk = dbg.begin(wifiCfg);
   dbg.println(wifiOk ? "Boot OK" : "Boot with WiFi failed");
 
-  motorsOk = leftMotor.begin(L_PINS, 0, 20000, 10) && rightMotor.begin(R_PINS, 1, 20000, 10);
+  motorsOk = leftMotor.begin(AppConfig::Motors::LEFT_PINS,
+                             AppConfig::Motors::LEFT_PWM_CHANNEL,
+                             AppConfig::Motors::PWM_FREQ,
+                             AppConfig::Motors::PWM_RESOLUTION_BITS) &&
+             rightMotor.begin(AppConfig::Motors::RIGHT_PINS,
+                              AppConfig::Motors::RIGHT_PWM_CHANNEL,
+                              AppConfig::Motors::PWM_FREQ,
+                              AppConfig::Motors::PWM_RESOLUTION_BITS);
   if (motorsOk) {
-    leftMotor.setSpeedPID(0.004f, 0.0080f, 0.00005f, 0.80f, 0.50f, 25.0f, 4.0f);
-    rightMotor.setSpeedPID(0.004f, 0.0080f, 0.00005f, 0.80f, 0.50f, 25.0f, 4.0f);
+    leftMotor.setSpeedPID(AppConfig::Motors::PID_KP, AppConfig::Motors::PID_KI,
+                          AppConfig::Motors::PID_KD, AppConfig::Motors::PID_OUT_LIMIT,
+                          AppConfig::Motors::PID_I_LIMIT, AppConfig::Motors::PID_D_FILTER_HZ,
+                          AppConfig::Motors::PID_SLEW_RATE);
+    rightMotor.setSpeedPID(AppConfig::Motors::PID_KP, AppConfig::Motors::PID_KI,
+                           AppConfig::Motors::PID_KD, AppConfig::Motors::PID_OUT_LIMIT,
+                           AppConfig::Motors::PID_I_LIMIT, AppConfig::Motors::PID_D_FILTER_HZ,
+                           AppConfig::Motors::PID_SLEW_RATE);
   }
 
-  tofArray.setWallThreshold(150);
+  tofArray.setWallThreshold(AppConfig::Tof::WALL_THRESHOLD_MM);
   tofOk = tofArray.begin();
 
-  mouseBattery.begin(BATTERY_ADC_PIN);
-  mouseBattery.setCalibration(2800, 7.20f, 3350, 8.40f);
-  mouseBattery.setThresholds(7.10f, 6.90f);
+  mouseBattery.begin(AppConfig::Battery::ADC_PIN);
+  mouseBattery.setCalibration(AppConfig::Battery::RAW_LOW, AppConfig::Battery::VOLTAGE_LOW,
+                              AppConfig::Battery::RAW_HIGH, AppConfig::Battery::VOLTAGE_HIGH);
+  mouseBattery.setThresholds(AppConfig::Battery::WARNING_VOLTAGE,
+                             AppConfig::Battery::CRITICAL_VOLTAGE);
   mouseBattery.update();
   batteryOk = mouseBattery.isReady();
 
   motionController.begin(leftMotor, rightMotor, tofArray, &mouseBattery);
-  MotionController::Config motionCfg;
-  motionCfg.cellDistanceMm = 180.0f;
-  motionCfg.turnTicks90 = 300;
-  motionController.setConfig(motionCfg);
+  motionController.setConfig(AppConfig::makeMotionConfig());
 
   explorer.setLog(logToDbg);
-  FloodFillExplorer::Config explorerCfg;
-  explorerCfg.port = 81;
-  explorerCfg.autoRun = false;
-  explorerCfg.ackTimeoutMs = 2000;
-  explorerCfg.pauseOnAckTimeout = true;
-  explorer.begin(explorerCfg);
+  explorer.begin(AppConfig::makeExplorerConfig());
   explorer.setHardwareMode(true);
-  explorer.setGoalRect(GOAL_X0, GOAL_Y0, GOAL_W, GOAL_H);
-  explorer.setStart(START_X, START_Y, START_H);
+  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
+                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
+  explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.clearKnownMaze();
-  explorer.syncPose(START_X, START_Y, START_H, true);
+  explorer.syncPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y,
+                    AppConfig::Maze::START_HEADING, true);
 
   updateRobotState();
   applyWallsToExplorer();
