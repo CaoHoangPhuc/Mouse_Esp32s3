@@ -90,24 +90,24 @@ bool MultiVL53L0X::begin() {
 
 bool MultiVL53L0X::readTOF_fast(uint8_t addr, uint16_t &dist)
 {
-    Wire.beginTransmission(addr);
-    Wire.write(0x14);
+    _wire->beginTransmission(addr);
+    _wire->write(0x14);
 
-    if (Wire.endTransmission(false) != 0) {
+    if (_wire->endTransmission(false) != 0) {
         return false;
     }
 
     delayMicroseconds(200);
 
-    Wire.requestFrom(addr, (uint8_t)12);
+    _wire->requestFrom(addr, (uint8_t)12);
 
-    if (Wire.available() < 12) {
+    if (_wire->available() < 12) {
         return false;
     }
 
     uint8_t buf[12];
     for (int i = 0; i < 12; i++) {
-        buf[i] = Wire.read();
+        buf[i] = _wire->read();
     }
 
     dist = (buf[10] << 8) | buf[11];
@@ -190,29 +190,43 @@ void MultiVL53L0X::detectLayout() {
 
 // 🔥 Unified sensor read
 MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
-    SensorState s = {false, false, false};
+    SensorState s = {false, false, false, false, false, false, 0, 0, 0};
 
     if (_version == SENSOR_V1) {
         uint16_t left  = getDistance(0);
         uint16_t front = getDistance(2);
         uint16_t right = getDistance(4);
 
-        s.leftWall  = (left  < WALL_TH);
-        s.rightWall = (right < WALL_TH);
-        s.frontWall = (front < WALL_TH);
+        s.leftValid = isGoodReading_(0);
+        s.frontValid = isGoodReading_(2);
+        s.rightValid = isGoodReading_(4);
+        s.leftMm = left;
+        s.frontMm = front;
+        s.rightMm = right;
+        s.leftWall  = s.leftValid && (left  < _wallThreshold);
+        s.rightWall = s.rightValid && (right < _wallThreshold);
+        s.frontWall = s.frontValid && (front < _wallThreshold);
     }
     else if (_version == SENSOR_V2) {
         uint16_t fl = getDistance(0);
         uint16_t l  = getDistance(1);
         uint16_t r  = getDistance(2);
-        // uint16_t fr = getDistance(3);
+        uint16_t fr = getDistance(3);
 
-        s.leftWall  = (l < WALL_TH);
-        s.rightWall = (r < WALL_TH);
+        bool flValid = isGoodReading_(0);
+        bool frValid = isGoodReading_(3);
+        s.leftValid  = isGoodReading_(1);
+        s.rightValid = isGoodReading_(2);
+        s.frontValid = flValid || frValid;
+        s.leftMm = l;
+        s.rightMm = r;
+        if (flValid && frValid) s.frontMm = min(fl, fr);
+        else if (flValid) s.frontMm = fl;
+        else if (frValid) s.frontMm = fr;
 
-        // more robust front detection
-        s.frontWall = (l < WALL_TH);
-        // s.frontWall = ((fl + fr) / 2) < th;
+        s.leftWall  = s.leftValid && (l < _wallThreshold);
+        s.rightWall = s.rightValid && (r < _wallThreshold);
+        s.frontWall = s.frontValid && (s.frontMm < _wallThreshold);
     }
 
     return s;
@@ -312,5 +326,11 @@ float MultiVL53L0X::computeError(float headingError) {
     error = err;
 
     return err;;
-    }
+}
+
+bool MultiVL53L0X::isGoodReading_(uint8_t index) const {
+    if (index >= _numSensors) return false;
+    uint8_t state = stateTimeout(index);
+    return state == 0 || state == 1;
+}
 

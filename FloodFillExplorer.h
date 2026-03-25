@@ -56,9 +56,18 @@ public:
   void loop();
 
   void setLog(LogFn fn) { logFn_ = fn; }
+  void setHardwareMode(bool en);
 
   void setStart(uint8_t x, uint8_t y, Dir h);
   void setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h);
+  void setRunning(bool en);
+  void clearKnownMaze();
+  void syncPose(uint8_t x, uint8_t y, Dir h, bool markVisited = true);
+  void observeRelativeWalls(uint8_t x, uint8_t y, Dir heading,
+                            bool leftWall, bool frontWall, bool rightWall,
+                            bool leftValid = true, bool frontValid = true, bool rightValid = true);
+  Action requestNextAction();
+  bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
 
   // SIM truth walls (optional). If you don't call this, truthWalls_ default 0 (no walls),
   // robot mode should override senseCell_ later by real sensors.
@@ -71,6 +80,7 @@ public:
   bool isWaitAck() const { return waitAck_; }
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
+  bool atGoal() const { return isGoal_(mx_, my_); }
   
 private:
   // --- web handlers ---
@@ -87,13 +97,14 @@ private:
   const char* actionName_(Action a) const;
 
   // --- floodfill core ---
-  bool inBounds_(int x,int y);
-  bool isGoal_(int x,int y);
+  bool inBounds_(int x,int y) const;
+  bool isGoal_(int x,int y) const;
 
   uint8_t bitForDir_(Dir d) const;
   Dir opposite_(Dir d) const;
 
   void clearKnown_();
+  void applyBoundaryWalls_();
   bool truthHasWall_(int x,int y, Dir d) const;
   bool knownHasWall_(int x,int y, Dir d) const;
   void knownSetWallBoth_(int x,int y, Dir d, bool on);
@@ -128,6 +139,7 @@ private:
 
   bool started_ = false;
   bool running_ = false;
+  bool hardwareMode_ = false;
 
   uint8_t sx_ = 0, sy_ = 15, mx_ = 0, my_ = 15;
   Dir sh_ = NORTH, mh_ = NORTH;

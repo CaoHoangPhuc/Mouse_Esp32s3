@@ -450,11 +450,11 @@ FloodFillExplorer::Dir FloodFillExplorer::opposite_(Dir d) const{
   return (Dir)(((uint8_t)d + 2) & 3);
 }
 
-bool FloodFillExplorer::inBounds_(int x,int y){
+bool FloodFillExplorer::inBounds_(int x,int y) const{
   return (x>=0 && x<N && y>=0 && y<N);
 }
 
-bool FloodFillExplorer::isGoal_(int x,int y){
+bool FloodFillExplorer::isGoal_(int x,int y) const{
   return (x >= gx0_ && x < (int)(gx0_ + gw_) &&
           y >= gy0_ && y < (int)(gy0_ + gh_));
 }
@@ -474,6 +474,11 @@ void FloodFillExplorer::markDirty_(){
   buildStateJson_();
 }
 
+void FloodFillExplorer::setHardwareMode(bool en) {
+  hardwareMode_ = en;
+  markDirty_();
+}
+
 void FloodFillExplorer::setStart(uint8_t x, uint8_t y, Dir h){
   if(x >= N || y >= N) return;
   sx_ = x; sy_ = y; sh_ = h;
@@ -487,6 +492,100 @@ void FloodFillExplorer::setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h
   if(y0 + h > N) h = N - y0;
   gx0_ = x0; gy0_ = y0; gw_ = w; gh_ = h;
   markDirty_();
+}
+
+void FloodFillExplorer::setRunning(bool en) {
+  running_ = en;
+  markDirty_();
+}
+
+void FloodFillExplorer::clearKnownMaze() {
+  memset(visited_, 0, sizeof(visited_));
+  clearKnown_();
+  mx_ = sx_;
+  my_ = sy_;
+  mh_ = sh_;
+  visited_[my_][mx_] = true;
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+void FloodFillExplorer::syncPose(uint8_t x, uint8_t y, Dir h, bool markVisited) {
+  if (x >= N || y >= N) return;
+  mx_ = x;
+  my_ = y;
+  mh_ = h;
+  if (markVisited) visited_[my_][mx_] = true;
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+void FloodFillExplorer::observeRelativeWalls(uint8_t x, uint8_t y, Dir heading,
+                                             bool leftWall, bool frontWall, bool rightWall,
+                                             bool leftValid, bool frontValid, bool rightValid) {
+  if (!inBounds_(x, y)) return;
+
+  auto leftDir = (Dir)(((uint8_t)heading + 3) & 3);
+  auto rightDir = (Dir)(((uint8_t)heading + 1) & 3);
+
+  if (leftValid) knownSetWallBoth_(x, y, leftDir, leftWall);
+  if (frontValid) knownSetWallBoth_(x, y, heading, frontWall);
+  if (rightValid) knownSetWallBoth_(x, y, rightDir, rightWall);
+
+  visited_[y][x] = true;
+  applyBoundaryWalls_();
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+FloodFillExplorer::Action FloodFillExplorer::requestNextAction() {
+  if (waitAck_) return pendingAction_;
+
+  Action act = chooseNextAction_();
+  if (act == ACT_NONE) {
+    running_ = false;
+    markDirty_();
+    return ACT_NONE;
+  }
+
+  dispatchAction_(act);
+  return act;
+}
+
+bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h) {
+  if (!waitAck_) return false;
+
+  if (!ok) {
+    running_ = false;
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+    markDirty_();
+    return false;
+  }
+
+  mx_ = x;
+  my_ = y;
+  mh_ = h;
+  visited_[my_][mx_] = true;
+
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+
+  bool reachedGoal = isGoal_(mx_, my_);
+  if (reachedGoal) {
+    onGoalReached_();
+    return true;
+  }
+
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+  return false;
 }
 
 bool FloodFillExplorer::begin(const Config& cfg){
@@ -570,6 +669,18 @@ void FloodFillExplorer::setTruthFromWalls(const uint8_t walls16[N][N],
 void FloodFillExplorer::clearKnown_(){
   memset(knownWalls_, 0, sizeof(knownWalls_));
   memset(knownMask_,  0, sizeof(knownMask_));
+  applyBoundaryWalls_();
+}
+
+void FloodFillExplorer::applyBoundaryWalls_() {
+  for (int x = 0; x < N; ++x) {
+    knownSetWallBoth_(x, 0, NORTH, true);
+    knownSetWallBoth_(x, N - 1, SOUTH, true);
+  }
+  for (int y = 0; y < N; ++y) {
+    knownSetWallBoth_(0, y, WEST, true);
+    knownSetWallBoth_(N - 1, y, EAST, true);
+  }
 }
 
 bool FloodFillExplorer::truthHasWall_(int x,int y, Dir d) const{
@@ -600,6 +711,7 @@ void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
 }
 
 void FloodFillExplorer::senseCell_(int x,int y){
+  if (hardwareMode_) return;
   // SIM: use truthWalls_
   for(int di=0; di<4; di++){
     Dir d = (Dir)di;
@@ -728,8 +840,9 @@ void FloodFillExplorer::computePlan_(){
 // ========================= ACTION (ACK-driven) =========================
 
 FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
-  // SIM: sense current cell before decision
-  senseCell_(mx_, my_);
+  if (!hardwareMode_) {
+    senseCell_(mx_, my_);
+  }
   visited_[my_][mx_] = true;
   computeFloodFill_();
   computePlan_();
@@ -1085,6 +1198,7 @@ void FloodFillExplorer::buildStateJson_(){
   out += "\"start\":{\"x\":" + String(sx_) + ",\"y\":" + String(sy_) + ",\"h\":" + String((int)sh_) + "},";
   out += "\"goal\":{\"x0\":" + String(gx0_) + ",\"y0\":" + String(gy0_) + ",\"w\":" + String(gw_) + ",\"h\":" + String(gh_) + "},";
   out += "\"running\":" + String(running_ ? "true":"false") + ",";
+  out += "\"hardwareMode\":" + String(hardwareMode_ ? "true":"false") + ",";
   out += "\"waitAck\":" + String(waitAck_ ? "true":"false") + ",";
   out += "\"pendingSeq\":" + String((uint32_t)pendingSeq_) + ",";
   out += "\"pendingActionName\":\"" + String(actionName_(pendingAction_)) + "\",";

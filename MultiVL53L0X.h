@@ -23,6 +23,12 @@ public:
         bool leftWall;
         bool rightWall;
         bool frontWall;
+        bool leftValid;
+        bool rightValid;
+        bool frontValid;
+        uint16_t leftMm;
+        uint16_t rightMm;
+        uint16_t frontMm;
     };
 
     MultiVL53L0X(uint8_t pcfAddress,
@@ -39,6 +45,8 @@ public:
     void detectLayout();
     SensorVersion getVersion() const { return _version; }
     SensorState getSensorState();
+    void setWallThreshold(uint16_t th) { _wallThreshold = th; }
+    uint16_t wallThreshold() const { return _wallThreshold; }
 
     // ---- Sensors ----
     bool     isSensorOk(uint8_t index) const;
@@ -95,7 +103,7 @@ private:
     static constexpr uint16_t DIST_FAR         = DIST_MAX_VALID + 1;
     static constexpr uint16_t DIST_ERROR       = DIST_MAX_VALID + 2;
 
-    static constexpr uint16_t WALL_TH          = 150;
+    uint16_t _wallThreshold = 150;
 
     float error = 0;
 
@@ -110,6 +118,7 @@ private:
     // Helpers
     void xshutAllLow();
     void xshutAllHigh();
+    bool isGoodReading_(uint8_t index) const;
 };
 
 #endif
