@@ -32,6 +32,20 @@ bool MotionController::moveOneCell() {
   return true;
 }
 
+bool MotionController::moveForwardShort() {
+  if (!startPrimitive_(MOTION_MOVE_FORWARD_SHORT)) return false;
+  left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+  right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+  return true;
+}
+
+bool MotionController::moveBackwardShort() {
+  if (!startPrimitive_(MOTION_MOVE_BACKWARD_SHORT)) return false;
+  left_->setSpeedTPS(-cfg_.reverseSpeedTps);
+  right_->setSpeedTPS(-cfg_.reverseSpeedTps);
+  return true;
+}
+
 bool MotionController::turnLeft90() {
   if (!startPrimitive_(MOTION_TURN_LEFT_90)) return false;
   left_->setSpeedTPS(-cfg_.turnSpeedTps);
@@ -41,6 +55,13 @@ bool MotionController::turnLeft90() {
 
 bool MotionController::turnRight90() {
   if (!startPrimitive_(MOTION_TURN_RIGHT_90)) return false;
+  left_->setSpeedTPS(cfg_.turnSpeedTps);
+  right_->setSpeedTPS(-cfg_.turnSpeedTps);
+  return true;
+}
+
+bool MotionController::turn180() {
+  if (!startPrimitive_(MOTION_TURN_180)) return false;
   left_->setSpeedTPS(cfg_.turnSpeedTps);
   right_->setSpeedTPS(-cfg_.turnSpeedTps);
   return true;
@@ -74,6 +95,10 @@ float MotionController::averageProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
   return 0.5f * (leftDelta + rightDelta) * cfg_.mmPerTick;
+}
+
+float MotionController::absoluteAverageProgressMm_() const {
+  return fabsf(averageProgressMm_());
 }
 
 int32_t MotionController::differentialTicks_() const {
@@ -138,10 +163,53 @@ void MotionController::update(RobotState& state) {
       markDone_(MOTION_FAILED, "move stall");
       return;
     }
-  } else if (primitive_ == MOTION_TURN_LEFT_90 || primitive_ == MOTION_TURN_RIGHT_90) {
-    const int32_t turnTarget = (cfg_.turnTicks90 > 0) ? cfg_.turnTicks90 : 1;
+  } else if (primitive_ == MOTION_MOVE_FORWARD_SHORT) {
+    const float progressMm = averageProgressMm_();
+    state.pose.forwardProgressMm = progressMm;
+
+    left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+    right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+
+    if (progressMm >= cfg_.shortForwardDistanceMm) {
+      markDone_(MOTION_COMPLETED);
+      return;
+    }
+
+    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
+      lastProgressMm_ = progressMm;
+      lastProgressMs_ = now;
+    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
+      markDone_(MOTION_FAILED, "short forward stall");
+      return;
+    }
+  } else if (primitive_ == MOTION_MOVE_BACKWARD_SHORT) {
+    const float progressMm = absoluteAverageProgressMm_();
+    state.pose.forwardProgressMm = -progressMm;
+
+    left_->setSpeedTPS(-cfg_.reverseSpeedTps);
+    right_->setSpeedTPS(-cfg_.reverseSpeedTps);
+
+    if (progressMm >= cfg_.reverseDistanceMm) {
+      markDone_(MOTION_COMPLETED);
+      return;
+    }
+
+    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
+      lastProgressMm_ = progressMm;
+      lastProgressMs_ = now;
+    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
+      markDone_(MOTION_FAILED, "reverse stall");
+      return;
+    }
+  } else if (primitive_ == MOTION_TURN_LEFT_90 ||
+             primitive_ == MOTION_TURN_RIGHT_90 ||
+             primitive_ == MOTION_TURN_180) {
+    const int32_t turnTarget = (primitive_ == MOTION_TURN_180)
+      ? ((cfg_.turnTicks180 > 0) ? cfg_.turnTicks180 : max<int32_t>(1, cfg_.turnTicks90 * 2))
+      : ((cfg_.turnTicks90 > 0) ? cfg_.turnTicks90 : 1);
+    const float turnDegrees = (primitive_ == MOTION_TURN_180) ? 180.0f : 90.0f;
     const float turnRatio = (float)abs(differentialTicks_()) / (float)turnTarget;
-    state.pose.turnProgressDeg = min(90.0f, turnRatio * 90.0f);
+    state.pose.turnProgressDeg = min(turnDegrees, turnRatio * turnDegrees);
 
     if (primitive_ == MOTION_TURN_LEFT_90) {
       left_->setSpeedTPS(-cfg_.turnSpeedTps);
@@ -151,7 +219,7 @@ void MotionController::update(RobotState& state) {
       right_->setSpeedTPS(-cfg_.turnSpeedTps);
     }
 
-    if (abs(differentialTicks_()) >= cfg_.turnTicks90) {
+    if (abs(differentialTicks_()) >= turnTarget) {
       markDone_(MOTION_COMPLETED);
       return;
     }

@@ -39,16 +39,16 @@ namespace Maze {
 // Robot start pose in maze cell coordinates.
 // Affects: initial floodfill pose, web explorer pose, reset behavior.
 static constexpr uint8_t START_X = 0;
-static constexpr uint8_t START_Y = 15;
+static constexpr uint8_t START_Y = 4;
 static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::NORTH;
 
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 7;
-static constexpr uint8_t GOAL_Y0 = 7;
-static constexpr uint8_t GOAL_W = 2;
-static constexpr uint8_t GOAL_H = 2;
+static constexpr uint8_t GOAL_X0 = 4;
+static constexpr uint8_t GOAL_Y0 = 0;
+static constexpr uint8_t GOAL_W = 1;
+static constexpr uint8_t GOAL_H = 1;
 }
 
 namespace Wifi {
@@ -57,7 +57,15 @@ namespace Wifi {
 static constexpr const char* SSID = "PhucWifi";
 static constexpr const char* PASS = "000000001";
 static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
-static constexpr const char* OTA_PASSWORD = "";
+// Set false to disable the HTTP web log on port 80.
+// OTA and the TCP debug console can still remain enabled.
+static constexpr bool ENABLE_WEB_LOG = false;
+// Simple firmware upload page for browser-based wireless updates.
+static constexpr bool ENABLE_UPLOAD_WEB = true;
+static constexpr uint16_t UPLOAD_WEB_PORT = 82;
+// Plain TCP debug/command console.
+// Connect with telnet, PuTTY raw TCP, or `nc <ip> <port>`.
+static constexpr uint16_t DEBUG_TCP_PORT = 2323;
 
 // FreeRTOS task placement/settings for Wi-Fi service loop.
 // Usually only change these if Wi-Fi/OTA becomes unstable.
@@ -65,7 +73,11 @@ static constexpr BaseType_t CORE = 0;
 static constexpr UBaseType_t TASK_PRIORITY = 3;
 static constexpr uint32_t TASK_STACK = 10 * 1024;
 static constexpr uint32_t SERVICE_DELAY_MS = 5;
-}
+// OTA reliability knobs. Increase connect timeout if Wi-Fi takes longer to join.
+static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
+// Retry interval when Wi-Fi drops after boot.
+static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
+  }
 
 namespace I2C {
 // ESP32 I2C pins used for the TOF bus.
@@ -156,21 +168,30 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 // Encoder differential ticks needed for a 90-degree turn.
 // Affects: turnLeft90() / turnRight90() completion.
 // One of the most important hardware tuning values.
-static constexpr int32_t TURN_TICKS_90 = 300;
+static constexpr int32_t TURN_TICKS_90 = 200;
+// Encoder differential ticks needed for a 180-degree turn.
+// Keep this separate from 2x90 so you can tune U-turns independently.
+static constexpr int32_t TURN_TICKS_180 = 420;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
-static constexpr float MOVE_SPEED_TPS = 320.0f;
-static constexpr float TURN_SPEED_TPS = 250.0f;
+static constexpr float MOVE_SPEED_TPS = 350.0f;
+// Short forward settle after a snap-back. Intended for explore-only recentering.
+static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
+static constexpr float SHORT_FORWARD_SPEED_TPS = 220.0f;
+// Short reverse primitive used for manual alignment and future turn recentering work.
+static constexpr float REVERSE_DISTANCE_MM = 100.0f;
+static constexpr float REVERSE_SPEED_TPS = 300.0f;
+static constexpr float TURN_SPEED_TPS = 300.0f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
-static constexpr float CENTERING_GAIN = 1.6f;
+static constexpr float CENTERING_GAIN = 1.4f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
-static constexpr float FRONT_STOP_MM = 55.0f;
+static constexpr float FRONT_STOP_MM = 100.0f;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
@@ -187,11 +208,17 @@ static constexpr float MIN_PROGRESS_MM = 12.0f;
 // Affects: forward progress estimation and one-cell completion.
 // Usually tune this before final CELL_DISTANCE_MM tuning.
 static constexpr float MM_PER_TICK = 0.54f;
+// Explore-only post-turn snap-back sequence.
+static constexpr bool ENABLE_POST_TURN_SNAP = true;
+// Print known maze as ASCII after exploration updates the map.
+static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 }
 
 namespace Explorer {
 // Floodfill web explorer settings.
 // Affects: debug UI on the network and action ACK timeout behavior.
+// Set false to disable the floodfill web UI on port 81 while keeping floodfill logic active.
+static constexpr bool ENABLE_WEB = false;
 static constexpr uint16_t PORT = 81;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
@@ -204,7 +231,12 @@ inline MotionController::Config makeMotionConfig() {
   MotionController::Config cfg;
   cfg.cellDistanceMm = Motion::CELL_DISTANCE_MM;
   cfg.turnTicks90 = Motion::TURN_TICKS_90;
+  cfg.turnTicks180 = Motion::TURN_TICKS_180;
   cfg.moveSpeedTps = Motion::MOVE_SPEED_TPS;
+  cfg.shortForwardDistanceMm = Motion::SHORT_FORWARD_DISTANCE_MM;
+  cfg.shortForwardSpeedTps = Motion::SHORT_FORWARD_SPEED_TPS;
+  cfg.reverseDistanceMm = Motion::REVERSE_DISTANCE_MM;
+  cfg.reverseSpeedTps = Motion::REVERSE_SPEED_TPS;
   cfg.turnSpeedTps = Motion::TURN_SPEED_TPS;
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
@@ -219,6 +251,7 @@ inline MotionController::Config makeMotionConfig() {
 // Helper that converts config constants into the floodfill explorer runtime config.
 inline FloodFillExplorer::Config makeExplorerConfig() {
   FloodFillExplorer::Config cfg;
+  cfg.enableWeb = Explorer::ENABLE_WEB;
   cfg.port = Explorer::PORT;
   cfg.autoRun = Explorer::AUTO_RUN;
   cfg.ackTimeoutMs = Explorer::ACK_TIMEOUT_MS;

@@ -25,8 +25,8 @@ When changing this code, prefer reliability and observability over aggressive op
 ## Important Files
 
 - `Mouse_esp32s3.ino`: thin Arduino entrypoint only
-- `main.h`: app interface between Arduino entrypoints and the main application module
-- `main.cpp`: runtime orchestration, serial command surface, startup flow, background task bodies, planner integration
+- `AppRuntime.h`: app interface between Arduino entrypoints and the main application module
+- `AppRuntime.cpp`: runtime orchestration, serial command surface, startup flow, background task bodies, planner integration
 - `Config.h`: centralized hardware and tuning configuration
 - `RobotTypes.h`: shared state and enums
 - `MotionController.*`: motion primitive executor
@@ -39,7 +39,7 @@ When changing this code, prefer reliability and observability over aggressive op
 - `RobotState` is the shared snapshot for telemetry and coordination.
 - `MotionController` owns primitive execution and timeout/stall logic.
 - `FloodFillExplorer` owns maze memory and next-action choice.
-- `main.cpp` wires sensor data into the explorer and acknowledges actions when physical motion finishes.
+- `AppRuntime.cpp` wires sensor data into the explorer and acknowledges actions when physical motion finishes.
 - `Mouse_esp32s3.ino` should stay minimal and only expose Arduino entrypoints plus task wrappers.
 - `Config.h` is the single source of truth for pins, calibration constants, and runtime tuning defaults.
 

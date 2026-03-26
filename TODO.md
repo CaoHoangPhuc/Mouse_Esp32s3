@@ -4,6 +4,10 @@
 
 - Compile the project against the intended ESP32-S3 board and fix any board/core compile issues.
 - Verify all new source files are included by the Arduino build.
+- Verify browser upload on port 82 works reliably with the intended `.bin` workflow.
+- If browser upload still reports `network error`, capture serial logs around `[WEB OTA] Start`, `Success`, and reboot scheduling to separate HTTP-response issues from flash-write issues.
+- If browser upload still aborts, compare whether the last serial line is `[WEB OTA] Received ... bytes`, `[WEB OTA] Aborted`, or a Wi-Fi reconnect event to isolate transport vs. flash finalization.
+- Current evidence points to a mid-transfer network drop after partial progress, not an OTA password or `.bin` selection issue.
 - Update docs/examples if the Arduino builder needs any filename/layout adjustments.
 - Replace remaining mojibake / encoding corruption in comments and UI strings.
 - Confirm the battery ADC pin is correct for the real board.
@@ -23,7 +27,10 @@
 
 - Tune `cellDistanceMm` so one cell move is repeatable.
 - Tune `turnTicks90` for accurate 90-degree turns.
+- Tune `turnTicks180` for reliable U-turns without overshoot.
 - Tune `moveSpeedTps` and `turnSpeedTps`.
+- Tune `reverseDistanceMm` and `shortForwardDistanceMm` for snapback recentering.
+- Verify `testsnap` is repeatable before trusting automatic explore snapback.
 - Tune `stallTimeoutMs` so valid slow motion does not false-fail.
 - Tune `frontStopMm` for safe wall approach.
 - Tune `centeringGain` so corridor tracking is stable and does not oscillate.
@@ -39,8 +46,11 @@
 
 ## Planner / Maze
 
+- Confirm the start cell stays unknown at boot and is only observed when explore/speed-run begins.
 - Verify pose updates after each primitive in a real maze.
 - Validate discovered wall writes into the expected maze cells.
+- Verify automatic post-turn snapback only triggers when the rear wall is truly known.
+- Validate the ASCII `maze` dump against the physical maze after each test.
 - Test dead-end and backtracking behavior on hardware.
 - Persist or export known maze data for debugging.
 - Add path compression for the second run.

@@ -6,11 +6,12 @@
 #include "Config.h"
 #include "DcMotor.h"
 #include "FloodFillExplorer.h"
+#include "LedController.h"
 #include "MotionController.h"
 #include "MultiVL53L0X.h"
 #include "RobotTypes.h"
 #include "WiFiOtaWebSerial.h"
-#include "main.h"
+#include "AppRuntime.h"
 
 namespace MainApp {
 
@@ -19,6 +20,9 @@ FloodFillExplorer explorer;
 Battery mouseBattery;
 MotionController motionController;
 RobotState robotState;
+LedController ledController;
+WiFiServer debugServer(AppConfig::Wifi::DEBUG_TCP_PORT);
+WiFiClient debugClient;
 
 DcMotor leftMotor;
 DcMotor rightMotor;
@@ -28,6 +32,18 @@ static bool tofOk = false;
 static bool batteryOk = false;
 static bool wifiOk = false;
 static uint32_t lastStatusMs = 0;
+
+enum TestLoopMode : uint8_t {
+  TEST_LOOP_NONE = 0,
+  TEST_LOOP_STATUS,
+  TEST_LOOP_BATTERY,
+  TEST_LOOP_SENSORS,
+  TEST_LOOP_SENSORS_RAW,
+  TEST_LOOP_ENCODERS,
+  TEST_LOOP_MAZE
+};
+
+static TestLoopMode testLoopMode = TEST_LOOP_NONE;
 
 MultiVL53L0X tofArray(
   AppConfig::Tof::PCF_ADDRESS, AppConfig::Tof::SENSOR_COUNT,
@@ -57,15 +73,108 @@ static void enterFaultMode(const String& reason);
 static const char* modeName(RobotMode mode);
 static const char* batteryStateName(uint8_t state);
 static const char* motionStatusName(MotionStatus status);
+static const char* testLoopModeName(TestLoopMode mode);
 static void printStartupSummary();
 static void motor_debug_s();
 static void tof_debug_s();
 static void tof_raw_debug_s();
 static void robot_debug_s();
 static void battery_debug_s();
+static void serviceDebugConsole();
+static void debugPrint(const String& s);
+static void debugPrintln(const String& s = "");
+static void debugPrompt();
+static bool debugClientConnected();
+static void updateOtaSafeMode();
+static bool handleLedCommand(const String& cmd);
+static void maze_debug_s();
+static bool shouldStartPostTurnSnap(MotionPrimitiveType primitive);
+static void closeDebugConsole(const String& reason = "");
+
+static bool otaSafeModeActive = false;
+static uint32_t lastConsoleActivityMs = 0;
+static constexpr uint32_t kConsoleQuietMs = 1500;
+enum SnapBackPhase : uint8_t {
+  SNAP_PHASE_NONE = 0,
+  SNAP_PHASE_BACK,
+  SNAP_PHASE_FORWARD
+};
+static SnapBackPhase snapBackPhase = SNAP_PHASE_NONE;
 
 static void logToDbg(const String& s) {
-  dbg.println(s);
+  debugPrintln(s);
+}
+
+static bool debugClientConnected() {
+  return debugClient && debugClient.connected();
+}
+
+static void debugPrint(const String& s) {
+  Serial.print(s);
+  if (debugClientConnected()) {
+    debugClient.print(s);
+  }
+}
+
+static void debugPrintln(const String& s) {
+  Serial.println(s);
+  if (debugClientConnected()) {
+    debugClient.println(s);
+  }
+}
+
+static void debugPrompt() {
+  if (debugClientConnected()) {
+    debugClient.print("> ");
+  }
+}
+
+static void closeDebugConsole(const String& reason) {
+  if (!debugClientConnected()) return;
+  if (reason.length() > 0) {
+    debugClient.println(reason);
+  }
+  debugClient.clear();
+  delay(20);
+  debugClient.stop();
+}
+
+static void serviceDebugConsole() {
+  if (debugServer.hasClient()) {
+    WiFiClient incoming = debugServer.accept();
+    if (debugClientConnected()) {
+      incoming.println("busy");
+      incoming.stop();
+    } else {
+      debugClient = incoming;
+      debugClient.setNoDelay(true);
+      debugPrintln("[NET] debug console connected");
+      debugPrintln("[NET] commands match serial commands");
+      debugPrompt();
+    }
+  }
+
+  static String netLine;
+  if (!debugClientConnected()) return;
+
+  while (debugClient.available() > 0) {
+    char ch = (char)debugClient.read();
+    lastConsoleActivityMs = millis();
+    if (ch == '\n' || ch == '\r') {
+      if (netLine.length() > 0) {
+        handleSerialCommand(netLine);
+        netLine = "";
+        debugPrompt();
+      }
+    } else {
+      netLine += ch;
+    }
+  }
+
+  if (!debugClient.connected()) {
+    debugClient.stop();
+    netLine = "";
+  }
 }
 
 static void i2cRecover(int sda, int scl) {
@@ -96,6 +205,17 @@ static void i2cRecover(int sda, int scl) {
   vTaskDelay(pdMS_TO_TICKS(10));
 }
 
+static bool onWebLedCommand(const String& cmd, String& response) {
+  return ledController.handleCommand(cmd, &response);
+}
+
+static bool handleLedCommand(const String& cmd) {
+  String response;
+  if (!ledController.handleCommand(cmd, &response)) return false;
+  if (response.length() > 0) debugPrintln(response);
+  return true;
+}
+
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
   robotState.pose.cellX = x;
   robotState.pose.cellY = y;
@@ -108,13 +228,39 @@ static FloodFillExplorer::Dir headingDir() {
   return (FloodFillExplorer::Dir)(robotState.pose.heading & 3);
 }
 
+static void maze_debug_s() {
+  String maze = explorer.buildKnownMazeAscii(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  maze.replace("\n", "\r\n");
+  debugPrintln("[MAZE]");
+  debugPrint("\r\n");
+  debugPrint(maze);
+  if (!maze.endsWith("\r\n")) {
+    debugPrint("\r\n");
+  }
+  debugPrintln("");
+}
+
+static bool shouldStartPostTurnSnap(MotionPrimitiveType primitive) {
+  if (!AppConfig::Motion::ENABLE_POST_TURN_SNAP) return false;
+  if (robotState.mode != ROBOT_MODE_EXPLORE) return false;
+  if (!(primitive == MOTION_TURN_LEFT_90 || primitive == MOTION_TURN_RIGHT_90)) return false;
+
+  bool known = false;
+  bool wall = false;
+  const FloodFillExplorer::Dir backDir = (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 2) & 3);
+  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY, backDir, known, wall);
+  return known && wall;
+}
+
 static void enterIdleMode(const String& reason) {
   robotState.mode = ROBOT_MODE_IDLE;
   robotState.motionStatus = MOTION_IDLE;
   robotState.activePrimitive = MOTION_NONE;
+  testLoopMode = TEST_LOOP_NONE;
   explorer.setRunning(false);
   motionController.stop();
-  dbg.println("[MODE] IDLE: " + reason);
+  snapBackPhase = SNAP_PHASE_NONE;
+  debugPrintln("[MODE] IDLE: " + reason);
 }
 
 static void enterFaultMode(const String& reason) {
@@ -123,7 +269,28 @@ static void enterFaultMode(const String& reason) {
   robotState.faultCount++;
   motionController.abort(reason);
   explorer.setRunning(false);
-  dbg.println("[FAULT] " + reason);
+  snapBackPhase = SNAP_PHASE_NONE;
+  debugPrintln("[FAULT] " + reason);
+}
+
+static void updateOtaSafeMode() {
+  const bool otaNow = dbg.isUpdateInProgress();
+  if (otaNow == otaSafeModeActive) return;
+
+  otaSafeModeActive = otaNow;
+  if (otaSafeModeActive) {
+    explorer.setRunning(false);
+    motionController.stop();
+    leftMotor.setSpeedTPS(0.0f);
+    rightMotor.setSpeedTPS(0.0f);
+    robotState.mode = ROBOT_MODE_IDLE;
+    robotState.motionStatus = MOTION_IDLE;
+    robotState.activePrimitive = MOTION_NONE;
+    testLoopMode = TEST_LOOP_NONE;
+    debugPrintln("[OTA] App safe mode");
+  } else {
+    debugPrintln("[OTA] App resumed");
+  }
 }
 
 static void beginExplore(bool clearMaze) {
@@ -137,8 +304,11 @@ static void beginExplore(bool clearMaze) {
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
+  if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE) {
+    maze_debug_s();
+  }
   explorer.setRunning(true);
-  dbg.println("[MODE] EXPLORE");
+  debugPrintln("[MODE] EXPLORE");
 }
 
 static void beginSpeedRun() {
@@ -149,7 +319,7 @@ static void beginSpeedRun() {
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
   explorer.setRunning(true);
-  dbg.println("[MODE] SPEED RUN");
+  debugPrintln("[MODE] SPEED RUN");
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
@@ -163,6 +333,9 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
       break;
     case FloodFillExplorer::ACT_TURN_R:
       ok = motionController.turnRight90();
+      break;
+    case FloodFillExplorer::ACT_TURN_180:
+      ok = motionController.turn180();
       break;
     default:
       return true;
@@ -188,6 +361,8 @@ static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
     robotState.pose.heading = (robotState.pose.heading + 3) & 3;
   } else if (primitive == MOTION_TURN_RIGHT_90) {
     robotState.pose.heading = (robotState.pose.heading + 1) & 3;
+  } else if (primitive == MOTION_TURN_180) {
+    robotState.pose.heading = (robotState.pose.heading + 2) & 3;
   }
 
   robotState.pose.forwardProgressMm = 0.0f;
@@ -200,21 +375,48 @@ static void handleMotionCompletion() {
 
   if (status == MOTION_COMPLETED) {
     advancePoseForFinishedPrimitive(primitive);
+
+    if (primitive == MOTION_TURN_LEFT_90 || primitive == MOTION_TURN_RIGHT_90) {
+      if (shouldStartPostTurnSnap(primitive)) {
+        if (motionController.moveBackwardShort()) {
+          snapBackPhase = SNAP_PHASE_BACK;
+          debugPrintln("[SNAP] back wall known -> snap back");
+          return;
+        }
+        enterFaultMode("failed to start snap back");
+        return;
+      }
+    } else if (primitive == MOTION_MOVE_BACKWARD_SHORT && snapBackPhase == SNAP_PHASE_BACK) {
+      if (motionController.moveForwardShort()) {
+        snapBackPhase = SNAP_PHASE_FORWARD;
+        debugPrintln("[SNAP] return to center");
+        return;
+      }
+      enterFaultMode("failed to start snap forward");
+      return;
+    } else if (primitive == MOTION_MOVE_FORWARD_SHORT && snapBackPhase == SNAP_PHASE_FORWARD) {
+      snapBackPhase = SNAP_PHASE_NONE;
+    }
+
     bool reachedGoal = explorer.ackPendingActionExternal(true,
       robotState.pose.cellX,
       robotState.pose.cellY,
       headingDir());
     applyWallsToExplorer();
+    if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE && robotState.mode == ROBOT_MODE_EXPLORE) {
+      maze_debug_s();
+    }
 
     if (reachedGoal) {
       robotState.goalReached = true;
       robotState.speedRunReady = true;
-      dbg.println("[GOAL] Goal reached");
+      debugPrintln("[GOAL] Goal reached");
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         enterIdleMode("speed run finished");
       }
     }
   } else if (status == MOTION_FAILED || status == MOTION_ABORTED) {
+    snapBackPhase = SNAP_PHASE_NONE;
     explorer.ackPendingActionExternal(false,
       robotState.pose.cellX,
       robotState.pose.cellY,
@@ -275,18 +477,26 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
+  ledController.begin();
 
   WiFiOtaWebSerial::Config wifiCfg;
   wifiCfg.ssid = AppConfig::Wifi::SSID;
   wifiCfg.pass = AppConfig::Wifi::PASS;
   wifiCfg.hostname = AppConfig::Wifi::HOSTNAME;
-  wifiCfg.otaPassword = AppConfig::Wifi::OTA_PASSWORD;
+  wifiCfg.enableWeb = AppConfig::Wifi::ENABLE_WEB_LOG;
+  wifiCfg.enableUploadWeb = AppConfig::Wifi::ENABLE_UPLOAD_WEB;
+  wifiCfg.uploadPort = AppConfig::Wifi::UPLOAD_WEB_PORT;
   wifiCfg.wifiCore = AppConfig::Wifi::CORE;
   wifiCfg.wifiTaskStack = AppConfig::Wifi::TASK_STACK;
   wifiCfg.wifiTaskPrio = AppConfig::Wifi::TASK_PRIORITY;
   wifiCfg.serviceDelayMs = AppConfig::Wifi::SERVICE_DELAY_MS;
+  wifiCfg.wifiConnectTimeoutMs = AppConfig::Wifi::CONNECT_TIMEOUT_MS;
+  wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
+  dbg.setLedCommandHandler(onWebLedCommand);
   wifiOk = dbg.begin(wifiCfg);
-  dbg.println(wifiOk ? "Boot OK" : "Boot with WiFi failed");
+  debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
+  debugServer.begin();
+  debugServer.setNoDelay(true);
 
   motorsOk = leftMotor.begin(AppConfig::Motors::LEFT_PINS,
                              AppConfig::Motors::LEFT_PWM_CHANNEL,
@@ -332,7 +542,6 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
                     AppConfig::Maze::START_HEADING, true);
 
   updateRobotState();
-  applyWallsToExplorer();
   printStartupSummary();
 
   xTaskCreatePinnedToCore(motorTask,     "motor",     4096, nullptr, 3, &motorTaskHandle,     0);
@@ -356,11 +565,19 @@ void userTaskBody(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(20);
 
   for (;;) {
+    updateOtaSafeMode();
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelayUntil(&lastWake, period);
+      continue;
+    }
+
     updateRobotState();
     motionController.update(robotState);
+    serviceDebugConsole();
 
     while (Serial.available() > 0) {
       char ch = (char)Serial.read();
+      lastConsoleActivityMs = millis();
       if (ch == '\n' || ch == '\r') {
         if (line.length() > 0) {
           handleSerialCommand(line);
@@ -381,6 +598,11 @@ void plannerTaskBody(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(50);
 
   for (;;) {
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelayUntil(&last, period);
+      continue;
+    }
+
     if (robotState.motionStatus == MOTION_COMPLETED ||
         robotState.motionStatus == MOTION_FAILED ||
         robotState.motionStatus == MOTION_ABORTED) {
@@ -416,9 +638,13 @@ void plannerTaskBody(void* arg) {
 static void motorTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(10);
+  const TickType_t period = pdMS_TO_TICKS(5);
 
   for (;;) {
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelayUntil(&last, period);
+      continue;
+    }
     leftMotor.update();
     rightMotor.update();
     vTaskDelayUntil(&last, period);
@@ -428,6 +654,10 @@ static void motorTask(void* arg) {
 static void explorerTask(void* arg) {
   (void)arg;
   for (;;) {
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
     explorer.loop();
     vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -439,6 +669,10 @@ static void tofTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(5);
 
   for (;;) {
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelayUntil(&lastWake, period);
+      continue;
+    }
     tofArray.update();
     vTaskDelayUntil(&lastWake, period);
   }
@@ -447,20 +681,59 @@ static void tofTask(void* arg) {
 static void telemetryTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(250);
+  const TickType_t period = pdMS_TO_TICKS(500);
 
   for (;;) {
+    if (dbg.isUpdateInProgress()) {
+      vTaskDelayUntil(&last, period);
+      continue;
+    }
+    if ((uint32_t)(millis() - lastConsoleActivityMs) < kConsoleQuietMs) {
+      vTaskDelayUntil(&last, period);
+      continue;
+    }
     robot_debug_s();
+    if (robotState.mode == ROBOT_MODE_MANUAL_TEST) {
+      switch (testLoopMode) {
+        case TEST_LOOP_STATUS:
+          robot_debug_s();
+          break;
+        case TEST_LOOP_BATTERY:
+          battery_debug_s();
+          break;
+        case TEST_LOOP_SENSORS:
+          tof_debug_s();
+          break;
+        case TEST_LOOP_SENSORS_RAW:
+          tof_raw_debug_s();
+          break;
+        case TEST_LOOP_ENCODERS:
+          motor_debug_s();
+          break;
+        case TEST_LOOP_MAZE:
+          maze_debug_s();
+          break;
+        case TEST_LOOP_NONE:
+        default:
+          break;
+      }
+    }
     vTaskDelayUntil(&last, period);
   }
 }
 
 static void printStartupSummary() {
-  dbg.println(String("[BOOT] WiFi=") + (wifiOk ? "OK" : "FAIL"));
-  dbg.println(String("[BOOT] Motors=") + (motorsOk ? "OK" : "FAIL"));
-  dbg.println(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
-  dbg.println(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
-  dbg.println("[CMD] help | explore | speedrun | idle | stop | move | left | right | status | resetpose x y h | test battery|sensors|sensorsraw|motorl|motorr|encoders");
+  debugPrintln(String("[BOOT] WiFi=") + (wifiOk ? "OK" : "FAIL"));
+  debugPrintln(String("[BOOT] Motors=") + (motorsOk ? "OK" : "FAIL"));
+  debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
+  debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
+  debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | status | resetpose x y h");
+  debugPrintln("[CMD] testsnap");
+  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue");
+  debugPrintln("[CMD] maze");
+  debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
+  debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
 }
 
 static void handleSerialCommand(const String& rawLine) {
@@ -476,13 +749,82 @@ static void handleSerialCommand(const String& rawLine) {
     robot_debug_s();
     return;
   }
+  if (line == "restart" || line == "reboot") {
+    debugPrintln("[CMD] restarting...");
+    closeDebugConsole("[NET] disconnecting for restart");
+    delay(100);
+    ESP.restart();
+    return;
+  }
+  if (line == "maze") {
+    maze_debug_s();
+    return;
+  }
+  if (line == "led" || line == "led cycle" || line == "led rotate") {
+    if (!handleLedCommand("cycle")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led off") {
+    if (!handleLedCommand("off")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led red") {
+    if (!handleLedCommand("red")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led green") {
+    if (!handleLedCommand("green")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led blue") {
+    if (!handleLedCommand("blue")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "test") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    testLoopMode = TEST_LOOP_STATUS;
+    debugPrintln("[MODE] TEST loop=" + String(testLoopModeName(testLoopMode)));
+    return;
+  }
+  if (line == "test off") {
+    enterIdleMode("test off");
+    return;
+  }
+  if (line.startsWith("test loop ")) {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+
+    if (line == "test loop status") testLoopMode = TEST_LOOP_STATUS;
+    else if (line == "test loop battery") testLoopMode = TEST_LOOP_BATTERY;
+    else if (line == "test loop sensors") testLoopMode = TEST_LOOP_SENSORS;
+    else if (line == "test loop sensorsraw") testLoopMode = TEST_LOOP_SENSORS_RAW;
+    else if (line == "test loop encoders") testLoopMode = TEST_LOOP_ENCODERS;
+    else if (line == "test loop maze") testLoopMode = TEST_LOOP_MAZE;
+    else if (line == "test loop off") testLoopMode = TEST_LOOP_NONE;
+    else {
+      debugPrintln("[CMD] usage: test loop status|battery|sensors|sensorsraw|encoders|maze|off");
+      return;
+    }
+
+    debugPrintln("[MODE] TEST loop=" + String(testLoopModeName(testLoopMode)));
+    return;
+  }
   if (line == "explore") {
     beginExplore(true);
     return;
   }
   if (line == "speedrun") {
     if (!robotState.speedRunReady) {
-      dbg.println("[CMD] speed run not ready yet");
+      debugPrintln("[CMD] speed run not ready yet");
       return;
     }
     beginSpeedRun();
@@ -502,6 +844,24 @@ static void handleSerialCommand(const String& rawLine) {
     executePlannerAction(FloodFillExplorer::ACT_MOVE_F);
     return;
   }
+  if (line == "testsnap") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    snapBackPhase = SNAP_PHASE_BACK;
+    if (!motionController.moveBackwardShort()) {
+      snapBackPhase = SNAP_PHASE_NONE;
+      debugPrintln("[CMD] failed to start testsnap");
+    } else {
+      debugPrintln("[TEST] snapback sequence");
+    }
+    return;
+  }
+  if (line == "back") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    if (!motionController.moveBackwardShort()) {
+      debugPrintln("[CMD] failed to start back");
+    }
+    return;
+  }
   if (line == "left") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     executePlannerAction(FloodFillExplorer::ACT_TURN_L);
@@ -512,6 +872,11 @@ static void handleSerialCommand(const String& rawLine) {
     executePlannerAction(FloodFillExplorer::ACT_TURN_R);
     return;
   }
+  if (line == "uturn") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    executePlannerAction(FloodFillExplorer::ACT_TURN_180);
+    return;
+  }
   if (line.startsWith("resetpose")) {
     int x, y, h;
     if (sscanf(line.c_str(), "resetpose %d %d %d", &x, &y, &h) == 3) {
@@ -520,9 +885,9 @@ static void handleSerialCommand(const String& rawLine) {
       h &= 3;
       setPose((uint8_t)x, (uint8_t)y, (FloodFillExplorer::Dir)h);
       explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-      dbg.println("[CMD] pose reset");
+      debugPrintln("[CMD] pose reset");
     } else {
-      dbg.println("[CMD] usage: resetpose x y h");
+      debugPrintln("[CMD] usage: resetpose x y h");
     }
     return;
   }
@@ -542,14 +907,14 @@ static void handleSerialCommand(const String& rawLine) {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     leftMotor.setSpeedTPS(220.0f);
     rightMotor.setSpeedTPS(0.0f);
-    dbg.println("[TEST] left motor spin");
+    debugPrintln("[TEST] left motor spin");
     return;
   }
   if (line == "test motorr") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     leftMotor.setSpeedTPS(0.0f);
     rightMotor.setSpeedTPS(220.0f);
-    dbg.println("[TEST] right motor spin");
+    debugPrintln("[TEST] right motor spin");
     return;
   }
   if (line == "test encoders") {
@@ -557,7 +922,7 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
 
-  dbg.println("[CMD] unknown: " + rawLine);
+  debugPrintln("[CMD] unknown: " + rawLine);
 }
 
 static const char* modeName(RobotMode mode) {
@@ -591,50 +956,47 @@ static const char* motionStatusName(MotionStatus status) {
   return "unknown";
 }
 
+static const char* testLoopModeName(TestLoopMode mode) {
+  switch (mode) {
+    case TEST_LOOP_NONE: return "off";
+    case TEST_LOOP_STATUS: return "status";
+    case TEST_LOOP_BATTERY: return "battery";
+    case TEST_LOOP_SENSORS: return "sensors";
+    case TEST_LOOP_SENSORS_RAW: return "sensorsraw";
+    case TEST_LOOP_ENCODERS: return "encoders";
+    case TEST_LOOP_MAZE: return "maze";
+  }
+  return "unknown";
+}
+
 static void motor_debug_s() {
-  Serial.print("MOTOR | L ticks="); Serial.print(leftMotor.getTicks());
-  Serial.print(" tps="); Serial.print(leftMotor.getTicksPerSecond(), 1);
-  Serial.print(" | R ticks="); Serial.print(rightMotor.getTicks());
-  Serial.print(" tps="); Serial.println(rightMotor.getTicksPerSecond(), 1);
+  char buf[128];
+  snprintf(buf, sizeof(buf), "MOTOR | L ticks=%ld tps=%.1f | R ticks=%ld tps=%.1f",
+           (long)leftMotor.getTicks(), leftMotor.getTicksPerSecond(),
+           (long)rightMotor.getTicks(), rightMotor.getTicksPerSecond());
+  debugPrintln(String(buf));
 }
 
 static void tof_debug_s() {
+  String out;
   for (uint8_t i = 0; i < tofArray.sensorCount(); i++) {
-    Serial.printf("S%u=%u ", i, tofArray.getDistance(i));
+    out += "S" + String(i) + "=" + String(tofArray.getDistance(i)) + " ";
   }
-  Serial.printf("| wall L/F/R=%d/%d/%d | valid=%d/%d/%d\n",
-                robotState.walls.leftWall,
-                robotState.walls.frontWall,
-                robotState.walls.rightWall,
-                robotState.walls.leftValid,
-                robotState.walls.frontValid,
-                robotState.walls.rightValid);
+  out += "| wall L/F/R=" + String((int)robotState.walls.leftWall) + "/" +
+         String((int)robotState.walls.frontWall) + "/" + String((int)robotState.walls.rightWall);
+  out += " | valid=" + String((int)robotState.walls.leftValid) + "/" +
+         String((int)robotState.walls.frontValid) + "/" + String((int)robotState.walls.rightValid);
+  debugPrintln(out);
 }
 
 static void tof_raw_debug_s() {
-  Serial.print("[TOF RAW] ");
-  dbg.print("[TOF RAW] ");
+  String out = "[TOF RAW] ";
 
   for (uint8_t i = 0; i < tofArray.sensorCount(); i++) {
     const uint16_t raw = tofArray.getRaw(i);
-    const uint16_t cooked = tofArray.getDistance(i);
-    const uint8_t state = tofArray.stateTimeout(i);
-
-    Serial.printf("S%u raw=%u filt=%u st=%u ", i, raw, cooked, state);
-
-    dbg.print("S");
-    dbg.print(String(i));
-    dbg.print(" raw=");
-    dbg.print(String(raw));
-    dbg.print(" filt=");
-    dbg.print(String(cooked));
-    dbg.print(" st=");
-    dbg.print(String(state));
-    dbg.print(" ");
+    out += "S" + String(i) + "=" + String(raw) + " ";
   }
-
-  Serial.println();
-  dbg.println("");
+  debugPrintln(out);
 }
 
 static void robot_debug_s() {
@@ -642,23 +1004,26 @@ static void robot_debug_s() {
   if (now - lastStatusMs < 200) return;
   lastStatusMs = now;
 
-  Serial.printf("MODE=%s motion=%s pose=(%u,%u,%u) batt=%.2fV(%s) tps=(%.1f,%.1f) walls=%d/%d/%d dist=%u/%u/%u fault=%s\n",
-                modeName(robotState.mode),
-                motionStatusName(robotState.motionStatus),
-                robotState.pose.cellX,
-                robotState.pose.cellY,
-                robotState.pose.heading,
-                robotState.batteryVoltage,
-                batteryStateName(robotState.batteryState),
-                robotState.leftTps,
-                robotState.rightTps,
-                robotState.walls.leftWall,
-                robotState.walls.frontWall,
-                robotState.walls.rightWall,
-                robotState.walls.leftMm,
-                robotState.walls.frontMm,
-                robotState.walls.rightMm,
-                robotState.lastFault.c_str());
+  char buf[256];
+  snprintf(buf, sizeof(buf),
+           "MODE=%s motion=%s pose=(%u,%u,%u) batt=%.2fV(%s) tps=(%.1f,%.1f) walls=%d/%d/%d dist=%u/%u/%u fault=%s",
+           modeName(robotState.mode),
+           motionStatusName(robotState.motionStatus),
+           robotState.pose.cellX,
+           robotState.pose.cellY,
+           robotState.pose.heading,
+           robotState.batteryVoltage,
+           batteryStateName(robotState.batteryState),
+           robotState.leftTps,
+           robotState.rightTps,
+           robotState.walls.leftWall,
+           robotState.walls.frontWall,
+           robotState.walls.rightWall,
+           robotState.walls.leftMm,
+           robotState.walls.frontMm,
+           robotState.walls.rightMm,
+           robotState.lastFault.c_str());
+  debugPrintln(String(buf));
 }
 
 static void battery_debug_s() {
@@ -666,20 +1031,16 @@ static void battery_debug_s() {
   const float adcVolts = 3.3f * ((float)raw / 4095.0f);
   const float estimatedBatteryFromDivider = adcVolts * ((47.0f + 18.0f) / 18.0f);
 
-  Serial.printf("[BAT] raw=%u adc=%.3fV batt=%.2fV est=%.2fV pct=%.0f state=%s\n",
-                raw,
-                adcVolts,
-                robotState.batteryVoltage,
-                estimatedBatteryFromDivider,
-                robotState.batteryPercent,
-                batteryStateName(robotState.batteryState));
-
-  dbg.println("[BAT] raw=" + String(raw) +
-              " adc=" + String(adcVolts, 3) +
-              "V batt=" + String(robotState.batteryVoltage, 2) +
-              "V est=" + String(estimatedBatteryFromDivider, 2) +
-              "V pct=" + String(robotState.batteryPercent, 0) +
-              " state=" + batteryStateName(robotState.batteryState));
+  char buf[160];
+  snprintf(buf, sizeof(buf),
+           "[BAT] raw=%u adc=%.3fV batt=%.2fV est=%.2fV pct=%.0f state=%s",
+           raw,
+           adcVolts,
+           robotState.batteryVoltage,
+           estimatedBatteryFromDivider,
+           robotState.batteryPercent,
+           batteryStateName(robotState.batteryState));
+  debugPrintln(String(buf));
 }
 
 }  // namespace MainApp

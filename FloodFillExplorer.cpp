@@ -464,6 +464,7 @@ const char* FloodFillExplorer::actionName_(Action a) const{
     case ACT_NONE:   return "none";
     case ACT_TURN_L: return "turnL";
     case ACT_TURN_R: return "turnR";
+    case ACT_TURN_180: return "turn180";
     case ACT_MOVE_F: return "moveF";
   }
   return "none";
@@ -595,7 +596,9 @@ bool FloodFillExplorer::begin(const Config& cfg){
     delete server_;
     server_ = nullptr;
   }
-  server_ = new WebServer(cfg_.port);
+  if (cfg_.enableWeb) {
+    server_ = new WebServer(cfg_.port);
+  }
 
   clearKnown_();
   reset();
@@ -608,8 +611,10 @@ bool FloodFillExplorer::begin(const Config& cfg){
     targetHome_ = false; // start by targeting original goal
   }
 
-  setupWeb_();
-  server_->begin();
+  if (cfg_.enableWeb && server_) {
+    setupWeb_();
+    server_->begin();
+  }
 
   started_ = true;
   running_ = cfg_.autoRun;
@@ -618,7 +623,11 @@ bool FloodFillExplorer::begin(const Config& cfg){
   pendingAction_ = ACT_NONE;
   pendingSeq_ = 0;
 
-  log_("[Explorer] Web on port " + String(cfg_.port));
+  if (cfg_.enableWeb) {
+    log_("[Explorer] Web on port " + String(cfg_.port));
+  } else {
+    log_("[Explorer] Web disabled");
+  }
   return true;
 }
 
@@ -691,6 +700,66 @@ bool FloodFillExplorer::knownHasWall_(int x,int y, Dir d) const{
   uint8_t b = bitForDir_(d);
   if((knownMask_[y][x] & b) == 0) return false; // unknown treated open
   return (knownWalls_[y][x] & b) != 0;
+}
+
+bool FloodFillExplorer::getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const {
+  if (!inBounds_(x, y)) {
+    known = false;
+    wall = false;
+    return false;
+  }
+  const uint8_t bit = bitForDir_(d);
+  known = (knownMask_[y][x] & bit) != 0;
+  wall = (knownWalls_[y][x] & bit) != 0;
+  return true;
+}
+
+String FloodFillExplorer::buildKnownMazeAscii(uint8_t mouseX, uint8_t mouseY, Dir mouseH) const {
+  String out;
+  out.reserve(N * N * 8);
+
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      out += "+";
+      bool known = false;
+      bool wall = false;
+      getKnownWall((uint8_t)x, (uint8_t)y, NORTH, known, wall);
+      out += (known && wall) ? "---" : "   ";
+    }
+    out += "+\n";
+
+    for (int x = 0; x < N; ++x) {
+      bool known = false;
+      bool wall = false;
+      getKnownWall((uint8_t)x, (uint8_t)y, WEST, known, wall);
+      out += (known && wall) ? "|" : " ";
+
+      char cell[4] = {' ', ' ', ' ', '\0'};
+      if (x == mouseX && y == mouseY) {
+        static const char kHeading[4] = {'^', '>', 'v', '<'};
+        cell[1] = kHeading[(uint8_t)mouseH & 3];
+      } else if (isGoal_(x, y)) {
+        cell[1] = 'G';
+      } else if (visited_[y][x]) {
+        cell[1] = '.';
+      }
+      out += cell;
+    }
+    bool known = false;
+    bool wall = false;
+    getKnownWall((uint8_t)(N - 1), (uint8_t)y, EAST, known, wall);
+    out += (known && wall) ? "|\n" : " \n";
+  }
+
+  for (int x = 0; x < N; ++x) {
+    out += "+";
+    bool known = false;
+    bool wall = false;
+    getKnownWall((uint8_t)x, (uint8_t)(N - 1), SOUTH, known, wall);
+    out += (known && wall) ? "---" : "   ";
+  }
+  out += "+\n";
+  return out;
 }
 
 void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
@@ -884,7 +953,7 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
 
   if(diff == 1) return ACT_TURN_R;
   if(diff == 3) return ACT_TURN_L;
-  return ACT_TURN_L; // diff==2 -> 2 turns, do left first
+  return ACT_TURN_180;
 }
 
 void FloodFillExplorer::dispatchAction_(Action a){
@@ -900,6 +969,8 @@ void FloodFillExplorer::commitPendingAction_(){
     mh_ = (Dir)(((uint8_t)mh_ + 3) & 3);
   }else if(pendingAction_ == ACT_TURN_R){
     mh_ = (Dir)(((uint8_t)mh_ + 1) & 3);
+  }else if(pendingAction_ == ACT_TURN_180){
+    mh_ = (Dir)(((uint8_t)mh_ + 2) & 3);
   }else if(pendingAction_ == ACT_MOVE_F){
     if(!knownHasWall_(mx_, my_, mh_)){
       int nx = mx_ + dx4[(int)mh_];

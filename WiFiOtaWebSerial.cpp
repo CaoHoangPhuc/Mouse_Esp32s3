@@ -4,23 +4,7 @@
 #include <WebServer.h>
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
-
-#include <Adafruit_NeoPixel.h>
-
-// ====== NeoPixel config (fixed pin) ======
-#ifndef RGB_PIN
-#define RGB_PIN 48
-#endif
-#ifndef NUM_PIXELS
-#define NUM_PIXELS 1
-#endif
-
-static Adafruit_NeoPixel gPixels(NUM_PIXELS, RGB_PIN, NEO_GRB + NEO_KHZ800);
-
-static void ledSet(uint8_t r, uint8_t g, uint8_t b) {
-  gPixels.setPixelColor(0, gPixels.Color(r, g, b));
-  gPixels.show();
-}
+#include <Update.h>
 
 // Wrapper to keep WebServer out of header
 class WiFiOtaWebSerial::WebServerWrapper {
@@ -182,6 +166,77 @@ fetchLog(true);
 </html>
 )HTML";
 
+static const char* kUploadHtml PROGMEM = R"HTML(
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ESP32 Upload</title>
+  <style>
+    body { font-family: ui-sans-serif, Segoe UI, Arial, sans-serif; margin: 24px; background: #f6f3ea; color: #1b1b1b; }
+    .card { max-width: 560px; padding: 20px; border-radius: 16px; background: #fffdf7; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+    h1 { margin-top: 0; font-size: 1.4rem; }
+    input, button { font: inherit; }
+    input[type=file] { display: block; margin: 12px 0; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; background: #165d47; color: white; cursor: pointer; }
+    progress { width: 100%; height: 18px; margin-top: 16px; }
+    #msg { margin-top: 12px; white-space: pre-wrap; }
+    .muted { color: #5d5d5d; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Wireless Firmware Upload</h1>
+    <div class="muted">Upload a compiled firmware binary (`.bin`). The mouse will reboot after a successful update.</div>
+    <form id="fwForm">
+      <input id="fwFile" name="firmware" type="file" accept=".bin,application/octet-stream" required />
+      <button type="submit">Upload Firmware</button>
+    </form>
+    <progress id="prog" value="0" max="100" hidden></progress>
+    <div id="msg"></div>
+  </div>
+<script>
+const form = document.getElementById('fwForm');
+const fileInput = document.getElementById('fwFile');
+const prog = document.getElementById('prog');
+const msg = document.getElementById('msg');
+
+form.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const file = fileInput.files[0];
+  if (!file) {
+    msg.textContent = 'Choose a .bin file first.';
+    return;
+  }
+
+  prog.hidden = false;
+  prog.value = 0;
+  msg.textContent = 'Uploading...';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/update');
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    prog.value = Math.round((e.loaded / e.total) * 100);
+  };
+  xhr.onload = () => {
+    msg.textContent = xhr.status === 200
+      ? 'Upload complete. Device will reboot.'
+      : 'Upload failed: HTTP ' + xhr.status + '\n' + xhr.responseText;
+  };
+  xhr.onerror = () => {
+    msg.textContent = 'Upload failed: network error';
+  };
+  const data = new FormData();
+  data.append('firmware', file, file.name);
+  xhr.send(data);
+});
+</script>
+</body>
+</html>
+)HTML";
+
 static inline String TS() {
   uint32_t t = millis();
   String s = String(t);
@@ -206,19 +261,25 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
 
   // server
   if (web_) { delete web_; web_ = nullptr; }
-  web_ = new WebServerWrapper(cfg_.port);
+  if (uploadWeb_) { delete uploadWeb_; uploadWeb_ = nullptr; }
+  if (cfg_.enableWeb) {
+    web_ = new WebServerWrapper(cfg_.port);
+  }
+  if (cfg_.enableUploadWeb) {
+    uploadWeb_ = new WebServerWrapper(cfg_.uploadPort);
+  }
 
   // reserve log
   log_.reserve(cfg_.logBufferBytes);
 
-  // init neopixel (fixed pin)
-  gPixels.begin();
-  gPixels.setBrightness(255);
-  gPixels.show(); // off
-
   setupWiFi_();
   setupOta_();
-  setupWeb_();
+  if (cfg_.enableWeb && web_) {
+    setupWeb_();
+  }
+  if (cfg_.enableUploadWeb && uploadWeb_) {
+    setupUploadWeb_();
+  }
 
   started_ = true;
 
@@ -244,7 +305,12 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     return false;
   }
 
-  println(String("HTTP: http://") + ip() + "/  (or http://" + cfg_.hostname + ".local/ )");
+  if (cfg_.enableWeb) {
+    println(String("HTTP: http://") + ip() + "/  (or http://" + cfg_.hostname + ".local/ )");
+  }
+  if (cfg_.enableUploadWeb) {
+    println(String("Upload: http://") + ip() + ":" + String(cfg_.uploadPort) + "/");
+  }
   println(String("OTA Hostname: ") + cfg_.hostname);
   return true;
 }
@@ -259,6 +325,10 @@ void WiFiOtaWebSerial::end() {
   if (web_) {
     delete web_;
     web_ = nullptr;
+  }
+  if (uploadWeb_) {
+    delete uploadWeb_;
+    uploadWeb_ = nullptr;
   }
 
   if (logMutex_) {
@@ -280,26 +350,48 @@ void WiFiOtaWebSerial::wifiTaskThunk_(void* arg) {
 }
 
 void WiFiOtaWebSerial::wifiTaskLoop_() {
+  uint32_t lastReconnectMs = 0;
   for (;;) {
     if (started_) {
-
-      if (otaInProgress) {
-        // 🔥 OTA priority mode
-
-        ArduinoOTA.handle();   // run continuously
-
-        // Optional: skip web server to reduce load
-        // if (web_) web_->server.handleClient();
-
-        vTaskDelay(1);  // yield only (VERY IMPORTANT for watchdog)
+      serviceUpdateLed_();
+      const wl_status_t wifiStatus = WiFi.status();
+      if (wifiStatus != WL_CONNECTED) {
+        if (otaInProgress || webUploadInProgress_ || rebootPending_) {
+          vTaskDelay(pdMS_TO_TICKS(50));
+          continue;
+        }
+        const uint32_t now = millis();
+        if (wifiStatus != WL_IDLE_STATUS && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
+          lastReconnectMs = now;
+          Serial.println("[WiFi] reconnecting...");
+          WiFi.reconnect();
+        }
+        vTaskDelay(pdMS_TO_TICKS(250));
         continue;
       }
-
-      // 🟢 Normal mode
+      if (otaInProgress) {
+        // OTA priority mode
+        ArduinoOTA.handle();
+        if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        // Optional: skip web server to reduce load
+        // if (web_) web_->server.handleClient();
+        vTaskDelay(1);
+        continue;
+      }
+      if (webUploadInProgress_) {
+        if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        vTaskDelay(1);
+        continue;
+      }
+      // Normal mode
       ArduinoOTA.handle();
-
-      if (web_) web_->server.handleClient();
-
+      if (cfg_.enableWeb && web_) web_->server.handleClient();
+      if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+      if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
+        println("[WEB OTA] Rebooting now...");
+        delay(50);
+        ESP.restart();
+      }
       vTaskDelay(pdMS_TO_TICKS(cfg_.serviceDelayMs));
     } else {
       vTaskDelay(pdMS_TO_TICKS(100));
@@ -308,22 +400,26 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
 }
 
 void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {
-  if (atLineStart_) {
-    appendLog_(TS());
+  if (cfg_.enableWeb) {
+    if (atLineStart_) {
+      appendLog_(TS());
+      atLineStart_ = false;
+    }
+    appendLog_(s);
+  } else {
     atLineStart_ = false;
   }
-
-  appendLog_(s);
 
   if (mirrorToSerial) Serial.print(s);
 }
 
 void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
-  if (atLineStart_) {
-    appendLog_(TS());
+  if (cfg_.enableWeb) {
+    if (atLineStart_) {
+      appendLog_(TS());
+    }
+    appendLog_(s + "\n");
   }
-
-  appendLog_(s + "\n");
   atLineStart_ = true;
 
   if (mirrorToSerial) Serial.println(s);
@@ -340,51 +436,58 @@ String WiFiOtaWebSerial::ip() const {
 }
 
 void WiFiOtaWebSerial::setupWiFi_() {
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
   WiFi.setSleep(false);
-
-  // 🔥 Set max TX power
+  WiFi.setAutoReconnect(true);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
-
   WiFi.begin(cfg_.ssid, cfg_.pass);
-
-  uint32_t start = millis();
+  ensureWiFiConnected_(cfg_.wifiConnectTimeoutMs);
+}
+bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
+  const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    vTaskDelay(pdMS_TO_TICKS(200));
-
-    if (millis() - start > 1000) break;  // give it more time
+    vTaskDelay(pdMS_TO_TICKS(250));
+    if (timeoutMs > 0 && millis() - start >= timeoutMs) {
+      Serial.println("[WiFi] connect timeout");
+      return false;
+    }
   }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi Connected");
-
-    if (MDNS.begin(cfg_.hostname)) {
+  Serial.println("[WiFi] Connected");
+  Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
+  if (MDNS.begin(cfg_.hostname)) {
+    if (cfg_.enableWeb) {
       MDNS.addService("http", "tcp", cfg_.port);
     }
-  } else {
-    Serial.println("WiFi Failed");
+    if (cfg_.enableUploadWeb) {
+      MDNS.addService("http", "tcp", cfg_.uploadPort);
+    }
+    MDNS.addService("arduino", "tcp", 3232);
   }
+  return true;
 }
 
 void WiFiOtaWebSerial::setupOta_() {
   ArduinoOTA.setHostname(cfg_.hostname);
-  if (cfg_.otaPassword && cfg_.otaPassword[0] != '\0') {
-    ArduinoOTA.setPassword(cfg_.otaPassword);
-  }
 
   ArduinoOTA
     .onStart([this]() {
       otaInProgress = true;
+      ledBlinkMs_ = 0;
+      ledBlinkOn_ = true;
+      setLedState_("blue");
 
       println("[OTA] Start");
 
-      // 🔥 Enter OTA safe mode
+      // Enter OTA safe mode
       WiFi.setSleep(false);     // improve stability
     })
 
     .onEnd([this]() {
       println("[OTA] End");
+      setLedState_("green");
 
-      // 🔥 Exit OTA mode
+      // Exit OTA mode
       otaInProgress = false;
 
     })
@@ -400,6 +503,7 @@ void WiFiOtaWebSerial::setupOta_() {
 
     .onError([this](ota_error_t error) {
       println(String("[OTA] Error: ") + (int)error);
+      setLedState_("red");
 
       otaInProgress = false;
     });
@@ -450,42 +554,21 @@ void WiFiOtaWebSerial::setupWeb_() {
     String cmd = web_->server.arg("cmd"); // cmd=cycle/off/red/green/blue...
     cmd.toLowerCase();
 
-    static int idx = -1;
-
-    auto cycle = [&](){
-      static const uint8_t colors[][3] = {
-        {255,   0,   0}, // red
-        {  0, 255,   0}, // green
-        {  0,   0, 255}, // blue
-        {255, 255,   0}, // yellow
-        {  0, 255, 255}, // cyan
-        {255,   0, 255}, // magenta
-        {255, 255, 255}, // white
-        {  0,   0,   0}, // off
-      };
-      const int n = (int)(sizeof(colors) / sizeof(colors[0]));
-      idx = (idx + 1) % n;
-      ledSet(colors[idx][0], colors[idx][1], colors[idx][2]);
-      println(String("[LED] cycle idx=") + idx +
-              " rgb=(" + colors[idx][0] + "," + colors[idx][1] + "," + colors[idx][2] + ")");
-    };
-
-    if (cmd == "cycle") {
-      cycle();
-      web_->server.send(200, "text/plain", "OK");
+    if (!ledCommandHandler_) {
+      web_->server.send(503, "text/plain", "LED unavailable");
       return;
     }
-    if (cmd == "off") {
-      ledSet(0, 0, 0);
-      println("[LED] off");
-      web_->server.send(200, "text/plain", "OK");
+
+    String response;
+    if (!ledCommandHandler_(cmd, response)) {
+      web_->server.send(400, "text/plain", "Bad cmd");
       return;
     }
-    if (cmd == "red")   { ledSet(255,0,0);   println("[LED] red");   web_->server.send(200,"text/plain","OK"); return; }
-    if (cmd == "green") { ledSet(0,255,0);   println("[LED] green"); web_->server.send(200,"text/plain","OK"); return; }
-    if (cmd == "blue")  { ledSet(0,0,255);   println("[LED] blue");  web_->server.send(200,"text/plain","OK"); return; }
 
-    web_->server.send(400, "text/plain", "Bad cmd");
+    if (response.length() > 0) {
+      println(response);
+    }
+    web_->server.send(200, "text/plain", "OK");
   });
 
   srv.on("/health", HTTP_GET, [this]() {
@@ -494,6 +577,76 @@ void WiFiOtaWebSerial::setupWeb_() {
 
   srv.onNotFound([this]() {
     web_->server.send(404, "text/plain", "Not found");
+  });
+
+  srv.begin();
+}
+
+void WiFiOtaWebSerial::setupUploadWeb_() {
+  auto& srv = uploadWeb_->server;
+
+  srv.on("/", HTTP_GET, [this]() {
+    uploadWeb_->server.send(200, "text/html; charset=utf-8", FPSTR(kUploadHtml));
+  });
+
+  srv.on("/update", HTTP_POST,
+    [this]() {
+      const bool ok = !Update.hasError();
+      if (ok) {
+        uploadWeb_->server.send(200, "text/plain", "OK");
+        println("[WEB OTA] Update complete, reboot scheduled...");
+        rebootPending_ = true;
+        rebootAtMs_ = millis() + 1500;
+      } else {
+        uploadWeb_->server.send(500, "text/plain", "FAIL");
+        println("[WEB OTA] Update failed");
+      }
+      webUploadInProgress_ = false;
+    },
+    [this]() {
+      HTTPUpload& upload = uploadWeb_->server.upload();
+
+      if (upload.status == UPLOAD_FILE_START) {
+        webUploadInProgress_ = true;
+        rebootPending_ = false;
+        rebootAtMs_ = 0;
+        ledBlinkMs_ = 0;
+        ledBlinkOn_ = true;
+        setLedState_("blue");
+        println(String("[WEB OTA] Start: ") + upload.filename);
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+          Update.printError(Serial);
+          setLedState_("red");
+        }
+      } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (upload.buf == nullptr || upload.currentSize == 0) {
+          return;
+        }
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+          Update.printError(Serial);
+          setLedState_("red");
+        } else if ((upload.totalSize % (128 * 1024)) < upload.currentSize) {
+          println(String("[WEB OTA] Received ") + upload.totalSize + " bytes");
+        }
+      } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+          println(String("[WEB OTA] Success: ") + upload.totalSize + " bytes");
+          setLedState_("green");
+        } else {
+          Update.printError(Serial);
+          setLedState_("red");
+        }
+      } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Update.abort();
+        webUploadInProgress_ = false;
+        setLedState_("red");
+        println("[WEB OTA] Aborted");
+      }
+    }
+  );
+
+  srv.onNotFound([this]() {
+    uploadWeb_->server.send(404, "text/plain", "Not found");
   });
 
   srv.begin();
@@ -512,3 +665,28 @@ void WiFiOtaWebSerial::appendLog_(const String& s) {
 
   if (logMutex_) xSemaphoreGive(logMutex_);
 }
+
+void WiFiOtaWebSerial::setLedState_(const String& cmd) {
+  if (!ledCommandHandler_) return;
+  String response;
+  ledCommandHandler_(cmd, response);
+}
+
+void WiFiOtaWebSerial::serviceUpdateLed_() {
+  if (!(otaInProgress || webUploadInProgress_)) return;
+
+  const uint32_t now = millis();
+  if (ledBlinkMs_ == 0) {
+    ledBlinkMs_ = now;
+    return;
+  }
+
+  if ((now - ledBlinkMs_) < 250) {
+    return;
+  }
+
+  ledBlinkMs_ = now;
+  ledBlinkOn_ = !ledBlinkOn_;
+  setLedState_(ledBlinkOn_ ? "blue" : "off");
+}
+

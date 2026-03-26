@@ -24,6 +24,7 @@ public:
     ACT_NONE = 0,
     ACT_TURN_L,
     ACT_TURN_R,
+    ACT_TURN_180,
     ACT_MOVE_F
   };
 
@@ -37,6 +38,7 @@ public:
 
   struct Config {
     uint16_t port = 80;
+    bool enableWeb = true;
     bool autoRun = false;
 
     // ACK timeout handling (ms). 0 = disable
@@ -81,6 +83,8 @@ public:
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
   bool atGoal() const { return isGoal_(mx_, my_); }
+  bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
+  String buildKnownMazeAscii(uint8_t mouseX = 255, uint8_t mouseY = 255, Dir mouseH = NORTH) const;
   
 private:
   // --- web handlers ---

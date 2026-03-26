@@ -12,7 +12,12 @@ public:
   struct Config {
     float cellDistanceMm = 180.0f;
     int32_t turnTicks90 = 300;
+    int32_t turnTicks180 = 600;
     float moveSpeedTps = 320.0f;
+    float shortForwardDistanceMm = 90.0f;
+    float shortForwardSpeedTps = 220.0f;
+    float reverseDistanceMm = 45.0f;
+    float reverseSpeedTps = 180.0f;
     float turnSpeedTps = 250.0f;
     float centeringGain = 1.6f;
     float frontStopMm = 55.0f;
@@ -27,8 +32,11 @@ public:
   void setConfig(const Config& cfg) { cfg_ = cfg; }
 
   bool moveOneCell();
+  bool moveForwardShort();
+  bool moveBackwardShort();
   bool turnLeft90();
   bool turnRight90();
+  bool turn180();
   void stop();
   void abort(const String& reason);
   void update(RobotState& state);
@@ -43,6 +51,7 @@ private:
   bool startPrimitive_(MotionPrimitiveType primitive);
   void markDone_(MotionStatus status, const String& reason = "");
   float averageProgressMm_() const;
+  float absoluteAverageProgressMm_() const;
   int32_t differentialTicks_() const;
 
   DcMotor* left_ = nullptr;

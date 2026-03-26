@@ -26,8 +26,8 @@ Changes should usually respect those boundaries.
 ## Core Files
 
 - `Mouse_esp32s3.ino`: keep thin; Arduino-facing entrypoints and task wrappers only
-- `main.h`: bridge between Arduino wrapper and app module
-- `main.cpp`: top-level runtime logic, serial commands, tasks, planner coordination
+- `AppRuntime.h`: bridge between Arduino wrapper and app module
+- `AppRuntime.cpp`: top-level runtime logic, serial commands, tasks, planner coordination
 - `Config.h`: hardware pins, calibration values, and runtime tuning defaults
 - `Battery.*`: battery health and thresholds
 - `DcMotor.*`: motor/encoder speed loop
@@ -41,6 +41,13 @@ Changes should usually respect those boundaries.
 ### 1. Hardware bring-up
 - Start in `status`, `test battery`, `test sensors`, `test encoders`.
 - Verify motor direction with `test motorl` and `test motorr` before trying `move`.
+- Use `testsnap` to tune the reverse-then-center sequence before relying on it in `explore`.
+- Use `maze` to inspect the robot's known wall map after sensor and motion tests.
+- Use `test loop maze` when you want a live ASCII map stream during exploration tests.
+- If Arduino OTA is flaky, use the browser upload page on port `82` as a simpler fallback.
+- During OTA/web upload, expect the onboard LED to turn blue immediately, then blink blue, then turn green on success or red on error/abort.
+- When `ENABLE_WEB_LOG` is off, `dbg.print/println` are effectively Serial-only and should not add load to the web log path.
+- OTA and the browser upload page are currently configured without a password gate.
 - Only enable `explore` after one-cell moves and 90-degree turns are reliable.
 - Do first-pass tuning in `Config.h`, not scattered through source files.
 
@@ -48,6 +55,8 @@ Changes should usually respect those boundaries.
 - Tune `mmPerTick` first.
 - Then tune `cellDistanceMm`.
 - Then tune `turnTicks90`.
+- Then tune `turnTicks180`.
+- Then tune `reverseDistanceMm` and `shortForwardDistanceMm` with `testsnap`.
 - Only after distance/turn correctness, tune centering gain and stop distance.
 
 ### 3. Sensor debugging
@@ -60,6 +69,8 @@ Changes should usually respect those boundaries.
 - Check the web explorer on port `81`.
 - Verify the explorer's known walls match physical surroundings.
 - Verify motion completion is acknowledging actions exactly once.
+- During `explore`, expect the ASCII maze to print after map updates unless that behavior is disabled in `Config.h`.
+- For snapback work, confirm the rear wall is known in `maze` before expecting the automatic post-turn sequence.
 
 ## Design Rules
 
