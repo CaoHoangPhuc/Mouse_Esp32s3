@@ -1007,9 +1007,7 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
 
   if(diff == 1) return ACT_TURN_R;
   if(diff == 3) return ACT_TURN_L;
-  // Avoid single-shot 180 turns in planner flow.
-  // Two normal 90-degree turns keep snap/wall-update behavior consistent.
-  return ACT_TURN_L;
+  return ACT_TURN_180;
 }
 
 void FloodFillExplorer::dispatchAction_(Action a){

@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.4`
+Current project version: `0.0.2.5`
 
 ## Current Status
 
@@ -56,13 +56,17 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
 8. `explore` and `speedrun` start with one `snapCenter()` alignment primitive before the planner is allowed to run.
 9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
-10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before ACKing the turn so the next planner action starts from the re-centered pose.
+10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `telemetryTask` prints compact runtime state to serial.
 12. `explorerTask` serves the web maze view.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
 - This prevents a race where `robotState.motionStatus` could still be stale while the controller had already left `RUNNING`, which could otherwise cause repeated `move1` starts before wall sensing and ACK completed.
+
+Turn behavior note:
+- Floodfill explore uses a real `ACT_TURN_180` again for dead-end reversals.
+- When a completed turn will be followed by `snapCenter()`, walls are now sensed and applied only after `snapCenter()` finishes, so the maze is updated from the re-centered pose instead of the immediate post-turn pose.
 
 ## Configuration
 

@@ -527,10 +527,6 @@ static void handleMotionCompletion() {
                      robotState.pose.cellX, robotState.pose.cellY, headingDir());
     leftMotor.hardStop();
     rightMotor.hardStop();
-    updateRobotState();
-    debugWallApplyEvent("[WALL APPLY]", "motion_complete");
-    applyWallsToExplorer();
-    debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
@@ -548,6 +544,11 @@ static void handleMotionCompletion() {
       debugPrintln("[SNAP] post-turn snapcenter");
       return;
     }
+
+    updateRobotState();
+    debugWallApplyEvent("[WALL APPLY]", "motion_complete");
+    applyWallsToExplorer();
+    debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
 
     bool reachedGoal = false;
     if (deferPlannerAckUntilSnapCenter) {
