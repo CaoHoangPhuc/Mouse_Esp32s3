@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.7`
+Current project version: `0.0.2.8`
 
 ## Current Status
 
@@ -61,6 +61,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 12. `explorerTask` serves the web maze view.
 13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
 14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal and the original start, and then resuming exploration from where the robot stands.
+15. Explore now stops automatically and prints that the shortest path is known once the same best-known start-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -74,6 +75,9 @@ Explore loop note:
 - `FloodFillExplorer` already toggles its target between the original goal and the original start when a target is reached.
 - In hardware explore mode, the runtime now re-enables exploring after a reached target when `AppConfig::Explorer::CONTINUE_AFTER_GOAL` is `true`.
 - This keeps the robot at its current pose and lets return trips keep discovering or correcting wall memory.
+- The runtime tracks the best-known cost from the original start to the original goal.
+- After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
+- When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
 
 ## Configuration
 
@@ -88,7 +92,7 @@ Key sections:
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
 - `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning
-- `AppConfig::Explorer`: web floodfill UI settings and whether explore should continue looping between goal and home after a target is reached
+- `AppConfig::Explorer`: web floodfill UI settings, whether explore should continue looping between goal and home after a target is reached, and how many stable round trips are required before the shortest path is considered known
 
 ## Dependencies / Build Expectations
 

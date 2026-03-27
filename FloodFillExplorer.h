@@ -85,6 +85,9 @@ public:
   bool atGoal() const { return isGoal_(mx_, my_); }
   bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
   String buildKnownMazeAscii(uint8_t mouseX = 255, uint8_t mouseY = 255, Dir mouseH = NORTH) const;
+  uint16_t bestKnownCostOriginalStartToGoal() const;
+  bool isInOriginalStart(uint8_t x, uint8_t y) const;
+  bool isInOriginalGoal(uint8_t x, uint8_t y) const;
   
 private:
   // --- web handlers ---
@@ -103,6 +106,9 @@ private:
   // --- floodfill core ---
   bool inBounds_(int x,int y) const;
   bool isGoal_(int x,int y) const;
+  uint16_t computeBestKnownCost_(uint8_t startX, uint8_t startY,
+                                 uint8_t goalX0, uint8_t goalY0,
+                                 uint8_t goalW, uint8_t goalH) const;
 
   uint8_t bitForDir_(Dir d) const;
   Dir opposite_(Dir d) const;

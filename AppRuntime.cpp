@@ -95,6 +95,7 @@ static void maze_debug_s();
 static void closeDebugConsole(const String& reason = "");
 static bool startRunSnapSequence(const char* label);
 static bool shouldSnapCenterAfterTurn();
+static void resetExploreLoopTracking();
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
@@ -102,6 +103,9 @@ static constexpr uint32_t kConsoleQuietMs = 1500;
 static bool runStartSnapPending = false;
 static bool deferPlannerAckUntilSnapCenter = false;
 static RobotMode runStartSnapMode = ROBOT_MODE_IDLE;
+static uint16_t lastStableBestCost = 0xFFFF;
+static uint8_t stableRoundTripCount = 0;
+static bool reachedOriginalGoalOnThisLoop = false;
 static const char* primitiveName(MotionPrimitiveType primitive);
 static const char* headingName(FloodFillExplorer::Dir dir);
 static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
@@ -325,6 +329,12 @@ static void updateRobotLed() {
   }
 }
 
+static void resetExploreLoopTracking() {
+  lastStableBestCost = 0xFFFF;
+  stableRoundTripCount = 0;
+  reachedOriginalGoalOnThisLoop = false;
+}
+
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
   robotState.pose.cellX = x;
   robotState.pose.cellY = y;
@@ -403,8 +413,10 @@ static void updateOtaSafeMode() {
 
 static void beginExplore(bool clearMaze) {
   robotState.goalReached = false;
+  robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
   robotState.lastFault = "";
+  resetExploreLoopTracking();
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
@@ -438,6 +450,7 @@ static void resetMazeToConfiguredStart() {
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.lastFault = "";
+  resetExploreLoopTracking();
 
   explorer.setHardwareMode(true);
   explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
@@ -577,13 +590,40 @@ static void handleMotionCompletion() {
 
     if (reachedGoal) {
       robotState.goalReached = true;
-      robotState.speedRunReady = true;
       updateRobotLed();
       debugPrintln("[GOAL] Goal reached");
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+        robotState.speedRunReady = true;
         enterIdleMode("speed run finished");
       } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
                  AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
+        const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
+        if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
+          reachedOriginalGoalOnThisLoop = true;
+          debugPrintln("[EXPLORE] reached goal leg bestCost=" + String(bestCost));
+        } else if (explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY) &&
+                   reachedOriginalGoalOnThisLoop) {
+          reachedOriginalGoalOnThisLoop = false;
+          if (bestCost == lastStableBestCost) {
+            stableRoundTripCount++;
+          } else {
+            lastStableBestCost = bestCost;
+            stableRoundTripCount = 1;
+          }
+
+          debugPrintln("[EXPLORE] round trip bestCost=" + String(bestCost) +
+                       " stable=" + String(stableRoundTripCount) + "/" +
+                       String(AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS));
+
+          if (bestCost != 0xFFFF &&
+              stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
+            robotState.speedRunReady = true;
+            debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
+            enterIdleMode("shortest path known");
+            return;
+          }
+        }
+
         explorer.setRunning(true);
         robotState.goalReached = false;
         updateRobotLed();

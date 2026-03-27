@@ -237,6 +237,9 @@ static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
 // after each target is reached. This helps continue discovering alternate
 // walls and improving the path without resetting pose.
 static constexpr bool CONTINUE_AFTER_GOAL = true;
+// Mark the shortest path as known after this many consecutive
+// goal->home round trips report the same best-known start->goal cost.
+static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 2;
 }
 
 namespace Debug {

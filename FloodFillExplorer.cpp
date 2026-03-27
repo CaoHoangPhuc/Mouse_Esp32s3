@@ -459,6 +459,69 @@ bool FloodFillExplorer::isGoal_(int x,int y) const{
           y >= gy0_ && y < (int)(gy0_ + gh_));
 }
 
+uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX, uint8_t startY,
+                                                  uint8_t goalX0, uint8_t goalY0,
+                                                  uint8_t goalW, uint8_t goalH) const {
+  if (!inBounds_(startX, startY)) return 0xFFFF;
+
+  static constexpr uint16_t INF = 0xFFFF;
+  uint16_t dist[N][N];
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      dist[y][x] = INF;
+    }
+  }
+
+  int qx[N * N], qy[N * N];
+  int qh = 0, qt = 0;
+
+  for (int y = goalY0; y < (int)(goalY0 + goalH); ++y) {
+    for (int x = goalX0; x < (int)(goalX0 + goalW); ++x) {
+      if (!inBounds_(x, y)) continue;
+      dist[y][x] = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt++;
+    }
+  }
+
+  while (qh < qt) {
+    int x = qx[qh];
+    int y = qy[qh];
+    qh++;
+    const uint16_t base = dist[y][x];
+
+    for (int di = 0; di < 4; ++di) {
+      Dir d = (Dir)di;
+      if (knownHasWall_(x, y, d)) continue;
+      int nx = x + dx4[di];
+      int ny = y + dy4[di];
+      if (!inBounds_(nx, ny)) continue;
+      if (dist[ny][nx] > base + 1) {
+        dist[ny][nx] = base + 1;
+        qx[qt] = nx;
+        qy[qt] = ny;
+        qt++;
+      }
+    }
+  }
+
+  return dist[startY][startX];
+}
+
+uint16_t FloodFillExplorer::bestKnownCostOriginalStartToGoal() const {
+  return computeBestKnownCost_(origSx_, origSy_, origGx0_, origGy0_, origGw_, origGh_);
+}
+
+bool FloodFillExplorer::isInOriginalStart(uint8_t x, uint8_t y) const {
+  return x == origSx_ && y == origSy_;
+}
+
+bool FloodFillExplorer::isInOriginalGoal(uint8_t x, uint8_t y) const {
+  return x >= origGx0_ && x < (uint8_t)(origGx0_ + origGw_) &&
+         y >= origGy0_ && y < (uint8_t)(origGy0_ + origGh_);
+}
+
 const char* FloodFillExplorer::actionName_(Action a) const{
   switch(a){
     case ACT_NONE:   return "none";
