@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.11`
+Current project version: `0.0.2.12`
 
 ## Current Status
 
@@ -63,6 +63,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal and the original start, and then resuming exploration from where the robot stands.
 15. Explore now stops automatically and prints that the shortest path is known once the same best-known start-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
+17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -216,8 +217,9 @@ During browser upload:
   - green: upload finished successfully
   - red: upload/OTA error or abort
 - Robot-state LED status:
-  - cyan (blue + green): explore mode active
-  - white: goal reached
+  - green: explore active before first reached target
+  - blue: explore active after the first reached target
+  - white: shortest path known / final reached-target state
   - red: fault mode
   - off: idle / non-explore normal state
 

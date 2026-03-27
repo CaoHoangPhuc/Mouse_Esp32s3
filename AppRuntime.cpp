@@ -106,6 +106,7 @@ static RobotMode runStartSnapMode = ROBOT_MODE_IDLE;
 static uint16_t lastStableBestCost = 0xFFFF;
 static uint8_t stableRoundTripCount = 0;
 static bool reachedOriginalGoalOnThisLoop = false;
+static bool exploreGoalSeen = false;
 static const char* primitiveName(MotionPrimitiveType primitive);
 static const char* headingName(FloodFillExplorer::Dir dir);
 static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
@@ -318,7 +319,8 @@ static void updateRobotLed() {
 
   switch (robotState.mode) {
     case ROBOT_MODE_EXPLORE:
-      ledController.setCyan();
+      if (exploreGoalSeen) ledController.setBlue();
+      else ledController.setGreen();
       return;
     case ROBOT_MODE_FAULT:
       ledController.setRed();
@@ -333,6 +335,7 @@ static void resetExploreLoopTracking() {
   lastStableBestCost = 0xFFFF;
   stableRoundTripCount = 0;
   reachedOriginalGoalOnThisLoop = false;
+  exploreGoalSeen = false;
 }
 
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
@@ -536,6 +539,7 @@ static void handleMotionCompletion() {
     primitive == MOTION_TURN_RIGHT_90 ||
     primitive == MOTION_TURN_180;
   const bool isSnapCenterPrimitive = primitive == MOTION_SNAP_CENTER;
+  bool skipPostMotionHold = false;
 
   if (status == MOTION_COMPLETED) {
     advancePoseForFinishedPrimitive(primitive);
@@ -601,6 +605,7 @@ static void handleMotionCompletion() {
         enterIdleMode("speed run finished");
       } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
                  AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
+        exploreGoalSeen = true;
         const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
         if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
           reachedOriginalGoalOnThisLoop = true;
@@ -630,12 +635,14 @@ static void handleMotionCompletion() {
 
         explorer.setRunning(true);
         robotState.goalReached = false;
+        skipPostMotionHold = true;
         updateRobotLed();
         debugPrintln("[EXPLORE] target toggled, continue exploring");
       }
     }
 
     if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
+        !skipPostMotionHold &&
         motionController.status() == MOTION_COMPLETED &&
         robotState.mode != ROBOT_MODE_IDLE &&
         robotState.mode != ROBOT_MODE_FAULT) {
