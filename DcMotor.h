@@ -29,6 +29,7 @@ public:
   // Speed control in ticks/sec
   void setSpeedTPS(float tps);
   void enableSpeedControl(bool en);
+  void hardStop();
 
   // PID tuning (TPS units)
   // outLimit: max command magnitude (0..1)

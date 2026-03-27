@@ -38,6 +38,26 @@ void LedController::begin() {
   colorIndex_ = -1;
 }
 
+void LedController::setRed() {
+  setColor_(255, 0, 0);
+}
+
+void LedController::setGreen() {
+  setColor_(0, 255, 0);
+}
+
+void LedController::setBlue() {
+  setColor_(0, 0, 255);
+}
+
+void LedController::setCyan() {
+  setColor_(0, 255, 255);
+}
+
+void LedController::setWhite() {
+  setColor_(255, 255, 255);
+}
+
 bool LedController::handleCommand(const String& rawCmd, String* response) {
   String cmd = rawCmd;
   cmd.trim();
@@ -61,20 +81,32 @@ bool LedController::handleCommand(const String& rawCmd, String* response) {
   }
 
   if (cmd == "red") {
-    setColor_(255, 0, 0);
+    setRed();
     if (response) *response = "[LED] red";
     return true;
   }
 
   if (cmd == "green") {
-    setColor_(0, 255, 0);
+    setGreen();
     if (response) *response = "[LED] green";
     return true;
   }
 
   if (cmd == "blue") {
-    setColor_(0, 0, 255);
+    setBlue();
     if (response) *response = "[LED] blue";
+    return true;
+  }
+
+  if (cmd == "cyan" || cmd == "bluegreen") {
+    setCyan();
+    if (response) *response = "[LED] cyan";
+    return true;
+  }
+
+  if (cmd == "white") {
+    setWhite();
+    if (response) *response = "[LED] white";
     return true;
   }
 

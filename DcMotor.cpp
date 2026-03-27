@@ -114,8 +114,14 @@ void DcMotor::applyDuty(int32_t duty) {
     return;
   }
 
-  if (duty > 0 && duty < DEADZONE) duty = DEADZONE;
-  if (duty < 0 && duty > -DEADZONE) duty = -DEADZONE;
+  if (duty > 0 && duty < DEADZONE) duty = 0;
+  if (duty < 0 && duty > -DEADZONE) duty = 0;
+  if (duty == 0) {
+    digitalWrite(_p.in1, LOW);
+    digitalWrite(_p.in2, LOW);
+    pwmWriteDuty(0);
+    return;
+  }
 
   // 🔹 Direction
   if (duty > 0) {
@@ -147,6 +153,13 @@ void DcMotor::enableSpeedControl(bool en) {
 void DcMotor::setSpeedTPS(float tps) {
   _targetTPS = tps;
   _speedCtrlEnabled = true;
+}
+
+void DcMotor::hardStop() {
+  _targetTPS = 0.0f;
+  _speedCtrlEnabled = false;
+  resetPID();
+  applyDuty(0);
 }
 
 void DcMotor::setSpeedPID(float kp, float ki, float kd,

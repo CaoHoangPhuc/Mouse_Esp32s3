@@ -7,6 +7,11 @@ public:
   void begin();
   bool handleCommand(const String& cmd, String* response = nullptr);
   void off();
+  void setCyan();
+  void setWhite();
+  void setRed();
+  void setGreen();
+  void setBlue();
 
 private:
   void setColor_(uint8_t r, uint8_t g, uint8_t b);

@@ -47,6 +47,7 @@ When changing this code, prefer reliability and observability over aggressive op
 
 - If changing wheel geometry, update both tuning docs and `AppConfig::Motion` values.
 - If changing TOF mapping, keep `left/front/right` semantics stable for the planner.
+- If adding a hardware workaround or config switch, update the related `.md` files in the same change.
 - If changing floodfill action names or behavior, keep the planner output limited to turn-left, turn-right, and move-forward unless the executor is extended too.
 - If adding faster movement, do not remove the current primitive path; keep it as a reliable fallback.
 - If adjusting battery thresholds, note the measured pack voltage and calibration source in docs or commit message.
@@ -64,8 +65,11 @@ Before calling a change done, try to validate these in order:
 
 ## Repository Documentation
 
-Keep these files current when architecture changes:
+Keep these files current when architecture or behavior changes:
 - `README.md`: public project overview and usage
 - `TODO.md`: active implementation backlog
 - `SKILL.md`: operator playbook / build-and-tune workflow
 - `AGENT.md`: repository guidance for maintainers and coding agents
+
+Rule:
+- whenever a code change affects setup, commands, tuning, hardware behavior, or operator workflow, update the related `.md` documents in the same change instead of leaving docs as follow-up work

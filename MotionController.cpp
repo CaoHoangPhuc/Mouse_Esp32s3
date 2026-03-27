@@ -69,8 +69,8 @@ bool MotionController::turn180() {
 
 void MotionController::stop() {
   if (!left_ || !right_) return;
-  left_->setSpeedTPS(0.0f);
-  right_->setSpeedTPS(0.0f);
+  left_->hardStop();
+  right_->hardStop();
 
   if (primitive_ == MOTION_NONE) {
     status_ = MOTION_IDLE;
@@ -83,8 +83,8 @@ void MotionController::stop() {
 
 void MotionController::abort(const String& reason) {
   if (!left_ || !right_) return;
-  left_->setSpeedTPS(0.0f);
-  right_->setSpeedTPS(0.0f);
+  left_->hardStop();
+  right_->hardStop();
   primitive_ = MOTION_NONE;
   lastFinishedPrimitive_ = MOTION_NONE;
   status_ = MOTION_ABORTED;
@@ -108,8 +108,8 @@ int32_t MotionController::differentialTicks_() const {
 }
 
 void MotionController::markDone_(MotionStatus status, const String& reason) {
-  left_->setSpeedTPS(0.0f);
-  right_->setSpeedTPS(0.0f);
+  left_->hardStop();
+  right_->hardStop();
   status_ = status;
   lastError_ = reason;
   lastFinishedPrimitive_ = primitive_;
@@ -141,7 +141,7 @@ void MotionController::update(RobotState& state) {
 
     const WallObservation& walls = state.walls;
     bool shouldFrontStop = walls.frontValid && walls.frontWall && walls.frontMm > 0 &&
-                           walls.frontMm <= cfg_.frontStopMm && progressMm > (cfg_.cellDistanceMm * 0.55f);
+                           walls.frontMm <= cfg_.frontStopMm;
 
     float correction = 0.0f;
     if (walls.leftValid || walls.rightValid) {

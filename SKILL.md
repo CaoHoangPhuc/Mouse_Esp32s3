@@ -23,6 +23,9 @@ Think of the project as 6 layers:
 
 Changes should usually respect those boundaries.
 
+Documentation rule:
+- when a code change affects behavior, commands, tuning, setup, or hardware assumptions, update the related `.md` files in the same change
+
 ## Core Files
 
 - `Mouse_esp32s3.ino`: keep thin; Arduino-facing entrypoints and task wrappers only
@@ -41,7 +44,6 @@ Changes should usually respect those boundaries.
 ### 1. Hardware bring-up
 - Start in `status`, `test battery`, `test sensors`, `test encoders`.
 - Verify motor direction with `test motorl` and `test motorr` before trying `move`.
-- Use `testsnap` to tune the reverse-then-center sequence before relying on it in `explore`.
 - Use `maze` to inspect the robot's known wall map after sensor and motion tests.
 - Use `test loop maze` when you want a live ASCII map stream during exploration tests.
 - If Arduino OTA is flaky, use the browser upload page on port `82` as a simpler fallback.
@@ -56,7 +58,6 @@ Changes should usually respect those boundaries.
 - Then tune `cellDistanceMm`.
 - Then tune `turnTicks90`.
 - Then tune `turnTicks180`.
-- Then tune `reverseDistanceMm` and `shortForwardDistanceMm` with `testsnap`.
 - Only after distance/turn correctness, tune centering gain and stop distance.
 
 ### 3. Sensor debugging
@@ -70,7 +71,6 @@ Changes should usually respect those boundaries.
 - Verify the explorer's known walls match physical surroundings.
 - Verify motion completion is acknowledging actions exactly once.
 - During `explore`, expect the ASCII maze to print after map updates unless that behavior is disabled in `Config.h`.
-- For snapback work, confirm the rear wall is known in `maze` before expecting the automatic post-turn sequence.
 
 ## Design Rules
 

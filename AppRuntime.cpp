@@ -87,19 +87,25 @@ static void debugPrompt();
 static bool debugClientConnected();
 static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
+static void updateRobotLed();
+static void resetMazeToConfiguredStart();
+static FloodFillExplorer::Dir headingDir();
 static void maze_debug_s();
-static bool shouldStartPostTurnSnap(MotionPrimitiveType primitive);
 static void closeDebugConsole(const String& reason = "");
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
 static constexpr uint32_t kConsoleQuietMs = 1500;
-enum SnapBackPhase : uint8_t {
-  SNAP_PHASE_NONE = 0,
-  SNAP_PHASE_BACK,
-  SNAP_PHASE_FORWARD
-};
-static SnapBackPhase snapBackPhase = SNAP_PHASE_NONE;
+static const char* primitiveName(MotionPrimitiveType primitive);
+static const char* headingName(FloodFillExplorer::Dir dir);
+static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
+static String wallFlagsSummary();
+static String wallDistanceSummary();
+static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, MotionStatus status,
+                             uint8_t beforeX, uint8_t beforeY, FloodFillExplorer::Dir beforeH,
+                             uint8_t afterX, uint8_t afterY, FloodFillExplorer::Dir afterH,
+                             const String& extra = "");
+static void debugWallApplyEvent(const char* tag, const char* source, const String& extra = "");
 
 static void logToDbg(const String& s) {
   debugPrintln(s);
@@ -127,6 +133,81 @@ static void debugPrompt() {
   if (debugClientConnected()) {
     debugClient.print("> ");
   }
+}
+
+static const char* primitiveName(MotionPrimitiveType primitive) {
+  switch (primitive) {
+    case MOTION_NONE: return "none";
+    case MOTION_MOVE_ONE_CELL: return "move1";
+    case MOTION_TURN_LEFT_90: return "turnL";
+    case MOTION_TURN_RIGHT_90: return "turnR";
+    case MOTION_TURN_180: return "turn180";
+    case MOTION_MOVE_BACKWARD_SHORT: return "back";
+    case MOTION_MOVE_FORWARD_SHORT: return "fwdshort";
+    default: return "unknown";
+  }
+}
+
+static const char* headingName(FloodFillExplorer::Dir dir) {
+  switch (dir) {
+    case FloodFillExplorer::NORTH: return "N";
+    case FloodFillExplorer::EAST: return "E";
+    case FloodFillExplorer::SOUTH: return "S";
+    case FloodFillExplorer::WEST: return "W";
+    default: return "?";
+  }
+}
+
+static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir) {
+  return "(" + String(x) + "," + String(y) + "," + headingName(dir) + ")";
+}
+
+static String wallFlagsSummary() {
+  return String(robotState.walls.leftWall ? 1 : 0) + "/" +
+         String(robotState.walls.frontWall ? 1 : 0) + "/" +
+         String(robotState.walls.rightWall ? 1 : 0) +
+         " valid=" +
+         String(robotState.walls.leftValid ? 1 : 0) + "/" +
+         String(robotState.walls.frontValid ? 1 : 0) + "/" +
+         String(robotState.walls.rightValid ? 1 : 0);
+}
+
+static String wallDistanceSummary() {
+  return String(robotState.walls.leftMm) + "/" +
+         String(robotState.walls.frontMm) + "/" +
+         String(robotState.walls.rightMm);
+}
+
+static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, MotionStatus status,
+                             uint8_t beforeX, uint8_t beforeY, FloodFillExplorer::Dir beforeH,
+                             uint8_t afterX, uint8_t afterY, FloodFillExplorer::Dir afterH,
+                             const String& extra) {
+  if (!AppConfig::Debug::DEBUG_MOTION_FLOW) return;
+  String msg = String(tag) +
+               " prim=" + primitiveName(primitive) +
+               " status=" + motionStatusName(status) +
+               " mode=" + modeName(robotState.mode) +
+               " before=" + poseSummary(beforeX, beforeY, beforeH) +
+               " after=" + poseSummary(afterX, afterY, afterH) +
+               " walls=" + wallFlagsSummary() +
+               " dist=" + wallDistanceSummary();
+  if (extra.length() > 0) {
+    msg += " " + extra;
+  }
+  debugPrintln(msg);
+}
+
+static void debugWallApplyEvent(const char* tag, const char* source, const String& extra) {
+  if (!AppConfig::Debug::DEBUG_WALL_APPLY) return;
+  String msg = String(tag) +
+               " source=" + source +
+               " pose=" + poseSummary(robotState.pose.cellX, robotState.pose.cellY, headingDir()) +
+               " walls=" + wallFlagsSummary() +
+               " dist=" + wallDistanceSummary();
+  if (extra.length() > 0) {
+    msg += " " + extra;
+  }
+  debugPrintln(msg);
 }
 
 static void closeDebugConsole(const String& reason) {
@@ -216,6 +297,27 @@ static bool handleLedCommand(const String& cmd) {
   return true;
 }
 
+static void updateRobotLed() {
+  if (dbg.isUpdateInProgress()) return;
+
+  if (robotState.goalReached) {
+    ledController.setWhite();
+    return;
+  }
+
+  switch (robotState.mode) {
+    case ROBOT_MODE_EXPLORE:
+      ledController.setCyan();
+      return;
+    case ROBOT_MODE_FAULT:
+      ledController.setRed();
+      return;
+    default:
+      ledController.off();
+      return;
+  }
+}
+
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
   robotState.pose.cellX = x;
   robotState.pose.cellY = y;
@@ -240,18 +342,6 @@ static void maze_debug_s() {
   debugPrintln("");
 }
 
-static bool shouldStartPostTurnSnap(MotionPrimitiveType primitive) {
-  if (!AppConfig::Motion::ENABLE_POST_TURN_SNAP) return false;
-  if (robotState.mode != ROBOT_MODE_EXPLORE) return false;
-  if (!(primitive == MOTION_TURN_LEFT_90 || primitive == MOTION_TURN_RIGHT_90)) return false;
-
-  bool known = false;
-  bool wall = false;
-  const FloodFillExplorer::Dir backDir = (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 2) & 3);
-  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY, backDir, known, wall);
-  return known && wall;
-}
-
 static void enterIdleMode(const String& reason) {
   robotState.mode = ROBOT_MODE_IDLE;
   robotState.motionStatus = MOTION_IDLE;
@@ -259,7 +349,7 @@ static void enterIdleMode(const String& reason) {
   testLoopMode = TEST_LOOP_NONE;
   explorer.setRunning(false);
   motionController.stop();
-  snapBackPhase = SNAP_PHASE_NONE;
+  updateRobotLed();
   debugPrintln("[MODE] IDLE: " + reason);
 }
 
@@ -269,7 +359,7 @@ static void enterFaultMode(const String& reason) {
   robotState.faultCount++;
   motionController.abort(reason);
   explorer.setRunning(false);
-  snapBackPhase = SNAP_PHASE_NONE;
+  updateRobotLed();
   debugPrintln("[FAULT] " + reason);
 }
 
@@ -281,8 +371,8 @@ static void updateOtaSafeMode() {
   if (otaSafeModeActive) {
     explorer.setRunning(false);
     motionController.stop();
-    leftMotor.setSpeedTPS(0.0f);
-    rightMotor.setSpeedTPS(0.0f);
+    leftMotor.hardStop();
+    rightMotor.hardStop();
     robotState.mode = ROBOT_MODE_IDLE;
     robotState.motionStatus = MOTION_IDLE;
     robotState.activePrimitive = MOTION_NONE;
@@ -304,11 +394,12 @@ static void beginExplore(bool clearMaze) {
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
+  explorer.setRunning(true);
+  updateRobotLed();
+  debugPrintln("[MODE] EXPLORE");
   if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE) {
     maze_debug_s();
   }
-  explorer.setRunning(true);
-  debugPrintln("[MODE] EXPLORE");
 }
 
 static void beginSpeedRun() {
@@ -319,23 +410,47 @@ static void beginSpeedRun() {
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
   explorer.setRunning(true);
+  updateRobotLed();
   debugPrintln("[MODE] SPEED RUN");
+}
+
+static void resetMazeToConfiguredStart() {
+  enterIdleMode("maze reset to start");
+  robotState.goalReached = false;
+  robotState.speedRunReady = false;
+  robotState.lastFault = "";
+
+  explorer.setHardwareMode(true);
+  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
+                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
+  explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
+  explorer.clearKnownMaze();
+  setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
+  explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  applyWallsToExplorer();
+  updateRobotLed();
+  debugPrintln("[CMD] maze cleared and pose reset to configured start");
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
   bool ok = false;
+  MotionPrimitiveType startedPrimitive = MOTION_NONE;
   switch (act) {
     case FloodFillExplorer::ACT_MOVE_F:
       ok = motionController.moveOneCell();
+      startedPrimitive = MOTION_MOVE_ONE_CELL;
       break;
     case FloodFillExplorer::ACT_TURN_L:
       ok = motionController.turnLeft90();
+      startedPrimitive = MOTION_TURN_LEFT_90;
       break;
     case FloodFillExplorer::ACT_TURN_R:
       ok = motionController.turnRight90();
+      startedPrimitive = MOTION_TURN_RIGHT_90;
       break;
     case FloodFillExplorer::ACT_TURN_180:
       ok = motionController.turn180();
+      startedPrimitive = MOTION_TURN_180;
       break;
     default:
       return true;
@@ -345,6 +460,11 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
     enterFaultMode("failed to start primitive");
     return false;
   }
+
+  debugMotionEvent("[MOTION START]", startedPrimitive, motionController.status(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   "action=" + String((int)act));
 
   return true;
 }
@@ -372,37 +492,27 @@ static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
 static void handleMotionCompletion() {
   MotionStatus status = motionController.status();
   MotionPrimitiveType primitive = motionController.lastFinishedPrimitive();
+  const uint8_t beforeX = robotState.pose.cellX;
+  const uint8_t beforeY = robotState.pose.cellY;
+  const FloodFillExplorer::Dir beforeH = headingDir();
 
   if (status == MOTION_COMPLETED) {
     advancePoseForFinishedPrimitive(primitive);
-
-    if (primitive == MOTION_TURN_LEFT_90 || primitive == MOTION_TURN_RIGHT_90) {
-      if (shouldStartPostTurnSnap(primitive)) {
-        if (motionController.moveBackwardShort()) {
-          snapBackPhase = SNAP_PHASE_BACK;
-          debugPrintln("[SNAP] back wall known -> snap back");
-          return;
-        }
-        enterFaultMode("failed to start snap back");
-        return;
-      }
-    } else if (primitive == MOTION_MOVE_BACKWARD_SHORT && snapBackPhase == SNAP_PHASE_BACK) {
-      if (motionController.moveForwardShort()) {
-        snapBackPhase = SNAP_PHASE_FORWARD;
-        debugPrintln("[SNAP] return to center");
-        return;
-      }
-      enterFaultMode("failed to start snap forward");
-      return;
-    } else if (primitive == MOTION_MOVE_FORWARD_SHORT && snapBackPhase == SNAP_PHASE_FORWARD) {
-      snapBackPhase = SNAP_PHASE_NONE;
-    }
-
+    debugMotionEvent("[MOTION END]", primitive, status,
+                     beforeX, beforeY, beforeH,
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir());
     bool reachedGoal = explorer.ackPendingActionExternal(true,
       robotState.pose.cellX,
       robotState.pose.cellY,
       headingDir());
+    if (AppConfig::Debug::DEBUG_WALL_APPLY) {
+      debugPrintln("[SETTLE] wait " + String(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS) +
+                   "ms before wall apply");
+    }
+    vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS));
+    debugWallApplyEvent("[WALL APPLY]", "motion_complete");
     applyWallsToExplorer();
+    debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
     if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE && robotState.mode == ROBOT_MODE_EXPLORE) {
       maze_debug_s();
     }
@@ -410,13 +520,17 @@ static void handleMotionCompletion() {
     if (reachedGoal) {
       robotState.goalReached = true;
       robotState.speedRunReady = true;
+      updateRobotLed();
       debugPrintln("[GOAL] Goal reached");
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         enterIdleMode("speed run finished");
       }
     }
   } else if (status == MOTION_FAILED || status == MOTION_ABORTED) {
-    snapBackPhase = SNAP_PHASE_NONE;
+    debugMotionEvent("[MOTION END]", primitive, status,
+                     beforeX, beforeY, beforeH,
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     "error=" + motionController.lastError());
     explorer.ackPendingActionExternal(false,
       robotState.pose.cellX,
       robotState.pose.cellY,
@@ -518,6 +632,11 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   }
 
   tofArray.setWallThreshold(AppConfig::Tof::WALL_THRESHOLD_MM);
+  tofArray.setCenterPid(AppConfig::Motion::CENTER_PID_KP,
+                        AppConfig::Motion::CENTER_PID_KI,
+                        AppConfig::Motion::CENTER_PID_KD,
+                        AppConfig::Motion::CENTER_PID_I_LIMIT,
+                        AppConfig::Motion::CENTER_PID_OUT_LIMIT);
   tofOk = tofArray.begin();
 
   mouseBattery.begin(AppConfig::Battery::ADC_PIN);
@@ -610,6 +729,7 @@ void plannerTaskBody(void* arg) {
     }
 
     if ((robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN) &&
+        explorer.isRunning() &&
         !motionController.isBusy()) {
       if (!robotState.readyForMotion) {
         enterFaultMode("robot not ready for motion");
@@ -621,6 +741,7 @@ void plannerTaskBody(void* arg) {
           if (robotState.mode == ROBOT_MODE_EXPLORE && explorer.atGoal()) {
             robotState.goalReached = true;
             robotState.speedRunReady = true;
+            updateRobotLed();
             enterIdleMode("explore finished");
           } else if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
             enterIdleMode("speed run finished");
@@ -681,7 +802,7 @@ static void tofTask(void* arg) {
 static void telemetryTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(500);
+  const TickType_t period = pdMS_TO_TICKS(1000);
 
   for (;;) {
     if (dbg.isUpdateInProgress()) {
@@ -728,9 +849,8 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | status | resetpose x y h");
-  debugPrintln("[CMD] testsnap");
-  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue");
+  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | status | resetpose x y h | clearmaze");
+  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
@@ -790,6 +910,18 @@ static void handleSerialCommand(const String& rawLine) {
     }
     return;
   }
+  if (line == "led cyan" || line == "led bluegreen") {
+    if (!handleLedCommand("cyan")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led white") {
+    if (!handleLedCommand("white")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
   if (line == "test") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     testLoopMode = TEST_LOOP_STATUS;
@@ -822,6 +954,10 @@ static void handleSerialCommand(const String& rawLine) {
     beginExplore(true);
     return;
   }
+  if (line == "clearmaze" || line == "mazereset" || line == "resetstart") {
+    resetMazeToConfiguredStart();
+    return;
+  }
   if (line == "speedrun") {
     if (!robotState.speedRunReady) {
       debugPrintln("[CMD] speed run not ready yet");
@@ -842,17 +978,6 @@ static void handleSerialCommand(const String& rawLine) {
   if (line == "move") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     executePlannerAction(FloodFillExplorer::ACT_MOVE_F);
-    return;
-  }
-  if (line == "testsnap") {
-    robotState.mode = ROBOT_MODE_MANUAL_TEST;
-    snapBackPhase = SNAP_PHASE_BACK;
-    if (!motionController.moveBackwardShort()) {
-      snapBackPhase = SNAP_PHASE_NONE;
-      debugPrintln("[CMD] failed to start testsnap");
-    } else {
-      debugPrintln("[TEST] snapback sequence");
-    }
     return;
   }
   if (line == "back") {
@@ -906,13 +1031,13 @@ static void handleSerialCommand(const String& rawLine) {
   if (line == "test motorl") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     leftMotor.setSpeedTPS(220.0f);
-    rightMotor.setSpeedTPS(0.0f);
+    rightMotor.hardStop();
     debugPrintln("[TEST] left motor spin");
     return;
   }
   if (line == "test motorr") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
-    leftMotor.setSpeedTPS(0.0f);
+    leftMotor.hardStop();
     rightMotor.setSpeedTPS(220.0f);
     debugPrintln("[TEST] right motor spin");
     return;

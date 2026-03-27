@@ -47,6 +47,8 @@ public:
     SensorState getSensorState();
     void setWallThreshold(uint16_t th) { _wallThreshold = th; }
     uint16_t wallThreshold() const { return _wallThreshold; }
+    void setCenterPid(float kp, float ki, float kd, float iLimit, float outLimit);
+    void resetCenterPid();
 
     // ---- Sensors ----
     bool     isSensorOk(uint8_t index) const;
@@ -106,6 +108,15 @@ private:
     uint16_t _wallThreshold = 150;
 
     float error = 0;
+    float _centerKp = 1.0f;
+    float _centerKi = 0.0f;
+    float _centerKd = 0.0f;
+    float _centerILimit = 50.0f;
+    float _centerOutLimit = 50.0f;
+    float _centerIntegral = 0.0f;
+    float _centerPrevError = 0.0f;
+    uint32_t _centerPrevMs = 0;
+    bool _centerPidPrimed = false;
 
     float _scale[MAX_SENSORS] = {1, 97.0/88.0, 1, 1, 1};
     int _offset[MAX_SENSORS] = {0, -16, 16, 0, 0};
@@ -119,6 +130,8 @@ private:
     void xshutAllLow();
     void xshutAllHigh();
     bool isGoodReading_(uint8_t index) const;
+    uint8_t effectiveState_(uint8_t index) const;
+    uint16_t effectiveDistance_(uint8_t index) const;
 };
 
 #endif

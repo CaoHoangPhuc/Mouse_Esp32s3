@@ -39,14 +39,14 @@ namespace Maze {
 // Robot start pose in maze cell coordinates.
 // Affects: initial floodfill pose, web explorer pose, reset behavior.
 static constexpr uint8_t START_X = 0;
-static constexpr uint8_t START_Y = 4;
-static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::NORTH;
+static constexpr uint8_t START_Y = 0;
+static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::SOUTH;
 
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
 static constexpr uint8_t GOAL_X0 = 4;
-static constexpr uint8_t GOAL_Y0 = 0;
+static constexpr uint8_t GOAL_Y0 = 4;
 static constexpr uint8_t GOAL_W = 1;
 static constexpr uint8_t GOAL_H = 1;
 }
@@ -104,7 +104,7 @@ static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
 // Smaller = more conservative wall detection.
 // Larger = walls detected earlier/farther away.
 // Affects: left/front/right wall booleans used by motion + planner.
-static constexpr uint16_t WALL_THRESHOLD_MM = 150;
+static constexpr uint16_t WALL_THRESHOLD_MM = 140;
 
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
@@ -113,6 +113,7 @@ static constexpr uint8_t XSHUT_PINS[SENSOR_COUNT] = {0, 1, 2, 3, 4};
 // Final I2C addresses assigned to each sensor during startup.
 // Order matters and must match the physical sensor order expected by MultiVL53L0X.
 static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x34};
+
 }
 
 namespace Motors {
@@ -180,14 +181,19 @@ static constexpr float MOVE_SPEED_TPS = 350.0f;
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 220.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 100.0f;
+static constexpr float REVERSE_DISTANCE_MM = 200.0f;
 static constexpr float REVERSE_SPEED_TPS = 300.0f;
 static constexpr float TURN_SPEED_TPS = 300.0f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
-static constexpr float CENTERING_GAIN = 1.4f;
+static constexpr float CENTERING_GAIN = 1.0f;
+static constexpr float CENTER_PID_KP = 1.5f;
+static constexpr float CENTER_PID_KI = 0.00f;
+static constexpr float CENTER_PID_KD = 0.4f;
+static constexpr float CENTER_PID_I_LIMIT = 40.0f;
+static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
@@ -208,10 +214,11 @@ static constexpr float MIN_PROGRESS_MM = 12.0f;
 // Affects: forward progress estimation and one-cell completion.
 // Usually tune this before final CELL_DISTANCE_MM tuning.
 static constexpr float MM_PER_TICK = 0.54f;
-// Explore-only post-turn snap-back sequence.
-static constexpr bool ENABLE_POST_TURN_SNAP = true;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
+// Delay after a primitive completes before using TOF data for wall registration.
+// Gives the sensor task time to catch up to the robot's new cell/heading.
+static constexpr uint32_t POST_MOTION_SENSOR_SETTLE_MS = 1000;
 }
 
 namespace Explorer {
@@ -223,6 +230,15 @@ static constexpr uint16_t PORT = 81;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
 static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
+static constexpr uint8_t WALL_CONFIRM_ADD_COUNT = 2;
+static constexpr uint8_t WALL_CONFIRM_CLEAR_COUNT = 2;
+}
+
+namespace Debug {
+// Additional runtime flow logging for motion, snap, and wall application.
+// Affects: extra serial/TCP debug output only; no behavior changes.
+static constexpr bool DEBUG_MOTION_FLOW = false;
+static constexpr bool DEBUG_WALL_APPLY = false;
 }
 
 // Helper that converts config constants into the runtime motion controller config.
@@ -256,6 +272,8 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
   cfg.autoRun = Explorer::AUTO_RUN;
   cfg.ackTimeoutMs = Explorer::ACK_TIMEOUT_MS;
   cfg.pauseOnAckTimeout = Explorer::PAUSE_ON_ACK_TIMEOUT;
+  cfg.wallConfirmAddCount = Explorer::WALL_CONFIRM_ADD_COUNT;
+  cfg.wallConfirmClearCount = Explorer::WALL_CONFIRM_CLEAR_COUNT;
   return cfg;
 }
 

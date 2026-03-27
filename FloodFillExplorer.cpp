@@ -533,9 +533,9 @@ void FloodFillExplorer::observeRelativeWalls(uint8_t x, uint8_t y, Dir heading,
   auto leftDir = (Dir)(((uint8_t)heading + 3) & 3);
   auto rightDir = (Dir)(((uint8_t)heading + 1) & 3);
 
-  if (leftValid) knownSetWallBoth_(x, y, leftDir, leftWall);
-  if (frontValid) knownSetWallBoth_(x, y, heading, frontWall);
-  if (rightValid) knownSetWallBoth_(x, y, rightDir, rightWall);
+  if (leftValid) confirmObservedWall_(x, y, leftDir, leftWall);
+  if (frontValid) confirmObservedWall_(x, y, heading, frontWall);
+  if (rightValid) confirmObservedWall_(x, y, rightDir, rightWall);
 
   visited_[y][x] = true;
   applyBoundaryWalls_();
@@ -678,6 +678,9 @@ void FloodFillExplorer::setTruthFromWalls(const uint8_t walls16[N][N],
 void FloodFillExplorer::clearKnown_(){
   memset(knownWalls_, 0, sizeof(knownWalls_));
   memset(knownMask_,  0, sizeof(knownMask_));
+  memset(pendingWalls_, 0, sizeof(pendingWalls_));
+  memset(pendingMask_,  0, sizeof(pendingMask_));
+  memset(pendingCounts_, 0, sizeof(pendingCounts_));
   applyBoundaryWalls_();
 }
 
@@ -777,6 +780,79 @@ void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
   if(inBounds_(nx,ny)){
     setOne(nx,ny, opposite_(d), on);
   }
+}
+
+void FloodFillExplorer::pendingSetWallBoth_(int x, int y, Dir d, bool on, uint8_t count) {
+  auto setOne = [&](int cx, int cy, Dir cd, bool v, uint8_t c) {
+    if (!inBounds_(cx, cy)) return;
+    const uint8_t bit = bitForDir_(cd);
+    pendingMask_[cy][cx] |= bit;
+    if (v) pendingWalls_[cy][cx] |= bit;
+    else   pendingWalls_[cy][cx] &= ~bit;
+    pendingCounts_[cy][cx][(int)cd] = c;
+  };
+
+  setOne(x, y, d, on, count);
+  const int nx = x + dx4[(int)d];
+  const int ny = y + dy4[(int)d];
+  if (inBounds_(nx, ny)) {
+    setOne(nx, ny, opposite_(d), on, count);
+  }
+}
+
+void FloodFillExplorer::pendingClearWallBoth_(int x, int y, Dir d) {
+  auto clearOne = [&](int cx, int cy, Dir cd) {
+    if (!inBounds_(cx, cy)) return;
+    const uint8_t bit = bitForDir_(cd);
+    pendingMask_[cy][cx] &= ~bit;
+    pendingWalls_[cy][cx] &= ~bit;
+    pendingCounts_[cy][cx][(int)cd] = 0;
+  };
+
+  clearOne(x, y, d);
+  const int nx = x + dx4[(int)d];
+  const int ny = y + dy4[(int)d];
+  if (inBounds_(nx, ny)) {
+    clearOne(nx, ny, opposite_(d));
+  }
+}
+
+bool FloodFillExplorer::confirmObservedWall_(int x, int y, Dir d, bool on) {
+  if (!inBounds_(x, y)) return false;
+
+  const uint8_t bit = bitForDir_(d);
+  const bool known = (knownMask_[y][x] & bit) != 0;
+  const bool currentWall = (knownWalls_[y][x] & bit) != 0;
+
+  if (known && currentWall == on) {
+    pendingClearWallBoth_(x, y, d);
+    return false;
+  }
+
+  const uint8_t required = max<uint8_t>(1, on ? cfg_.wallConfirmAddCount
+                                              : cfg_.wallConfirmClearCount);
+  if (required <= 1) {
+    pendingClearWallBoth_(x, y, d);
+    knownSetWallBoth_(x, y, d, on);
+    return true;
+  }
+
+  uint8_t count = 1;
+  const bool pendingKnown = (pendingMask_[y][x] & bit) != 0;
+  const bool pendingWall = (pendingWalls_[y][x] & bit) != 0;
+  if (pendingKnown && pendingWall == on) {
+    count = (uint8_t)min<int>(255, pendingCounts_[y][x][(int)d] + 1);
+  }
+
+  pendingSetWallBoth_(x, y, d, on, count);
+
+  if (count >= required) {
+    pendingClearWallBoth_(x, y, d);
+    knownSetWallBoth_(x, y, d, on);
+    return true;
+  }
+
+  return false;
 }
 
 void FloodFillExplorer::senseCell_(int x,int y){
@@ -953,7 +1029,9 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
 
   if(diff == 1) return ACT_TURN_R;
   if(diff == 3) return ACT_TURN_L;
-  return ACT_TURN_180;
+  // Avoid single-shot 180 turns in planner flow.
+  // Two normal 90-degree turns keep snap/wall-update behavior consistent.
+  return ACT_TURN_L;
 }
 
 void FloodFillExplorer::dispatchAction_(Action a){

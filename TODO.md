@@ -29,8 +29,6 @@
 - Tune `turnTicks90` for accurate 90-degree turns.
 - Tune `turnTicks180` for reliable U-turns without overshoot.
 - Tune `moveSpeedTps` and `turnSpeedTps`.
-- Tune `reverseDistanceMm` and `shortForwardDistanceMm` for snapback recentering.
-- Verify `testsnap` is repeatable before trusting automatic explore snapback.
 - Tune `stallTimeoutMs` so valid slow motion does not false-fail.
 - Tune `frontStopMm` for safe wall approach.
 - Tune `centeringGain` so corridor tracking is stable and does not oscillate.
@@ -40,6 +38,7 @@
 
 - Verify sensor layout detection for the actual hardware version.
 - Confirm left/front/right sensor mapping is correct.
+- Confirm whether the temporary S3 workaround should stay on `ignore`, switch to `mirror S0->S3`, or be removed after hardware fixes.
 - Tune wall threshold from measured distances.
 - Add filtering or confidence logic for inconsistent TOF readings.
 - Add better front-wall alignment behavior near cell boundaries.
@@ -49,7 +48,6 @@
 - Confirm the start cell stays unknown at boot and is only observed when explore/speed-run begins.
 - Verify pose updates after each primitive in a real maze.
 - Validate discovered wall writes into the expected maze cells.
-- Verify automatic post-turn snapback only triggers when the rear wall is truly known.
 - Validate the ASCII `maze` dump against the physical maze after each test.
 - Test dead-end and backtracking behavior on hardware.
 - Persist or export known maze data for debugging.

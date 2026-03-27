@@ -8,7 +8,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - dual DC motor control with encoder-based speed PID
 - multi-VL53L0X wall sensing
 - battery monitoring with safety states
-- primitive motion executor for `move`, `back`, `snapback`, `turn 90 deg`, and `turn 180 deg`
+- primitive motion executor for `move`, `back`, `turn 90 deg`, and `turn 180 deg`
 - floodfill maze state and web visualizer
 - task-based planner / executor / telemetry flow
 - Wi-Fi OTA and web serial logging
@@ -62,12 +62,20 @@ All hard configuration now lives in [Config.h](c:\Users\donot\OneDrive\Documents
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
 - `AppConfig::Maze`: start pose and goal rectangle
+  Default config starts at `(0,0)`, heading south, with goal cell `(4,4)`.
 - `AppConfig::Wifi`: Wi-Fi / OTA / web logging settings
 - `AppConfig::I2C`: SDA/SCL and bus speed
-- `AppConfig::Tof`: sensor addresses, XSHUT pins, wall threshold
+- `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
 - `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning
 - `AppConfig::Explorer`: web floodfill UI settings
+
+## Dependencies / Build Expectations
+
+- the sketch is intended to build from the repository root as a standard Arduino sketch folder
+- target platform is an ESP32-S3 board using the Arduino ESP32 core
+- external libraries used by the code include `PCF8574`, `VL53L0X`, and `Adafruit_NeoPixel`
+- compile/build verification is still pending in this repository, so the first build should be treated as a bring-up check rather than a guaranteed known-good baseline
 
 ## Robot Modes
 
@@ -92,9 +100,11 @@ Implemented in [MotionController.cpp](c:\Users\donot\OneDrive\Documents\Arduino\
 Primitive execution currently includes:
 - primitive timeout
 - simple stall detection
-- front-wall stop support
-- side-wall centering correction
+- front-wall stop support based directly on front distance threshold
+- side-wall centering correction using a wall PID error term
 - battery-critical abort
+- hard stop now disables motor speed PID and coasts with `applyDuty(0)` instead of relying on `setSpeedTPS(0)`
+- motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 
 ## Serial Commands
 
@@ -107,16 +117,20 @@ Available from the main sketch:
 - `stop`
 - `restart`
 - `move`
-- `testsnap`
 - `back`
 - `left`
 - `right`
 - `uturn`
 - `maze`
-- `led cycle|rotate|off|red|green|blue`
+- `led cycle|rotate|off|red|green|blue|cyan|white`
+- `test`
+- `test off`
+- `test loop status|battery|sensors|sensorsraw|encoders|maze|off`
 - `resetpose x y h`
+- `clearmaze`
 - `test battery`
 - `test sensors`
+- `test sensorsraw`
 - `test motorl`
 - `test motorr`
 - `test encoders`
@@ -126,6 +140,7 @@ Console note:
 - `restart` closes the TCP debug console first, then reboots the ESP32
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - when `AppConfig::Wifi::ENABLE_WEB_LOG` is `false`, `dbg.print/println` no longer feed the HTTP log buffer and behave as Serial-only status output
+- the TCP debug console listens on port `2323`
 
 ## Web Debugging
 
@@ -163,6 +178,11 @@ During browser upload:
   - immediate blue, then blinking blue: upload/OTA in progress
   - green: upload finished successfully
   - red: upload/OTA error or abort
+- Robot-state LED status:
+  - cyan (blue + green): explore mode active
+  - white: goal reached
+  - red: fault mode
+  - off: idle / non-explore normal state
 
 Use this file for the browser uploader:
 - `Mouse_esp32s3.ino.bin`
@@ -183,10 +203,19 @@ Current values are placeholders and will need on-robot tuning in [Config.h](c:\U
 - `turnTicks90`
 - `turnTicks180`
 - move and turn TPS
-- short reverse / forward snap distances
 - wall threshold
+- wall-centering PID gains (`CENTER_PID_KP/KI/KD`)
+- wall-centering PID integral/output limits
+- post-motion sensor settle delay before wall registration
+- wall confirmation counts before adding or clearing a known wall
 - front stop distance
 - `mmPerTick`
+
+Current front-sensor behavior:
+- In the current front fusion logic, S3 (front-right) is only trusted when S0 (front-left) is also valid
+- If S0 reports `201` / far, S3 is exposed as `201` too
+- If S0 is invalid, S3 is exposed as invalid too
+- If both front sensors are far, fused `frontMm` now reports `201` instead of `0`
 
 Battery divider note:
 - current comments assume a `47k / 18k` divider into `GPIO 3`
@@ -207,16 +236,7 @@ Battery divider note:
 4. Verify TOF wall detection for left/front/right.
 5. Tune one-cell movement.
 6. Tune left/right 90-degree turns.
-7. Tune `uturn`, `back`, and `testsnap`.
+7. Tune `uturn` and `back`.
 8. Use `maze` to confirm the robot's known walls match reality.
-9. Run `explore` in a simple maze and verify post-turn snapback behavior.
+9. Run `explore` in a simple maze and verify wall registration and planner decisions.
 10. Only after stable exploration, tune `speedrun`.
-
-## Snapback Notes
-
-- `testsnap` runs a manual snapback sequence: short reverse, then short forward to the estimated center.
-- `explore` can also trigger snapback automatically after a `left` or `right` turn if the wall behind the robot is already known.
-- The automatic explore snapback is controlled by `AppConfig::Motion::ENABLE_POST_TURN_SNAP`.
-- Maze ASCII debug is available with `maze`.
-- Continuous maze printing is available with `test loop maze`.
-- Exploration now auto-prints the maze after map updates by default.

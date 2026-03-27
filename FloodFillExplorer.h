@@ -47,6 +47,9 @@ public:
     // true: timeout -> pause (safe)
     // false: timeout -> discard pending and continue running
     bool pauseOnAckTimeout = true;
+
+    uint8_t wallConfirmAddCount = 1;
+    uint8_t wallConfirmClearCount = 1;
   };
 
   using LogFn = void(*)(const String&);
@@ -112,6 +115,9 @@ private:
   bool truthHasWall_(int x,int y, Dir d) const;
   bool knownHasWall_(int x,int y, Dir d) const;
   void knownSetWallBoth_(int x,int y, Dir d, bool on);
+  void pendingSetWallBoth_(int x, int y, Dir d, bool on, uint8_t count);
+  void pendingClearWallBoth_(int x, int y, Dir d);
+  bool confirmObservedWall_(int x, int y, Dir d, bool on);
 
   void senseCell_(int x,int y);
 
@@ -155,6 +161,9 @@ private:
 
   uint8_t knownWalls_[N][N]{};
   uint8_t knownMask_[N][N]{};
+  uint8_t pendingWalls_[N][N]{};
+  uint8_t pendingMask_[N][N]{};
+  uint8_t pendingCounts_[N][N][4]{};
   uint8_t truthWalls_[N][N]{};
 
   PlanNode plan_[kMaxPlan]{};
