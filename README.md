@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.12`
+Current project version: `0.0.2.13`
 
 ## Current Status
 
@@ -60,8 +60,8 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 11. `telemetryTask` prints compact runtime state to serial.
 12. `explorerTask` serves the web maze view.
 13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
-14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal and the original start, and then resuming exploration from where the robot stands.
-15. Explore now stops automatically and prints that the shortest path is known once the same best-known start-to-goal cost has remained unchanged for the configured number of consecutive round trips.
+14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
+15. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
 17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
 
@@ -136,7 +136,6 @@ Primitive execution currently includes:
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 - motion start/end debug hooks in the runtime for tracing primitive flow during tuning
 - a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action
-- a short post-motion sensor settle before wall registration so TOF readings can catch up to the new pose
 - `snapCenter()` runs as one primitive: reverse short, hard stop, hold briefly, then forward short
 - `snapCenter()` does not change the logical maze pose; it is a physical re-centering primitive only
 
@@ -246,7 +245,6 @@ Current values are placeholders and will need on-robot tuning in [Config.h](c:\U
 - wall-centering PID gains (`CENTER_PID_KP/KI/KD`)
 - wall-centering PID integral/output limits
 - post-motion hard-stop hold before the next action
-- post-motion sensor settle delay before wall registration
 - snapcenter reverse-stop hold before forward restart
 - front stop distance
 - `mmPerTick`

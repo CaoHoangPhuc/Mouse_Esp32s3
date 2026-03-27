@@ -555,7 +555,6 @@ void FloodFillExplorer::setStart(uint8_t x, uint8_t y, Dir h){
   if(x >= N || y >= N) return;
   sx_ = x; sy_ = y; sh_ = h;
   origSx_ = x; origSy_ = y; origSh_ = h;
-  origCaptured_ = true;
   targetHome_ = false;
   markDirty_();
 }
@@ -567,7 +566,6 @@ void FloodFillExplorer::setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h
   if(y0 + h > N) h = N - y0;
   hx0_ = x0; hy0_ = y0; hw_ = w; hh_ = h;
   origHx0_ = x0; origHy0_ = y0; origHw_ = w; origHh_ = h;
-  origCaptured_ = true;
   targetHome_ = false;
   markDirty_();
 }
@@ -579,7 +577,6 @@ void FloodFillExplorer::setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h
   if(y0 + h > N) h = N - y0;
   gx0_ = x0; gy0_ = y0; gw_ = w; gh_ = h;
   origGx0_ = x0; origGy0_ = y0; origGw_ = gw_; origGh_ = gh_;
-  origCaptured_ = true;
   targetHome_ = false;
   markDirty_();
 }
@@ -761,9 +758,6 @@ void FloodFillExplorer::setTruthFromWalls(const uint8_t walls16[N][N],
 void FloodFillExplorer::clearKnown_(){
   memset(knownWalls_, 0, sizeof(knownWalls_));
   memset(knownMask_,  0, sizeof(knownMask_));
-  memset(pendingWalls_, 0, sizeof(pendingWalls_));
-  memset(pendingMask_,  0, sizeof(pendingMask_));
-  memset(pendingCounts_, 0, sizeof(pendingCounts_));
   applyBoundaryWalls_();
 }
 
@@ -865,41 +859,6 @@ void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
   }
 }
 
-void FloodFillExplorer::pendingSetWallBoth_(int x, int y, Dir d, bool on, uint8_t count) {
-  auto setOne = [&](int cx, int cy, Dir cd, bool v, uint8_t c) {
-    if (!inBounds_(cx, cy)) return;
-    const uint8_t bit = bitForDir_(cd);
-    pendingMask_[cy][cx] |= bit;
-    if (v) pendingWalls_[cy][cx] |= bit;
-    else   pendingWalls_[cy][cx] &= ~bit;
-    pendingCounts_[cy][cx][(int)cd] = c;
-  };
-
-  setOne(x, y, d, on, count);
-  const int nx = x + dx4[(int)d];
-  const int ny = y + dy4[(int)d];
-  if (inBounds_(nx, ny)) {
-    setOne(nx, ny, opposite_(d), on, count);
-  }
-}
-
-void FloodFillExplorer::pendingClearWallBoth_(int x, int y, Dir d) {
-  auto clearOne = [&](int cx, int cy, Dir cd) {
-    if (!inBounds_(cx, cy)) return;
-    const uint8_t bit = bitForDir_(cd);
-    pendingMask_[cy][cx] &= ~bit;
-    pendingWalls_[cy][cx] &= ~bit;
-    pendingCounts_[cy][cx][(int)cd] = 0;
-  };
-
-  clearOne(x, y, d);
-  const int nx = x + dx4[(int)d];
-  const int ny = y + dy4[(int)d];
-  if (inBounds_(nx, ny)) {
-    clearOne(nx, ny, opposite_(d));
-  }
-}
-
 bool FloodFillExplorer::confirmObservedWall_(int x, int y, Dir d, bool on) {
   if (!inBounds_(x, y)) return false;
 
@@ -908,10 +867,8 @@ bool FloodFillExplorer::confirmObservedWall_(int x, int y, Dir d, bool on) {
   const bool currentWall = (knownWalls_[y][x] & bit) != 0;
 
   if (known && currentWall == on) {
-    pendingClearWallBoth_(x, y, d);
     return false;
   }
-  pendingClearWallBoth_(x, y, d);
   knownSetWallBoth_(x, y, d, on);
   return true;
 }
@@ -1472,3 +1429,4 @@ void FloodFillExplorer::buildStateJson_(){
 
   stateJson_ = out;
 }
+

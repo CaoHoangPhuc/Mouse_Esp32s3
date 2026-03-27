@@ -120,8 +120,6 @@ private:
   bool truthHasWall_(int x,int y, Dir d) const;
   bool knownHasWall_(int x,int y, Dir d) const;
   void knownSetWallBoth_(int x,int y, Dir d, bool on);
-  void pendingSetWallBoth_(int x, int y, Dir d, bool on, uint8_t count);
-  void pendingClearWallBoth_(int x, int y, Dir d);
   bool confirmObservedWall_(int x, int y, Dir d, bool on);
 
   void senseCell_(int x,int y);
@@ -142,8 +140,6 @@ private:
   Dir     origSh_ = NORTH;
   uint8_t origHx0_ = 0, origHy0_ = 15, origHw_ = 1, origHh_ = 1;
   uint8_t origGx0_ = 7, origGy0_ = 7, origGw_ = 2, origGh_ = 2;
-
-  bool    origCaptured_ = false;
 
   // true: đang nhắm về HOME (start gốc), false: đang nhắm về GOAL gốc (2x2)
   bool    targetHome_ = false;
@@ -168,9 +164,6 @@ private:
 
   uint8_t knownWalls_[N][N]{};
   uint8_t knownMask_[N][N]{};
-  uint8_t pendingWalls_[N][N]{};
-  uint8_t pendingMask_[N][N]{};
-  uint8_t pendingCounts_[N][N][4]{};
   uint8_t truthWalls_[N][N]{};
 
   PlanNode plan_[kMaxPlan]{};
@@ -187,3 +180,4 @@ private:
 
   LogFn logFn_ = nullptr;
 };
+
