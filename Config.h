@@ -222,9 +222,6 @@ static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
 static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 100;
-// Duration of the post-motion wall sensing window.
-// Gives the sensor task a brief chance to catch up to the robot's new cell/heading.
-static constexpr uint32_t POST_MOTION_SENSOR_SETTLE_MS = 100;
 }
 
 namespace Explorer {
@@ -241,8 +238,8 @@ static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
 namespace Debug {
 // Additional runtime flow logging for motion, snap, and wall application.
 // Affects: extra serial/TCP debug output only; no behavior changes.
-static constexpr bool DEBUG_MOTION_FLOW = false;
-static constexpr bool DEBUG_WALL_APPLY = false;
+static constexpr bool DEBUG_MOTION_FLOW = true;
+static constexpr bool DEBUG_WALL_APPLY = true;
 }
 
 // Helper that converts config constants into the runtime motion controller config.
