@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.9`
+Current project version: `0.0.2.10`
 
 ## Current Status
 
@@ -79,6 +79,7 @@ Explore loop note:
 - After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
 - When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
 - Reaching a target no longer rewrites the explorer's configured start marker; the original start remains fixed while only the active target toggles between goal and home.
+- The original start/goal references used for toggling are now taken from `setStart()` and `setGoalRect()`, so the loop uses the configured maze values instead of the class default placeholders.
 
 ## Configuration
 

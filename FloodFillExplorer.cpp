@@ -546,6 +546,9 @@ void FloodFillExplorer::setHardwareMode(bool en) {
 void FloodFillExplorer::setStart(uint8_t x, uint8_t y, Dir h){
   if(x >= N || y >= N) return;
   sx_ = x; sy_ = y; sh_ = h;
+  origSx_ = x; origSy_ = y; origSh_ = h;
+  origCaptured_ = true;
+  targetHome_ = false;
   markDirty_();
 }
 
@@ -555,6 +558,9 @@ void FloodFillExplorer::setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h
   if(x0 + w > N) w = N - x0;
   if(y0 + h > N) h = N - y0;
   gx0_ = x0; gy0_ = y0; gw_ = w; gh_ = h;
+  origGx0_ = x0; origGy0_ = y0; origGw_ = gw_; origGh_ = gh_;
+  origCaptured_ = true;
+  targetHome_ = false;
   markDirty_();
 }
 
@@ -666,13 +672,7 @@ bool FloodFillExplorer::begin(const Config& cfg){
   clearKnown_();
   reset();
 
-  // capture original references ONCE
-  if(!origCaptured_){
-    origSx_ = sx_; origSy_ = sy_; origSh_ = sh_;
-    origGx0_ = gx0_; origGy0_ = gy0_; origGw_ = gw_; origGh_ = gh_;
-    origCaptured_ = true;
-    targetHome_ = false; // start by targeting original goal
-  }
+  targetHome_ = false; // start by targeting original goal
 
   if (cfg_.enableWeb && server_) {
     setupWeb_();
