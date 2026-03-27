@@ -61,6 +61,7 @@ public:
   void setHardwareMode(bool en);
 
   void setStart(uint8_t x, uint8_t y, Dir h);
+  void setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h);
   void setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h);
   void setRunning(bool en);
   void clearKnownMaze();
@@ -106,7 +107,8 @@ private:
   // --- floodfill core ---
   bool inBounds_(int x,int y) const;
   bool isGoal_(int x,int y) const;
-  uint16_t computeBestKnownCost_(uint8_t startX, uint8_t startY,
+  uint16_t computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
+                                 uint8_t startW, uint8_t startH,
                                  uint8_t goalX0, uint8_t goalY0,
                                  uint8_t goalW, uint8_t goalH) const;
 
@@ -138,6 +140,7 @@ private:
   // --- remember original start/goal so we can toggle ---
   uint8_t origSx_ = 0, origSy_ = 0;
   Dir     origSh_ = NORTH;
+  uint8_t origHx0_ = 0, origHy0_ = 15, origHw_ = 1, origHh_ = 1;
   uint8_t origGx0_ = 7, origGy0_ = 7, origGw_ = 2, origGh_ = 2;
 
   bool    origCaptured_ = false;
@@ -157,6 +160,7 @@ private:
   uint8_t sx_ = 0, sy_ = 15, mx_ = 0, my_ = 15;
   Dir sh_ = NORTH, mh_ = NORTH;
 
+  uint8_t hx0_ = 0, hy0_ = 15, hw_ = 1, hh_ = 1;
   uint8_t gx0_ = 7, gy0_ = 7, gw_ = 2, gh_ = 2;
 
   bool visited_[N][N]{};

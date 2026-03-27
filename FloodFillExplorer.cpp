@@ -459,11 +459,10 @@ bool FloodFillExplorer::isGoal_(int x,int y) const{
           y >= gy0_ && y < (int)(gy0_ + gh_));
 }
 
-uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX, uint8_t startY,
+uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
+                                                  uint8_t startW, uint8_t startH,
                                                   uint8_t goalX0, uint8_t goalY0,
                                                   uint8_t goalW, uint8_t goalH) const {
-  if (!inBounds_(startX, startY)) return 0xFFFF;
-
   static constexpr uint16_t INF = 0xFFFF;
   uint16_t dist[N][N];
   for (int y = 0; y < N; ++y) {
@@ -506,15 +505,24 @@ uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX, uint8_t startY
     }
   }
 
-  return dist[startY][startX];
+  uint16_t best = INF;
+  for (int y = startY0; y < (int)(startY0 + startH); ++y) {
+    for (int x = startX0; x < (int)(startX0 + startW); ++x) {
+      if (!inBounds_(x, y)) continue;
+      if (dist[y][x] < best) best = dist[y][x];
+    }
+  }
+  return best;
 }
 
 uint16_t FloodFillExplorer::bestKnownCostOriginalStartToGoal() const {
-  return computeBestKnownCost_(origSx_, origSy_, origGx0_, origGy0_, origGw_, origGh_);
+  return computeBestKnownCost_(origHx0_, origHy0_, origHw_, origHh_,
+                               origGx0_, origGy0_, origGw_, origGh_);
 }
 
 bool FloodFillExplorer::isInOriginalStart(uint8_t x, uint8_t y) const {
-  return x == origSx_ && y == origSy_;
+  return x >= origHx0_ && x < (uint8_t)(origHx0_ + origHw_) &&
+         y >= origHy0_ && y < (uint8_t)(origHy0_ + origHh_);
 }
 
 bool FloodFillExplorer::isInOriginalGoal(uint8_t x, uint8_t y) const {
@@ -547,6 +555,18 @@ void FloodFillExplorer::setStart(uint8_t x, uint8_t y, Dir h){
   if(x >= N || y >= N) return;
   sx_ = x; sy_ = y; sh_ = h;
   origSx_ = x; origSy_ = y; origSh_ = h;
+  origCaptured_ = true;
+  targetHome_ = false;
+  markDirty_();
+}
+
+void FloodFillExplorer::setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h){
+  if(w == 0 || h == 0) return;
+  if(x0 >= N || y0 >= N) return;
+  if(x0 + w > N) w = N - x0;
+  if(y0 + h > N) h = N - y0;
+  hx0_ = x0; hy0_ = y0; hw_ = w; hh_ = h;
+  origHx0_ = x0; origHy0_ = y0; origHw_ = w; origHh_ = h;
   origCaptured_ = true;
   targetHome_ = false;
   markDirty_();
@@ -1115,14 +1135,14 @@ void FloodFillExplorer::onGoalReached_(){
   targetHome_ = !targetHome_;
 
   if(targetHome_){
-    // target HOME (start gốc)
-    gx0_ = origSx_;
-    gy0_ = origSy_;
-    gw_  = 1;
-    gh_  = 1;
-    log_("[FF] reached target -> now GO HOME (1x1 at original start)");
+    // target HOME rectangle
+    gx0_ = origHx0_;
+    gy0_ = origHy0_;
+    gw_  = origHw_;
+    gh_  = origHh_;
+    log_("[FF] reached target -> now GO HOME (original home rect)");
   }else{
-    // target original GOAL (2x2)
+    // target original GOAL rect
     gx0_ = origGx0_;
     gy0_ = origGy0_;
     gw_  = origGw_;
@@ -1379,6 +1399,7 @@ void FloodFillExplorer::buildStateJson_(){
 
   out += "\"mouse\":{\"x\":" + String(mx_) + ",\"y\":" + String(my_) + ",\"h\":" + String((int)mh_) + "},";
   out += "\"start\":{\"x\":" + String(sx_) + ",\"y\":" + String(sy_) + ",\"h\":" + String((int)sh_) + "},";
+  out += "\"home\":{\"x0\":" + String(hx0_) + ",\"y0\":" + String(hy0_) + ",\"w\":" + String(hw_) + ",\"h\":" + String(hh_) + "},";
   out += "\"goal\":{\"x0\":" + String(gx0_) + ",\"y0\":" + String(gy0_) + ",\"w\":" + String(gw_) + ",\"h\":" + String(gh_) + "},";
   out += "\"running\":" + String(running_ ? "true":"false") + ",";
   out += "\"hardwareMode\":" + String(hardwareMode_ ? "true":"false") + ",";

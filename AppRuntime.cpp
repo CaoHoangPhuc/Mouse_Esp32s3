@@ -422,6 +422,8 @@ static void beginExplore(bool clearMaze) {
   runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
+                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
   explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
                        AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
   if (clearMaze) explorer.clearKnownMaze();
@@ -453,6 +455,8 @@ static void resetMazeToConfiguredStart() {
   resetExploreLoopTracking();
 
   explorer.setHardwareMode(true);
+  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
+                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
   explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
                        AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
@@ -793,6 +797,8 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   explorer.setLog(logToDbg);
   explorer.begin(AppConfig::makeExplorerConfig());
   explorer.setHardwareMode(true);
+  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
+                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
   explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
                        AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);

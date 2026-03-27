@@ -42,6 +42,13 @@ static constexpr uint8_t START_X = 0;
 static constexpr uint8_t START_Y = 0;
 static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::SOUTH;
 
+// Home rectangle used by floodfill target toggling during explore loops.
+// This can differ from the single physical start pose.
+static constexpr uint8_t HOME_X0 = 0;
+static constexpr uint8_t HOME_Y0 = 0;
+static constexpr uint8_t HOME_W = 1;
+static constexpr uint8_t HOME_H = 1;
+
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.

@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.10`
+Current project version: `0.0.2.11`
 
 ## Current Status
 
@@ -62,6 +62,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
 14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal and the original start, and then resuming exploration from where the robot stands.
 15. Explore now stops automatically and prints that the shortest path is known once the same best-known start-to-goal cost has remained unchanged for the configured number of consecutive round trips.
+16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -72,14 +73,14 @@ Turn behavior note:
 - When a completed turn will be followed by `snapCenter()`, walls are now sensed and applied only after `snapCenter()` finishes, so the maze is updated from the re-centered pose instead of the immediate post-turn pose.
 
 Explore loop note:
-- `FloodFillExplorer` already toggles its target between the original goal and the original start when a target is reached.
+- `FloodFillExplorer` now toggles its target between the original goal rectangle and the original home rectangle when a target is reached.
 - In hardware explore mode, the runtime now re-enables exploring after a reached target when `AppConfig::Explorer::CONTINUE_AFTER_GOAL` is `true`.
 - This keeps the robot at its current pose and lets return trips keep discovering or correcting wall memory.
-- The runtime tracks the best-known cost from the original start to the original goal.
+- The runtime tracks the best-known cost from the original home region to the original goal region.
 - After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
 - When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
 - Reaching a target no longer rewrites the explorer's configured start marker; the original start remains fixed while only the active target toggles between goal and home.
-- The original start/goal references used for toggling are now taken from `setStart()` and `setGoalRect()`, so the loop uses the configured maze values instead of the class default placeholders.
+- The original home/goal references used for toggling are now taken from `setHomeRect()` and `setGoalRect()`, so the loop uses the configured maze values instead of the class default placeholders.
 
 ## Configuration
 
@@ -88,7 +89,7 @@ All hard configuration now lives in [Config.h](c:\Users\donot\OneDrive\Documents
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
 - `AppConfig::Maze`: start pose and goal rectangle
-  Default config starts at `(0,0)`, heading south, with goal cell `(4,4)`.
+  Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle at `(4,4)` size `1x1`.
 - `AppConfig::Wifi`: Wi-Fi / OTA / web logging settings
 - `AppConfig::I2C`: SDA/SCL and bus speed
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
