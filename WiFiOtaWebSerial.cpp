@@ -389,7 +389,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
       if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
         println("[WEB OTA] Rebooting now...");
-        delay(50);
+        vTaskDelay(pdMS_TO_TICKS(50));
         ESP.restart();
       }
       vTaskDelay(pdMS_TO_TICKS(cfg_.serviceDelayMs));
@@ -689,4 +689,3 @@ void WiFiOtaWebSerial::serviceUpdateLed_() {
   ledBlinkOn_ = !ledBlinkOn_;
   setLedState_(ledBlinkOn_ ? "blue" : "off");
 }
-

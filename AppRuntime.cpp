@@ -228,7 +228,7 @@ static void closeDebugConsole(const String& reason) {
     debugClient.println(reason);
   }
   debugClient.clear();
-  delay(20);
+  vTaskDelay(pdMS_TO_TICKS(20));
   debugClient.stop();
 }
 
@@ -273,7 +273,7 @@ static void serviceDebugConsole() {
 static void i2cRecover(int sda, int scl) {
   pinMode(sda, OUTPUT);
   pinMode(scl, OUTPUT);
-  delay(10);
+  vTaskDelay(pdMS_TO_TICKS(10));
 
   if (digitalRead(sda) == LOW) {
     for (int i = 0; i < 9; i++) {
@@ -1031,7 +1031,7 @@ static void handleSerialCommand(const String& rawLine) {
   if (line == "restart" || line == "reboot") {
     debugPrintln("[CMD] restarting...");
     closeDebugConsole("[NET] disconnecting for restart");
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     ESP.restart();
     return;
   }

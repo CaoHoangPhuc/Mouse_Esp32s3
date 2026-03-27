@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.13`
+Current project version: `0.0.2.14`
 
 ## Current Status
 
@@ -138,6 +138,7 @@ Primitive execution currently includes:
 - a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action
 - `snapCenter()` runs as one primitive: reverse short, hard stop, hold briefly, then forward short
 - `snapCenter()` does not change the logical maze pose; it is a physical re-centering primitive only
+- task-context millisecond waits now use `vTaskDelay(...)` instead of Arduino `delay(...)` so other FreeRTOS tasks can keep running cleanly during those pauses
 
 ## Serial Commands
 
