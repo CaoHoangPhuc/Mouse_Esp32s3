@@ -152,12 +152,12 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
 static constexpr float PID_KP = 0.004f;
-static constexpr float PID_KI = 0.0080f;
+static constexpr float PID_KI = 0.0050f;
 static constexpr float PID_KD = 0.00005f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
-static constexpr float PID_SLEW_RATE = 4.0f;
+static constexpr float PID_SLEW_RATE = 5.0f;
 }
 
 namespace Motion {
@@ -179,10 +179,13 @@ static constexpr int32_t TURN_TICKS_180 = 420;
 static constexpr float MOVE_SPEED_TPS = 350.0f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
-static constexpr float SHORT_FORWARD_SPEED_TPS = 220.0f;
+static constexpr float SHORT_FORWARD_SPEED_TPS = 300.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
 static constexpr float REVERSE_DISTANCE_MM = 200.0f;
 static constexpr float REVERSE_SPEED_TPS = 300.0f;
+// Hold time between snapcenter reverse hard-stop and forward restart.
+// Affects: how long the robot pauses after backing up before returning to center.
+static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 50;
 static constexpr float TURN_SPEED_TPS = 300.0f;
 
 // Wall-centering correction gain while driving straight.
@@ -216,9 +219,12 @@ static constexpr float MIN_PROGRESS_MM = 12.0f;
 static constexpr float MM_PER_TICK = 0.54f;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
-// Delay after a primitive completes before using TOF data for wall registration.
-// Gives the sensor task time to catch up to the robot's new cell/heading.
-static constexpr uint32_t POST_MOTION_SENSOR_SETTLE_MS = 1000;
+// Hold the motors in hard-stop briefly after a primitive completes.
+// Affects: how long the robot fully settles before wall sensing and the next action.
+static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 100;
+// Duration of the post-motion wall sensing window.
+// Gives the sensor task a brief chance to catch up to the robot's new cell/heading.
+static constexpr uint32_t POST_MOTION_SENSOR_SETTLE_MS = 100;
 }
 
 namespace Explorer {
@@ -230,8 +236,6 @@ static constexpr uint16_t PORT = 81;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
 static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
-static constexpr uint8_t WALL_CONFIRM_ADD_COUNT = 2;
-static constexpr uint8_t WALL_CONFIRM_CLEAR_COUNT = 2;
 }
 
 namespace Debug {
@@ -253,6 +257,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.shortForwardSpeedTps = Motion::SHORT_FORWARD_SPEED_TPS;
   cfg.reverseDistanceMm = Motion::REVERSE_DISTANCE_MM;
   cfg.reverseSpeedTps = Motion::REVERSE_SPEED_TPS;
+  cfg.snapCenterStopHoldMs = Motion::SNAP_CENTER_STOP_HOLD_MS;
   cfg.turnSpeedTps = Motion::TURN_SPEED_TPS;
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
@@ -272,8 +277,6 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
   cfg.autoRun = Explorer::AUTO_RUN;
   cfg.ackTimeoutMs = Explorer::ACK_TIMEOUT_MS;
   cfg.pauseOnAckTimeout = Explorer::PAUSE_ON_ACK_TIMEOUT;
-  cfg.wallConfirmAddCount = Explorer::WALL_CONFIRM_ADD_COUNT;
-  cfg.wallConfirmClearCount = Explorer::WALL_CONFIRM_CLEAR_COUNT;
   return cfg;
 }
 

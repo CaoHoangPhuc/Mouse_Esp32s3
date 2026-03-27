@@ -71,7 +71,7 @@ private:
   uint8_t _pwmResBits = 10;
   uint32_t _pwmMax = 1023;
 
-  const int DEADZONE = 20;
+  const int DEADZONE = 10;
   volatile int32_t _ticks = 0;
 
   // speed estimation

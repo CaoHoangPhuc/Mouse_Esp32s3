@@ -828,31 +828,9 @@ bool FloodFillExplorer::confirmObservedWall_(int x, int y, Dir d, bool on) {
     pendingClearWallBoth_(x, y, d);
     return false;
   }
-
-  const uint8_t required = max<uint8_t>(1, on ? cfg_.wallConfirmAddCount
-                                              : cfg_.wallConfirmClearCount);
-  if (required <= 1) {
-    pendingClearWallBoth_(x, y, d);
-    knownSetWallBoth_(x, y, d, on);
-    return true;
-  }
-
-  uint8_t count = 1;
-  const bool pendingKnown = (pendingMask_[y][x] & bit) != 0;
-  const bool pendingWall = (pendingWalls_[y][x] & bit) != 0;
-  if (pendingKnown && pendingWall == on) {
-    count = (uint8_t)min<int>(255, pendingCounts_[y][x][(int)d] + 1);
-  }
-
-  pendingSetWallBoth_(x, y, d, on, count);
-
-  if (count >= required) {
-    pendingClearWallBoth_(x, y, d);
-    knownSetWallBoth_(x, y, d, on);
-    return true;
-  }
-
-  return false;
+  pendingClearWallBoth_(x, y, d);
+  knownSetWallBoth_(x, y, d, on);
+  return true;
 }
 
 void FloodFillExplorer::senseCell_(int x,int y){

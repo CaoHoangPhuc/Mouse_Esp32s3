@@ -2,6 +2,13 @@
 
 #include <math.h>
 
+namespace {
+constexpr uint8_t SNAP_CENTER_PHASE_NONE = 0;
+constexpr uint8_t SNAP_CENTER_PHASE_BACK = 1;
+constexpr uint8_t SNAP_CENTER_PHASE_FORWARD = 2;
+constexpr uint8_t SNAP_CENTER_PHASE_HOLD = 3;
+}
+
 void MotionController::begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery) {
   left_ = &left;
   right_ = &right;
@@ -21,7 +28,9 @@ bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
   startRightTicks_ = right_->getTicks();
   startedMs_ = millis();
   lastProgressMs_ = startedMs_;
+  snapCenterHoldUntilMs_ = 0;
   lastProgressMm_ = 0.0f;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
   return true;
 }
 
@@ -41,6 +50,14 @@ bool MotionController::moveForwardShort() {
 
 bool MotionController::moveBackwardShort() {
   if (!startPrimitive_(MOTION_MOVE_BACKWARD_SHORT)) return false;
+  left_->setSpeedTPS(-cfg_.reverseSpeedTps);
+  right_->setSpeedTPS(-cfg_.reverseSpeedTps);
+  return true;
+}
+
+bool MotionController::snapCenter() {
+  if (!startPrimitive_(MOTION_SNAP_CENTER)) return false;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_BACK;
   left_->setSpeedTPS(-cfg_.reverseSpeedTps);
   right_->setSpeedTPS(-cfg_.reverseSpeedTps);
   return true;
@@ -89,6 +106,8 @@ void MotionController::abort(const String& reason) {
   lastFinishedPrimitive_ = MOTION_NONE;
   status_ = MOTION_ABORTED;
   lastError_ = reason;
+  snapCenterHoldUntilMs_ = 0;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
 float MotionController::averageProgressMm_() const {
@@ -114,6 +133,8 @@ void MotionController::markDone_(MotionStatus status, const String& reason) {
   lastError_ = reason;
   lastFinishedPrimitive_ = primitive_;
   primitive_ = MOTION_NONE;
+  snapCenterHoldUntilMs_ = 0;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
 void MotionController::update(RobotState& state) {
@@ -200,6 +221,68 @@ void MotionController::update(RobotState& state) {
     } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
       markDone_(MOTION_FAILED, "reverse stall");
       return;
+    }
+  } else if (primitive_ == MOTION_SNAP_CENTER) {
+    if (snapCenterPhase_ == SNAP_CENTER_PHASE_BACK) {
+      const float progressMm = absoluteAverageProgressMm_();
+      state.pose.forwardProgressMm = -progressMm;
+
+      left_->setSpeedTPS(-cfg_.reverseSpeedTps);
+      right_->setSpeedTPS(-cfg_.reverseSpeedTps);
+
+      if (progressMm >= cfg_.reverseDistanceMm) {
+        left_->hardStop();
+        right_->hardStop();
+        snapCenterPhase_ = SNAP_CENTER_PHASE_HOLD;
+        snapCenterHoldUntilMs_ = now + cfg_.snapCenterStopHoldMs;
+        startLeftTicks_ = left_->getTicks();
+        startRightTicks_ = right_->getTicks();
+        lastProgressMm_ = 0.0f;
+        lastProgressMs_ = now;
+        return;
+      }
+
+      if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
+        lastProgressMm_ = progressMm;
+        lastProgressMs_ = now;
+      } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
+        markDone_(MOTION_FAILED, "snap center reverse stall");
+        return;
+      }
+    } else if (snapCenterPhase_ == SNAP_CENTER_PHASE_HOLD) {
+      state.pose.forwardProgressMm = 0.0f;
+      left_->hardStop();
+      right_->hardStop();
+
+      if ((int32_t)(now - snapCenterHoldUntilMs_) >= 0) {
+        snapCenterPhase_ = SNAP_CENTER_PHASE_FORWARD;
+        startLeftTicks_ = left_->getTicks();
+        startRightTicks_ = right_->getTicks();
+        lastProgressMm_ = 0.0f;
+        lastProgressMs_ = now;
+        left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+        right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+      }
+      return;
+    } else {
+      const float progressMm = averageProgressMm_();
+      state.pose.forwardProgressMm = progressMm;
+
+      left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+      right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+
+      if (progressMm >= cfg_.shortForwardDistanceMm) {
+        markDone_(MOTION_COMPLETED);
+        return;
+      }
+
+      if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
+        lastProgressMm_ = progressMm;
+        lastProgressMs_ = now;
+      } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
+        markDone_(MOTION_FAILED, "snap center forward stall");
+        return;
+      }
     }
   } else if (primitive_ == MOTION_TURN_LEFT_90 ||
              primitive_ == MOTION_TURN_RIGHT_90 ||

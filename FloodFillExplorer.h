@@ -47,9 +47,6 @@ public:
     // true: timeout -> pause (safe)
     // false: timeout -> discard pending and continue running
     bool pauseOnAckTimeout = true;
-
-    uint8_t wallConfirmAddCount = 1;
-    uint8_t wallConfirmClearCount = 1;
   };
 
   using LogFn = void(*)(const String&);

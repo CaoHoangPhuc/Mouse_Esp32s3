@@ -39,7 +39,7 @@ When changing this code, prefer reliability and observability over aggressive op
 - `RobotState` is the shared snapshot for telemetry and coordination.
 - `MotionController` owns primitive execution and timeout/stall logic.
 - `FloodFillExplorer` owns maze memory and next-action choice.
-- `AppRuntime.cpp` wires sensor data into the explorer and acknowledges actions when physical motion finishes.
+- `AppRuntime.cpp` wires sensor data into the explorer and acknowledges actions only after physical motion completes and wall sensing for the new pose has been applied.
 - `Mouse_esp32s3.ino` should stay minimal and only expose Arduino entrypoints plus task wrappers.
 - `Config.h` is the single source of truth for pins, calibration constants, and runtime tuning defaults.
 
@@ -73,3 +73,4 @@ Keep these files current when architecture or behavior changes:
 
 Rule:
 - whenever a code change affects setup, commands, tuning, hardware behavior, or operator workflow, update the related `.md` documents in the same change instead of leaving docs as follow-up work
+- whenever a code change changes behavior or tuning, bump the documented project version, then stage and commit that versioned change together

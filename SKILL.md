@@ -25,6 +25,7 @@ Changes should usually respect those boundaries.
 
 Documentation rule:
 - when a code change affects behavior, commands, tuning, setup, or hardware assumptions, update the related `.md` files in the same change
+- when a code change changes behavior or tuning, bump the documented project version and commit the versioned change together
 
 ## Core Files
 

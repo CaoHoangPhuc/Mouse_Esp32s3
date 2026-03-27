@@ -18,6 +18,7 @@ public:
     float shortForwardSpeedTps = 220.0f;
     float reverseDistanceMm = 45.0f;
     float reverseSpeedTps = 180.0f;
+    uint32_t snapCenterStopHoldMs = 50;
     float turnSpeedTps = 250.0f;
     float centeringGain = 1.6f;
     float frontStopMm = 55.0f;
@@ -34,6 +35,7 @@ public:
   bool moveOneCell();
   bool moveForwardShort();
   bool moveBackwardShort();
+  bool snapCenter();
   bool turnLeft90();
   bool turnRight90();
   bool turn180();
@@ -69,5 +71,7 @@ private:
   int32_t startRightTicks_ = 0;
   uint32_t startedMs_ = 0;
   uint32_t lastProgressMs_ = 0;
+  uint32_t snapCenterHoldUntilMs_ = 0;
   float lastProgressMm_ = 0.0f;
+  uint8_t snapCenterPhase_ = 0;
 };

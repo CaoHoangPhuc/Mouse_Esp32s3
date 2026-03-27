@@ -90,12 +90,18 @@ static bool handleLedCommand(const String& cmd);
 static void updateRobotLed();
 static void resetMazeToConfiguredStart();
 static FloodFillExplorer::Dir headingDir();
+static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
 static void maze_debug_s();
 static void closeDebugConsole(const String& reason = "");
+static bool startRunSnapSequence(const char* label);
+static bool shouldSnapCenterAfterTurn();
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
 static constexpr uint32_t kConsoleQuietMs = 1500;
+static bool runStartSnapPending = false;
+static bool deferPlannerAckUntilSnapCenter = false;
+static RobotMode runStartSnapMode = ROBOT_MODE_IDLE;
 static const char* primitiveName(MotionPrimitiveType primitive);
 static const char* headingName(FloodFillExplorer::Dir dir);
 static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
@@ -139,6 +145,7 @@ static const char* primitiveName(MotionPrimitiveType primitive) {
   switch (primitive) {
     case MOTION_NONE: return "none";
     case MOTION_MOVE_ONE_CELL: return "move1";
+    case MOTION_SNAP_CENTER: return "snapcenter";
     case MOTION_TURN_LEFT_90: return "turnL";
     case MOTION_TURN_RIGHT_90: return "turnR";
     case MOTION_TURN_180: return "turn180";
@@ -330,6 +337,10 @@ static FloodFillExplorer::Dir headingDir() {
   return (FloodFillExplorer::Dir)(robotState.pose.heading & 3);
 }
 
+static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir) {
+  return (FloodFillExplorer::Dir)(((uint8_t)dir + 2) & 3);
+}
+
 static void maze_debug_s() {
   String maze = explorer.buildKnownMazeAscii(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   maze.replace("\n", "\r\n");
@@ -347,6 +358,9 @@ static void enterIdleMode(const String& reason) {
   robotState.motionStatus = MOTION_IDLE;
   robotState.activePrimitive = MOTION_NONE;
   testLoopMode = TEST_LOOP_NONE;
+  runStartSnapPending = false;
+  deferPlannerAckUntilSnapCenter = false;
+  runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setRunning(false);
   motionController.stop();
   updateRobotLed();
@@ -357,6 +371,9 @@ static void enterFaultMode(const String& reason) {
   robotState.mode = ROBOT_MODE_FAULT;
   robotState.lastFault = reason;
   robotState.faultCount++;
+  runStartSnapPending = false;
+  deferPlannerAckUntilSnapCenter = false;
+  runStartSnapMode = ROBOT_MODE_IDLE;
   motionController.abort(reason);
   explorer.setRunning(false);
   updateRobotLed();
@@ -369,10 +386,11 @@ static void updateOtaSafeMode() {
 
   otaSafeModeActive = otaNow;
   if (otaSafeModeActive) {
+    runStartSnapPending = false;
+    deferPlannerAckUntilSnapCenter = false;
+    runStartSnapMode = ROBOT_MODE_IDLE;
     explorer.setRunning(false);
     motionController.stop();
-    leftMotor.hardStop();
-    rightMotor.hardStop();
     robotState.mode = ROBOT_MODE_IDLE;
     robotState.motionStatus = MOTION_IDLE;
     robotState.activePrimitive = MOTION_NONE;
@@ -387,31 +405,32 @@ static void beginExplore(bool clearMaze) {
   robotState.goalReached = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
   robotState.lastFault = "";
+  runStartSnapPending = false;
+  deferPlannerAckUntilSnapCenter = false;
+  runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
                        AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-  applyWallsToExplorer();
-  explorer.setRunning(true);
   updateRobotLed();
   debugPrintln("[MODE] EXPLORE");
-  if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE) {
-    maze_debug_s();
-  }
+  startRunSnapSequence("run-start snapcenter");
 }
 
 static void beginSpeedRun() {
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
+  runStartSnapPending = false;
+  deferPlannerAckUntilSnapCenter = false;
+  runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-  applyWallsToExplorer();
-  explorer.setRunning(true);
   updateRobotLed();
   debugPrintln("[MODE] SPEED RUN");
+  startRunSnapSequence("run-start snapcenter");
 }
 
 static void resetMazeToConfiguredStart() {
@@ -495,24 +514,74 @@ static void handleMotionCompletion() {
   const uint8_t beforeX = robotState.pose.cellX;
   const uint8_t beforeY = robotState.pose.cellY;
   const FloodFillExplorer::Dir beforeH = headingDir();
+  const bool isTurnPrimitive =
+    primitive == MOTION_TURN_LEFT_90 ||
+    primitive == MOTION_TURN_RIGHT_90 ||
+    primitive == MOTION_TURN_180;
+  const bool isSnapCenterPrimitive = primitive == MOTION_SNAP_CENTER;
 
   if (status == MOTION_COMPLETED) {
     advancePoseForFinishedPrimitive(primitive);
     debugMotionEvent("[MOTION END]", primitive, status,
                      beforeX, beforeY, beforeH,
                      robotState.pose.cellX, robotState.pose.cellY, headingDir());
-    bool reachedGoal = explorer.ackPendingActionExternal(true,
-      robotState.pose.cellX,
-      robotState.pose.cellY,
-      headingDir());
+    leftMotor.hardStop();
+    rightMotor.hardStop();
+    if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0) {
+      if (AppConfig::Debug::DEBUG_WALL_APPLY) {
+        debugPrintln("[STOP HOLD] wait " + String(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS) +
+                     "ms before settle/sense");
+      }
+      vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS));
+    }
     if (AppConfig::Debug::DEBUG_WALL_APPLY) {
       debugPrintln("[SETTLE] wait " + String(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS) +
                    "ms before wall apply");
     }
     vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS));
+    updateRobotState();
     debugWallApplyEvent("[WALL APPLY]", "motion_complete");
     applyWallsToExplorer();
     debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
+
+    if (isTurnPrimitive &&
+        !deferPlannerAckUntilSnapCenter &&
+        (robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN) &&
+        shouldSnapCenterAfterTurn()) {
+      if (!motionController.snapCenter()) {
+        enterFaultMode("failed to start post-turn snapcenter");
+        return;
+      }
+      deferPlannerAckUntilSnapCenter = true;
+      debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       "source=post-turn");
+      debugPrintln("[SNAP] post-turn snapcenter");
+      return;
+    }
+
+    bool reachedGoal = false;
+    if (deferPlannerAckUntilSnapCenter) {
+      deferPlannerAckUntilSnapCenter = false;
+      reachedGoal = explorer.ackPendingActionExternal(true,
+        robotState.pose.cellX,
+        robotState.pose.cellY,
+        headingDir());
+    } else if (!runStartSnapPending || !isSnapCenterPrimitive) {
+      reachedGoal = explorer.ackPendingActionExternal(true,
+        robotState.pose.cellX,
+        robotState.pose.cellY,
+        headingDir());
+    }
+
+    if (runStartSnapPending && isSnapCenterPrimitive) {
+      runStartSnapPending = false;
+      explorer.setRunning(runStartSnapMode == ROBOT_MODE_EXPLORE || runStartSnapMode == ROBOT_MODE_SPEED_RUN);
+      runStartSnapMode = ROBOT_MODE_IDLE;
+      debugPrintln("[SNAP] run-start snapcenter complete");
+    }
+
     if (AppConfig::Motion::AUTO_PRINT_MAZE_AFTER_SENSE && robotState.mode == ROBOT_MODE_EXPLORE) {
       maze_debug_s();
     }
@@ -584,6 +653,31 @@ static void applyWallsToExplorer() {
     robotState.walls.frontValid,
     robotState.walls.rightValid
   );
+}
+
+static bool shouldSnapCenterAfterTurn() {
+  const FloodFillExplorer::Dir backDir = oppositeDir(headingDir());
+  bool known = false;
+  bool wall = false;
+  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY, backDir, known, wall);
+  return known && wall;
+}
+
+static bool startRunSnapSequence(const char* label) {
+  explorer.setRunning(false);
+  if (!motionController.snapCenter()) {
+    enterFaultMode(String("failed to start ") + label);
+    return false;
+  }
+
+  runStartSnapPending = true;
+  runStartSnapMode = robotState.mode;
+  debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   String("source=") + label);
+  debugPrintln(String("[SNAP] ") + label);
+  return true;
 }
 
 void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
@@ -734,7 +828,6 @@ void plannerTaskBody(void* arg) {
       if (!robotState.readyForMotion) {
         enterFaultMode("robot not ready for motion");
       } else {
-        applyWallsToExplorer();
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
         FloodFillExplorer::Action act = explorer.requestNextAction();
         if (act == FloodFillExplorer::ACT_NONE) {
@@ -849,7 +942,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | status | resetpose x y h | clearmaze");
+  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | clearmaze");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -984,6 +1077,18 @@ static void handleSerialCommand(const String& rawLine) {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     if (!motionController.moveBackwardShort()) {
       debugPrintln("[CMD] failed to start back");
+    }
+    return;
+  }
+  if (line == "testsnap") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    if (!motionController.snapCenter()) {
+      debugPrintln("[CMD] failed to start testsnap");
+    } else {
+      debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       "source=testsnap");
     }
     return;
   }

@@ -2,6 +2,8 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
+Current project version: `0.0.2.2`
+
 ## Current Status
 
 This repository now includes the first integrated hardware-oriented control stack:
@@ -52,8 +54,11 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 5. `motorTask` continuously updates motor PID loops.
 6. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
-8. `telemetryTask` prints compact runtime state to serial.
-9. `explorerTask` serves the web maze view.
+8. `explore` and `speedrun` start with one `snapCenter()` alignment primitive before the planner is allowed to run.
+9. After a motion completes in hardware mode, the runtime holds the motors in hard-stop briefly, waits a short settle period, refreshes robot sensor state, applies wall sensing for the new pose once, then ACKs the pending planner action so the next motion cannot start before sensing is committed.
+10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before ACKing the turn so the next planner action starts from the re-centered pose.
+11. `telemetryTask` prints compact runtime state to serial.
+12. `explorerTask` serves the web maze view.
 
 ## Configuration
 
@@ -92,6 +97,7 @@ Implemented in [MotionController.cpp](c:\Users\donot\OneDrive\Documents\Arduino\
 - `moveOneCell()`
 - `moveForwardShort()`
 - `moveBackwardShort()`
+- `snapCenter()`
 - `turnLeft90()`
 - `turnRight90()`
 - `turn180()`
@@ -105,6 +111,11 @@ Primitive execution currently includes:
 - battery-critical abort
 - hard stop now disables motor speed PID and coasts with `applyDuty(0)` instead of relying on `setSpeedTPS(0)`
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
+- motion start/end debug hooks in the runtime for tracing primitive flow during tuning
+- a short post-motion hard-stop hold so the robot physically settles before sensing and the next action
+- a short post-motion sensor settle before wall registration so TOF readings can catch up to the new pose
+- `snapCenter()` runs as one primitive: reverse short, hard stop, hold briefly, then forward short
+- `snapCenter()` does not change the logical maze pose; it is a physical re-centering primitive only
 
 ## Serial Commands
 
@@ -118,6 +129,7 @@ Available from the main sketch:
 - `restart`
 - `move`
 - `back`
+- `testsnap`
 - `left`
 - `right`
 - `uturn`
@@ -134,6 +146,9 @@ Available from the main sketch:
 - `test motorl`
 - `test motorr`
 - `test encoders`
+
+Manual motion note:
+- `testsnap` triggers the combined `snapCenter()` primitive so the back-then-forward recenter motion is executed and reported as one normal motion
 
 Console note:
 - periodic debug output pauses briefly while you type on serial or telnet, then resumes automatically
@@ -206,8 +221,9 @@ Current values are placeholders and will need on-robot tuning in [Config.h](c:\U
 - wall threshold
 - wall-centering PID gains (`CENTER_PID_KP/KI/KD`)
 - wall-centering PID integral/output limits
+- post-motion hard-stop hold before sensing / next action
 - post-motion sensor settle delay before wall registration
-- wall confirmation counts before adding or clearing a known wall
+- snapcenter reverse-stop hold before forward restart
 - front stop distance
 - `mmPerTick`
 
