@@ -104,7 +104,7 @@ static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
 // Smaller = more conservative wall detection.
 // Larger = walls detected earlier/farther away.
 // Affects: left/front/right wall booleans used by motion + planner.
-static constexpr uint16_t WALL_THRESHOLD_MM = 140;
+static constexpr uint16_t WALL_THRESHOLD_MM = 130;
 
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
@@ -181,7 +181,7 @@ static constexpr float MOVE_SPEED_TPS = 350.0f;
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 300.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 200.0f;
+static constexpr float REVERSE_DISTANCE_MM = 100.0f;
 static constexpr float REVERSE_SPEED_TPS = 300.0f;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
@@ -233,6 +233,10 @@ static constexpr uint16_t PORT = 81;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
 static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
+// In explore mode, keep looping between original goal and original start
+// after each target is reached. This helps continue discovering alternate
+// walls and improving the path without resetting pose.
+static constexpr bool CONTINUE_AFTER_GOAL = true;
 }
 
 namespace Debug {

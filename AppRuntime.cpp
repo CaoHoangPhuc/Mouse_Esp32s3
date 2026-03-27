@@ -582,6 +582,12 @@ static void handleMotionCompletion() {
       debugPrintln("[GOAL] Goal reached");
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         enterIdleMode("speed run finished");
+      } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
+                 AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
+        explorer.setRunning(true);
+        robotState.goalReached = false;
+        updateRobotLed();
+        debugPrintln("[EXPLORE] target toggled, continue exploring");
       }
     }
 
