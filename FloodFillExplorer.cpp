@@ -1109,11 +1109,6 @@ void FloodFillExplorer::onGoalReached_(){
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
 
-  // Start marker cho UI: start = vị trí hiện tại (vừa tới đích)
-  sx_ = mx_;
-  sy_ = my_;
-  sh_ = mh_;
-
   // --- Toggle target ---
   // Nếu vừa tới GOAL gốc (2x2) => đổi mục tiêu về HOME (start gốc 1 ô)
   // Nếu vừa tới HOME => đổi mục tiêu về GOAL gốc (2x2)
