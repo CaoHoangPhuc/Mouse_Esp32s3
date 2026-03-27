@@ -831,6 +831,10 @@ void plannerTaskBody(void* arg) {
       if (!robotState.readyForMotion) {
         enterFaultMode("robot not ready for motion");
       } else {
+        updateRobotState();
+        debugWallApplyEvent("[WALL APPLY]", "planner_idle");
+        applyWallsToExplorer();
+        debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
         FloodFillExplorer::Action act = explorer.requestNextAction();
         if (act == FloodFillExplorer::ACT_NONE) {

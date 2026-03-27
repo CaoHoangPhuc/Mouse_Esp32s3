@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.5`
+Current project version: `0.0.2.6`
 
 ## Current Status
 
@@ -59,6 +59,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `telemetryTask` prints compact runtime state to serial.
 12. `explorerTask` serves the web maze view.
+13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
