@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.2`
+Current project version: `0.0.2.4`
 
 ## Current Status
 
@@ -55,10 +55,14 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 6. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
 8. `explore` and `speedrun` start with one `snapCenter()` alignment primitive before the planner is allowed to run.
-9. After a motion completes in hardware mode, the runtime holds the motors in hard-stop briefly, waits a short settle period, refreshes robot sensor state, applies wall sensing for the new pose once, then ACKs the pending planner action so the next motion cannot start before sensing is committed.
+9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `telemetryTask` prints compact runtime state to serial.
 12. `explorerTask` serves the web maze view.
+
+Planner synchronization note:
+- `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
+- This prevents a race where `robotState.motionStatus` could still be stale while the controller had already left `RUNNING`, which could otherwise cause repeated `move1` starts before wall sensing and ACK completed.
 
 ## Configuration
 
@@ -112,7 +116,7 @@ Primitive execution currently includes:
 - hard stop now disables motor speed PID and coasts with `applyDuty(0)` instead of relying on `setSpeedTPS(0)`
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 - motion start/end debug hooks in the runtime for tracing primitive flow during tuning
-- a short post-motion hard-stop hold so the robot physically settles before sensing and the next action
+- a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action
 - a short post-motion sensor settle before wall registration so TOF readings can catch up to the new pose
 - `snapCenter()` runs as one primitive: reverse short, hard stop, hold briefly, then forward short
 - `snapCenter()` does not change the logical maze pose; it is a physical re-centering primitive only
@@ -221,7 +225,7 @@ Current values are placeholders and will need on-robot tuning in [Config.h](c:\U
 - wall threshold
 - wall-centering PID gains (`CENTER_PID_KP/KI/KD`)
 - wall-centering PID integral/output limits
-- post-motion hard-stop hold before sensing / next action
+- post-motion hard-stop hold before the next action
 - post-motion sensor settle delay before wall registration
 - snapcenter reverse-stop hold before forward restart
 - front stop distance

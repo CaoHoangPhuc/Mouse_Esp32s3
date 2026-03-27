@@ -527,18 +527,6 @@ static void handleMotionCompletion() {
                      robotState.pose.cellX, robotState.pose.cellY, headingDir());
     leftMotor.hardStop();
     rightMotor.hardStop();
-    if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0) {
-      if (AppConfig::Debug::DEBUG_WALL_APPLY) {
-        debugPrintln("[STOP HOLD] wait " + String(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS) +
-                     "ms before settle/sense");
-      }
-      vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS));
-    }
-    if (AppConfig::Debug::DEBUG_WALL_APPLY) {
-      debugPrintln("[SETTLE] wait " + String(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS) +
-                   "ms before wall apply");
-    }
-    vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_SENSOR_SETTLE_MS));
     updateRobotState();
     debugWallApplyEvent("[WALL APPLY]", "motion_complete");
     applyWallsToExplorer();
@@ -594,6 +582,17 @@ static void handleMotionCompletion() {
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         enterIdleMode("speed run finished");
       }
+    }
+
+    if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
+        motionController.status() == MOTION_COMPLETED &&
+        robotState.mode != ROBOT_MODE_IDLE &&
+        robotState.mode != ROBOT_MODE_FAULT) {
+      if (AppConfig::Debug::DEBUG_WALL_APPLY) {
+        debugPrintln("[STOP HOLD] wait " + String(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS) +
+                     "ms before next motion");
+      }
+      vTaskDelay(pdMS_TO_TICKS(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS));
     }
   } else if (status == MOTION_FAILED || status == MOTION_ABORTED) {
     debugMotionEvent("[MOTION END]", primitive, status,
@@ -816,10 +815,13 @@ void plannerTaskBody(void* arg) {
       continue;
     }
 
-    if (robotState.motionStatus == MOTION_COMPLETED ||
-        robotState.motionStatus == MOTION_FAILED ||
-        robotState.motionStatus == MOTION_ABORTED) {
+    const MotionStatus motionStatus = motionController.status();
+    if (motionStatus == MOTION_COMPLETED ||
+        motionStatus == MOTION_FAILED ||
+        motionStatus == MOTION_ABORTED) {
       handleMotionCompletion();
+      vTaskDelayUntil(&last, period);
+      continue;
     }
 
     if ((robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN) &&
