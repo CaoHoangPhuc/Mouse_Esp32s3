@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.14`
+Current project version: `0.0.2.15`
 
 ## Current Status
 
@@ -132,7 +132,7 @@ Primitive execution currently includes:
 - front-wall stop support based directly on front distance threshold
 - side-wall centering correction using a wall PID error term
 - battery-critical abort
-- hard stop now disables motor speed PID and coasts with `applyDuty(0)` instead of relying on `setSpeedTPS(0)`
+- motor control now separates coast stop from active brake: motion-completion and transition paths use brake, while general stop/idle paths can still coast
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 - motion start/end debug hooks in the runtime for tracing primitive flow during tuning
 - a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action

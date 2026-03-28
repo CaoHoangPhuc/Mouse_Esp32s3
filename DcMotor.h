@@ -29,6 +29,8 @@ public:
   // Speed control in ticks/sec
   void setSpeedTPS(float tps);
   void enableSpeedControl(bool en);
+  void coastStop();
+  void brakeStop();
   void hardStop();
 
   // PID tuning (TPS units)

@@ -91,9 +91,7 @@ bool DcMotor::begin(const Pins& pins,
   resetPID();
 
   // stop motor
-  digitalWrite(_p.in1, LOW);
-  digitalWrite(_p.in2, LOW);
-  pwmWriteDuty(0);
+  coastStop();
 
   return true;
 }
@@ -155,11 +153,23 @@ void DcMotor::setSpeedTPS(float tps) {
   _speedCtrlEnabled = true;
 }
 
+void DcMotor::coastStop() {
+  digitalWrite(_p.in1, LOW);
+  digitalWrite(_p.in2, LOW);
+  pwmWriteDuty(0);
+}
+
+void DcMotor::brakeStop() {
+  digitalWrite(_p.in1, HIGH);
+  digitalWrite(_p.in2, HIGH);
+  pwmWriteDuty(_pwmMax);
+}
+
 void DcMotor::hardStop() {
   _targetTPS = 0.0f;
   _speedCtrlEnabled = false;
   resetPID();
-  applyDuty(0);
+  brakeStop();
 }
 
 void DcMotor::setSpeedPID(float kp, float ki, float kd,

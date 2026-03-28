@@ -1202,13 +1202,13 @@ static void handleSerialCommand(const String& rawLine) {
   if (line == "test motorl") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     leftMotor.setSpeedTPS(220.0f);
-    rightMotor.hardStop();
+    rightMotor.coastStop();
     debugPrintln("[TEST] left motor spin");
     return;
   }
   if (line == "test motorr") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
-    leftMotor.hardStop();
+    leftMotor.coastStop();
     rightMotor.setSpeedTPS(220.0f);
     debugPrintln("[TEST] right motor spin");
     return;

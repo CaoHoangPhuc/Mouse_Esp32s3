@@ -86,8 +86,8 @@ bool MotionController::turn180() {
 
 void MotionController::stop() {
   if (!left_ || !right_) return;
-  left_->hardStop();
-  right_->hardStop();
+  left_->coastStop();
+  right_->coastStop();
 
   if (primitive_ == MOTION_NONE) {
     status_ = MOTION_IDLE;
