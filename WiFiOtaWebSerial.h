@@ -5,13 +5,20 @@
 
 class WiFiOtaWebSerial {
 public:
+  using LedCommandHandler = bool (*)(const String& cmd, String& response);
+  using TelnetReconnectHandler = bool (*)();
+  using HealthJsonProvider = String (*)();
+
   struct Config {
     const char* ssid       = nullptr;
     const char* pass       = nullptr;
 
     const char* hostname   = "esp32";
-    const char* otaPassword = "";     // empty => no password
     uint16_t    port       = 80;
+    bool        enableWeb  = true;
+    uint16_t    debugTcpPort = 2323;
+    uint16_t    uploadPort = 82;
+    bool        enableUploadWeb = true;
 
     // Web log ring buffer size
     size_t      logBufferBytes = 16 * 1024;
@@ -21,6 +28,8 @@ public:
     uint32_t    wifiTaskStack  = 6144;   // bytes
     UBaseType_t wifiTaskPrio   = 1;
     BaseType_t  wifiCore       = 0;
+    uint32_t    wifiConnectTimeoutMs = 5000;
+    uint32_t    wifiReconnectIntervalMs = 1000;
   };
 
   WiFiOtaWebSerial();
@@ -36,13 +45,19 @@ public:
   void print(const String& s, bool mirrorToSerial = true);
   void println(const String& s, bool mirrorToSerial = true);
   void clear();
+  void setLedCommandHandler(LedCommandHandler handler) { ledCommandHandler_ = handler; }
+  void setTelnetReconnectHandler(TelnetReconnectHandler handler) { telnetReconnectHandler_ = handler; }
+  void setHealthJsonProvider(HealthJsonProvider provider) { healthJsonProvider_ = provider; }
 
   // Info
   String ip() const;
+  bool isOtaInProgress() const { return otaInProgress; }
+  bool isUpdateInProgress() const { return otaInProgress || webUploadInProgress_ || rebootPending_; }
 
 private:
   class WebServerWrapper;   // forward declaration
   WebServerWrapper* web_ = nullptr;
+  WebServerWrapper* uploadWeb_ = nullptr;
 
   Config cfg_;
   bool started_ = false;
@@ -57,14 +72,28 @@ private:
   bool atLineStart_ = true;
   
   volatile bool otaInProgress = false;
+  volatile bool webUploadInProgress_ = false;
+  volatile bool rebootPending_ = false;
+  uint32_t rebootAtMs_ = 0;
+  LedCommandHandler ledCommandHandler_ = nullptr;
+  TelnetReconnectHandler telnetReconnectHandler_ = nullptr;
+  HealthJsonProvider healthJsonProvider_ = nullptr;
 
 private:
   static void wifiTaskThunk_(void* arg);
   void wifiTaskLoop_();
 
   void setupWiFi_();
+  bool ensureWiFiConnected_(uint32_t timeoutMs);
   void setupOta_();
   void setupWeb_();
+  void setupUploadWeb_();
+  void setLedState_(const String& cmd);
+  void serviceUpdateLed_();
+  String extractBatteryText_(const String& json) const;
 
   void appendLog_(const String& s);
+
+  uint32_t ledBlinkMs_ = 0;
+  bool ledBlinkOn_ = false;
 };

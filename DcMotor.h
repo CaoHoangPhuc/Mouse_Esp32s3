@@ -29,6 +29,9 @@ public:
   // Speed control in ticks/sec
   void setSpeedTPS(float tps);
   void enableSpeedControl(bool en);
+  void coastStop();
+  void brakeStop();
+  void hardStop();
 
   // PID tuning (TPS units)
   // outLimit: max command magnitude (0..1)
@@ -70,7 +73,7 @@ private:
   uint8_t _pwmResBits = 10;
   uint32_t _pwmMax = 1023;
 
-  const int DEADZONE = 20;
+  const int DEADZONE = 10;
   volatile int32_t _ticks = 0;
 
   // speed estimation

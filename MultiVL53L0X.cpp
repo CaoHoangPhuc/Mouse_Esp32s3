@@ -1,6 +1,50 @@
 #include "common/tusb_fifo.h"
 #include "MultiVL53L0X.h"
 
+uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
+    if (index >= _numSensors) return 255;
+    if (!_initialized[index]) return 3;
+
+    if (_version == SENSOR_V2 && index == 3) {
+        uint8_t s0State = _timeoutFlag[0];
+
+        if (s0State == 2) return 2;  // S0 sees "far", clamp S3 to far too.
+        if (s0State == 3) return 3;  // S0 invalid => S3 invalid.
+    }
+
+    return _timeoutFlag[index];
+}
+
+uint16_t MultiVL53L0X::effectiveDistance_(uint8_t index) const {
+    if (index >= _numSensors) return 0;
+    if (!_initialized[index]) return 0;
+
+    if (_version == SENSOR_V2 && index == 3) {
+        uint8_t s0State = _timeoutFlag[0];
+
+        if (s0State == 2) return DIST_FAR;  // Match S0 "far" state.
+        if (s0State == 3) return 0;         // Match S0 invalid state.
+    }
+
+    return _lastDistance[index];
+}
+
+void MultiVL53L0X::setCenterPid(float kp, float ki, float kd, float iLimit, float outLimit) {
+    _centerKp = kp;
+    _centerKi = ki;
+    _centerKd = kd;
+    _centerILimit = fabsf(iLimit);
+    _centerOutLimit = fabsf(outLimit);
+}
+
+void MultiVL53L0X::resetCenterPid() {
+    _centerIntegral = 0.0f;
+    _centerPrevError = 0.0f;
+    _centerPrevMs = 0;
+    _centerPidPrimed = false;
+    error = 0.0f;
+}
+
 MultiVL53L0X::MultiVL53L0X(uint8_t pcfAddress,
                            uint8_t numSensors,
                            const uint8_t* xshutPins,
@@ -90,24 +134,24 @@ bool MultiVL53L0X::begin() {
 
 bool MultiVL53L0X::readTOF_fast(uint8_t addr, uint16_t &dist)
 {
-    Wire.beginTransmission(addr);
-    Wire.write(0x14);
+    _wire->beginTransmission(addr);
+    _wire->write(0x14);
 
-    if (Wire.endTransmission(false) != 0) {
+    if (_wire->endTransmission(false) != 0) {
         return false;
     }
 
     delayMicroseconds(200);
 
-    Wire.requestFrom(addr, (uint8_t)12);
+    _wire->requestFrom(addr, (uint8_t)12);
 
-    if (Wire.available() < 12) {
+    if (_wire->available() < 12) {
         return false;
     }
 
     uint8_t buf[12];
     for (int i = 0; i < 12; i++) {
-        buf[i] = Wire.read();
+        buf[i] = _wire->read();
     }
 
     dist = (buf[10] << 8) | buf[11];
@@ -161,7 +205,6 @@ void MultiVL53L0X::update() {
             }
 
             _timeoutFlag[_cSensor] = 0;
-            computeError(0);
         }
     }
     else {
@@ -190,29 +233,56 @@ void MultiVL53L0X::detectLayout() {
 
 // 🔥 Unified sensor read
 MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
-    SensorState s = {false, false, false};
+    SensorState s = {false, false, false, false, false, false, 0, 0, 0};
+    auto isObservable = [&](uint8_t index) {
+        if (index >= _numSensors) return false;
+        uint8_t state = stateTimeout(index);
+        return state == 0 || state == 1 || state == 2;
+    };
 
     if (_version == SENSOR_V1) {
         uint16_t left  = getDistance(0);
         uint16_t front = getDistance(2);
         uint16_t right = getDistance(4);
 
-        s.leftWall  = (left  < WALL_TH);
-        s.rightWall = (right < WALL_TH);
-        s.frontWall = (front < WALL_TH);
+        s.leftValid = isObservable(0);
+        s.frontValid = isObservable(2);
+        s.rightValid = isObservable(4);
+        s.leftMm = left;
+        s.frontMm = front;
+        s.rightMm = right;
+        s.leftWall  = s.leftValid && (left  < _wallThreshold);
+        s.rightWall = s.rightValid && (right < _wallThreshold);
+        s.frontWall = s.frontValid && (front < _wallThreshold);
     }
     else if (_version == SENSOR_V2) {
         uint16_t fl = getDistance(0);
         uint16_t l  = getDistance(1);
         uint16_t r  = getDistance(2);
-        // uint16_t fr = getDistance(3);
+        uint16_t fr = getDistance(3);
 
-        s.leftWall  = (l < WALL_TH);
-        s.rightWall = (r < WALL_TH);
+        uint8_t flState = stateTimeout(0);
+        uint8_t frState = stateTimeout(3);
+        bool flValid = isObservable(0);
+        bool frValidRaw = isObservable(3);
+        // S3 is front-right. On current hardware it is only trustworthy when
+        // S0 (front-left) is also seeing the front wall region.
+        bool frValid = flValid && frValidRaw;
+        bool flFar = flState == 2;
+        bool frFar = frState == 2;
+        s.leftValid  = isObservable(1);
+        s.rightValid = isObservable(2);
+        s.frontValid = flValid || frValid || (flFar && frFar);
+        s.leftMm = l;
+        s.rightMm = r;
+        if (flValid && frValid) s.frontMm = min(fl, fr);
+        else if (flValid) s.frontMm = fl;
+        else if (frValid) s.frontMm = fr;
+        else if (flFar && frFar) s.frontMm = DIST_FAR;
 
-        // more robust front detection
-        s.frontWall = (l < WALL_TH);
-        // s.frontWall = ((fl + fr) / 2) < th;
+        s.leftWall  = s.leftValid && (l < _wallThreshold);
+        s.rightWall = s.rightValid && (r < _wallThreshold);
+        s.frontWall = s.frontValid && (s.frontMm < _wallThreshold);
     }
 
     return s;
@@ -220,19 +290,21 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
 
 // ---- getters ----
 bool MultiVL53L0X::isSensorOk(uint8_t index) const {
-    return (index < _numSensors) && _initialized[index];
+    if (index >= _numSensors) return false;
+    return _initialized[index];
 }
 
 uint16_t MultiVL53L0X::getDistance(uint8_t index) const {
-    return (index < _numSensors) ? _lastDistance[index] : 0;
+    return effectiveDistance_(index);
 }
 
 uint16_t MultiVL53L0X::getRaw(uint8_t index) const {
-    return (index < _numSensors) ? _raw[index]: 0;
+    if (index >= _numSensors) return 0;
+    return _raw[index];
 }
 
 uint8_t MultiVL53L0X::stateTimeout(uint8_t index) const {
-    return (index < _numSensors) ? _timeoutFlag[index]: 255;
+    return effectiveState_(index);
 }
 
 uint8_t MultiVL53L0X::getSensorAddress(uint8_t index) const {
@@ -264,7 +336,6 @@ float MultiVL53L0X::computeError(float headingError) {
     uint8_t leftState = 3;
     uint8_t rightState = 3;
 
-    // 🔹 Map sensors
     if (_version == SENSOR_V1) {
         left  = getDistance(0);
         right = getDistance(4);
@@ -278,39 +349,60 @@ float MultiVL53L0X::computeError(float headingError) {
         rightState = stateTimeout(2);
     }
 
-    bool leftValid  = isGood(leftState);
-    bool rightValid = isGood(rightState);
+    const bool leftValid  = isGood(leftState);
+    const bool rightValid = isGood(rightState);
 
-    float err = 0.0f;
-
-    // ✅ BOTH WALLS
-    // if (leftValid && rightValid) {
-    //     err = (float)left - (float)right;
-    //     // CENTER_TARGET = 0.8*CENTER_TARGET + 0.2 * (((float)left + (float)right) / 2.0);
-    // }
-    // ✅ ONLY LEFT
-    if (leftValid) {
-        err = (float)CENTER_TARGET - (float)left;
-    }
-    // ✅ ONLY RIGHT
-    else if (rightValid) {
-        err = (float)right - (float)CENTER_TARGET;
-    }
-    // ✅ NO WALL → fallback
-    else {
-        err = headingError;
+    float rawErr = 0.0f;
+    if (leftValid && rightValid) {
+        rawErr = 0.5f * (((float)CENTER_TARGET - (float)left) +
+                         ((float)right - (float)CENTER_TARGET));
+    } else if (leftValid) {
+        rawErr = (float)CENTER_TARGET - (float)left;
+    } else if (rightValid) {
+        rawErr = (float)right - (float)CENTER_TARGET;
+    } else {
+        rawErr = headingError;
     }
 
-    // 🔥 Optional blending (VERY useful)
-    // helps reduce oscillation
-    err = 0.8f * error + 0.2f * err;
-
-    // 🔥 clamp
-    if (err > 50) err = 50;
-    if (err < -50) err = -50;
-
-    error = err;
-
-    return err;;
+    const uint32_t now = millis();
+    float dt = 0.02f;
+    if (_centerPidPrimed && _centerPrevMs > 0) {
+        const uint32_t deltaMs = now - _centerPrevMs;
+        if (deltaMs > 0) dt = max(0.001f, deltaMs / 1000.0f);
     }
+
+    if (!_centerPidPrimed) {
+        _centerIntegral = 0.0f;
+        _centerPrevError = rawErr;
+        _centerPidPrimed = true;
+    }
+
+    _centerIntegral += rawErr * dt;
+    if (_centerIntegral > _centerILimit) _centerIntegral = _centerILimit;
+    if (_centerIntegral < -_centerILimit) _centerIntegral = -_centerILimit;
+
+    float derivative = 0.0f;
+    if (dt > 0.0f) {
+        derivative = (rawErr - _centerPrevError) / dt;
+    }
+
+    float out = (_centerKp * rawErr) +
+                (_centerKi * _centerIntegral) +
+                (_centerKd * derivative);
+
+    if (out > _centerOutLimit) out = _centerOutLimit;
+    if (out < -_centerOutLimit) out = -_centerOutLimit;
+
+    _centerPrevError = rawErr;
+    _centerPrevMs = now;
+    error = out;
+
+    return out;
+}
+
+bool MultiVL53L0X::isGoodReading_(uint8_t index) const {
+    if (index >= _numSensors) return false;
+    uint8_t state = stateTimeout(index);
+    return state == 0 || state == 1;
+}
 

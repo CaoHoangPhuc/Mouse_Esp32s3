@@ -1,4 +1,7 @@
 #include "FloodFillExplorer.h"
+#include <WiFi.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha1.h>
 
 // ============================ HTML UI ============================
 // Improvements:
@@ -18,27 +21,22 @@ static const char* kHtml PROGMEM = R"HTML(
   header{background:#111;color:#eee;padding:10px 12px;position:sticky;top:0}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   button{padding:8px 12px;cursor:pointer}
-  input{padding:6px 8px;width:64px}
   canvas{display:block;margin:0 auto;border-top:1px solid #333}
   small{opacity:.85}
-  .lbl{opacity:.85}
   .pill{padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.12)}
   .warn{background:rgba(255,140,0,.18)}
+  .statusbar{background:#f4f6f8;border-bottom:1px solid #d8dde3;padding:8px 12px;
+             font:13px/1.45 ui-monospace,Consolas,monospace;white-space:normal;
+             overflow-wrap:anywhere;word-break:break-word}
 </style>
 </head>
 <body>
 <header>
   <div class="row">
     <b>Flood Fill Explorer</b>
-    <small id="st" class="pill">loading…</small>
+    <small id="conn" class="pill">loading...</small>
 
     <div style="margin-left:auto" class="row">
-      <span class="lbl">Start:</span>
-      <input id="sx" type="number" min="0" max="15" value="0" />
-      <input id="sy" type="number" min="0" max="15" value="15" />
-      <input id="sh" type="number" min="0" max="3"  value="0" />
-      <button onclick="setStart()">Set Start</button>
-
       <button onclick="cmd('step')">Step</button>
       <button onclick="cmd('run')">Run</button>
       <button onclick="cmd('pause')">Pause</button>
@@ -46,107 +44,56 @@ static const char* kHtml PROGMEM = R"HTML(
 
       <span class="pill warn">
         AutoACK(sim)
-        <input id="autoAck" type="checkbox" checked style="transform:scale(1.2);margin-left:6px"/>
+        <input id="autoAck" type="checkbox" style="transform:scale(1.2);margin-left:6px"/>
       </span>
     </div>
   </div>
 </header>
 
+<div id="status" class="statusbar">Connecting to explorer...</div>
+
 <canvas id="c" width="720" height="720"></canvas>
 
 <script>
 const N=16;
+const WS_PORT=%WS_PORT%;
 const c=document.getElementById('c');
 const ctx=c.getContext('2d');
 let S=null;
-
+let ws=null;
 let busy=false;
-let stopPoll=false;
-
-let inputsInit=false;
-let lastVer=0;
-
+let stopLoop=false;
 let nextInFlight=false;
 let ackInFlight=false;
-let stateInFlight=false;
 
-// ---- tunables ----
-const POLL_MS = 200;          // /state poll interval
-const TICK_MS = 50;           // state machine tick (next/ack)
-const STATE_TO = 300;         // /state timeout
-const NEXT_TO  = 300;         // /next timeout
-const ACK_TO   = 300;         // /ack timeout
-const AUTO_ACK_DELAY_MS = 50; // simulate speed (increase -> slower)
+const TICK_MS = 50;
+const AUTO_ACK_DELAY_MS = 50;
 
 function st(s){
-  const el=document.getElementById('st');
+  const el=document.getElementById('status');
   el.textContent=s;
 }
 
-function clampInt(v, lo, hi){
-  v = (v|0);
-  if(v<lo) v=lo;
-  if(v>hi) v=hi;
-  return v;
+function setConn(s){
+  const el=document.getElementById('conn');
+  el.textContent=s;
 }
 
-// --- fetch with abort timeout ---
-async function fetchWithTimeout(url, opts={}, timeoutMs=1500){
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-  try{
-    return await fetch(url, {...opts, signal: ctrl.signal});
-  } finally {
-    clearTimeout(t);
-  }
+function wsReady(){
+  return ws && ws.readyState === WebSocket.OPEN;
 }
 
-function initInputsOnce(){
-  if(inputsInit) return;
-  if(S && S.start){
-    document.getElementById('sx').value = S.start.x;
-    document.getElementById('sy').value = S.start.y;
-    document.getElementById('sh').value = S.start.h;
-    inputsInit = true;
-  }
+function sendWs(msg){
+  if(!wsReady()) return false;
+  ws.send(msg);
+  return true;
 }
 
-async function cmd(a){
-  if(busy) return;
-  busy=true;
-  try{
-    const r = await fetchWithTimeout('/cmd?a='+encodeURIComponent(a), {cache:'no-store'}, 1200);
-    if(!r.ok) st("cmd failed HTTP "+r.status);
-    await refresh(true);
-  }catch(e){
-    st("cmd err: "+e);
-  }finally{
-    busy=false;
-  }
-}
-
-async function setStart(){
-  if(busy) return;
-  busy=true;
-  try{
-    const x = clampInt(parseInt(document.getElementById('sx').value||"0",10), 0, 15);
-    const y = clampInt(parseInt(document.getElementById('sy').value||"15",10), 0, 15);
-    const h = clampInt(parseInt(document.getElementById('sh').value||"0",10), 0, 3);
-
-    document.getElementById('sx').value = x;
-    document.getElementById('sy').value = y;
-    document.getElementById('sh').value = h;
-
-    const url = `/cmd?a=setstart&x=${x}&y=${y}&h=${h}`;
-    const r = await fetchWithTimeout(url, {cache:'no-store'}, 1200);
-    if(!r.ok) st("setstart failed HTTP "+r.status);
-
-    await refresh(true);
-  }catch(e){
-    st("setstart err: "+e);
-  }finally{
-    busy=false;
-  }
+function cmd(a){
+  if(busy || !wsReady()) return;
+  busy = true;
+  const autoAck = document.getElementById('autoAck').checked;
+  sendWs((autoAck ? 'cmd|' : 'hwcmd|') + a);
 }
 
 function cellGeom(){
@@ -169,7 +116,7 @@ function drawPlanPath(geom, plan){
 
   ctx.save();
   ctx.lineWidth = Math.max(1.2, cs*0.040);
-  ctx.strokeStyle = "rgba(255, 130, 0, 0.65)";
+  ctx.strokeStyle = 'rgba(255, 130, 0, 0.65)';
   ctx.setLineDash([cs*0.16, cs*0.11]);
 
   ctx.beginPath();
@@ -202,55 +149,43 @@ function drawPlanPath(geom, plan){
 function draw(){
   if(!S) return;
   const g = cellGeom();
-  const {W,H,cs,ox,oy}=g;
-  ctx.clearRect(0,0,W,H);
+  const {cs,ox,oy}=g;
+  ctx.clearRect(0,0,c.width,c.height);
 
-  initInputsOnce();
-
-  // goal rect
   const gx0=S.goal.x0, gy0=S.goal.y0, gw=S.goal.w, gh=S.goal.h;
-  ctx.fillStyle="rgba(0,0,0,0.06)";
+  ctx.fillStyle='rgba(0,0,0,0.06)';
   ctx.fillRect(ox+gx0*cs, oy+gy0*cs, gw*cs, gh*cs);
 
-  // start marker
-  const sx=S.start.x, sy=S.start.y;
-  ctx.fillStyle="rgba(0,0,0,0.08)";
-  ctx.fillRect(ox+sx*cs, oy+sy*cs, cs, cs);
-
-  // visited shading
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       if(S.visited[y][x]){
-        ctx.fillStyle="rgba(0,0,0,0.03)";
+        ctx.fillStyle='rgba(0,0,0,0.03)';
         ctx.fillRect(ox+x*cs, oy+y*cs, cs, cs);
       }
     }
   }
 
-  // grid
-  ctx.strokeStyle="rgba(0,0,0,0.08)";
+  ctx.strokeStyle='rgba(0,0,0,0.08)';
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       ctx.strokeRect(ox+x*cs, oy+y*cs, cs, cs);
     }
   }
 
-  // dist numbers
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.font=Math.floor(cs*0.35)+"px ui-monospace,monospace";
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.font=Math.floor(cs*0.35)+'px ui-monospace,monospace';
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       const d=S.dist[y][x];
       if(d!==65535){
-        ctx.fillStyle = S.visited[y][x] ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)";
+        ctx.fillStyle = S.visited[y][x] ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.25)';
         ctx.fillText(String(d), ox+x*cs+cs*0.5, oy+y*cs+cs*0.5);
       }
     }
   }
 
-  // known walls only
-  ctx.strokeStyle="rgba(0,0,0,0.9)";
+  ctx.strokeStyle='rgba(0,0,0,0.9)';
   ctx.lineWidth=Math.max(2, cs*0.08);
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
@@ -265,27 +200,25 @@ function draw(){
     }
   }
 
-  // plan
   if(S.plan) drawPlanPath(g, S.plan);
 
-  // mouse
   const mx=S.mouse.x, my=S.mouse.y, h=S.mouse.h;
   const cc = cellCenter(mx,my,g);
   const cx=cc.cx, cy=cc.cy;
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
   ctx.beginPath();
   ctx.arc(cx, cy, cs*0.30, 0, Math.PI*2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.45)";
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.lineWidth = Math.max(1.5, cs*0.05);
   ctx.beginPath();
   ctx.arc(cx, cy, cs*0.30, 0, Math.PI*2);
   ctx.stroke();
 
   const ax=[0,1,0,-1], ay=[-1,0,1,0];
-  ctx.strokeStyle="rgba(0,0,0,0.35)";
+  ctx.strokeStyle='rgba(0,0,0,0.35)';
   ctx.lineWidth=Math.max(2.2, cs*0.065);
   ctx.beginPath();
   ctx.moveTo(cx,cy);
@@ -293,101 +226,113 @@ function draw(){
   ctx.stroke();
 
   const cur = S.dist[my][mx];
-  const pa = S.pendingActionName || "-";
-  st("ver="+(S.ver||0)+" | mouse=("+mx+","+my+") h="+h+
-     " | running="+S.running+" | waitAck="+S.waitAck+
-     " | seq="+(S.pendingSeq||0)+" | act="+pa+
-     " | dist="+cur+" | planLen="+(S.planLen||0));
+  const pa = S.pendingActionName || '-';
+  const home = S.home ? `home=(${S.home.x0},${S.home.y0}) ${S.home.w}x${S.home.h}` : 'home=-';
+  const goal = S.goal ? `goal=(${S.goal.x0},${S.goal.y0}) ${S.goal.w}x${S.goal.h}` : 'goal=-';
+  st('mouse=('+mx+','+my+') h='+h+
+     ' | running='+S.running+
+     ' | waitAck='+S.waitAck+
+     ' | seq='+(S.pendingSeq||0)+
+     ' | act='+pa+
+     ' | dist='+cur+
+     ' | planLen='+(S.planLen||0)+
+     ' | '+home+
+     ' | '+goal+
+     ' | ver='+(S.ver||0));
 }
 
-// ---------- ACTION STATE MACHINE (separate from refresh) ----------
-async function doNextIfNeeded(){
+function doNextIfNeeded(){
   if(!S || !S.running || S.waitAck) return;
-  if(nextInFlight || busy || ackInFlight || stateInFlight) return;
-  nextInFlight = true;
-  try{
-    await fetchWithTimeout('/next', {cache:'no-store'}, NEXT_TO);
-  }catch(e){}
-  finally{
-    nextInFlight = false;
-  }
+  if(nextInFlight || busy || ackInFlight || !wsReady()) return;
+  nextInFlight = sendWs('next');
 }
 
-async function autoAckIfEnabled(){
+function autoAckIfEnabled(){
   if(!S || !S.running || !S.waitAck) return;
-  if(ackInFlight || busy || stateInFlight) return;
-
+  if(ackInFlight || busy || !wsReady()) return;
   const autoAck = document.getElementById('autoAck').checked;
   if(!autoAck) return;
-
   ackInFlight = true;
-  const seqSnapshot = S.pendingSeq; // snapshot!
-
-  setTimeout(async ()=>{
-    try{
-      await fetchWithTimeout('/ack?seq=' + encodeURIComponent(String(seqSnapshot)) + '&ok=1',
-                             {cache:'no-store'}, ACK_TO);
-    }catch(e){}
-    finally{
+  const seqSnapshot = S.pendingSeq;
+  setTimeout(()=>{
+    if(!wsReady()){
       ackInFlight = false;
+      return;
     }
+    sendWs('ack|' + String(seqSnapshot) + '|1');
   }, AUTO_ACK_DELAY_MS);
 }
 
-async function tickLoop(){
-  if(!stopPoll){
-    // tách action machine ra khỏi /state để tránh burst
-    await doNextIfNeeded();
-    await autoAckIfEnabled();
+function tickLoop(){
+  if(!stopLoop){
+    doNextIfNeeded();
+    autoAckIfEnabled();
     setTimeout(tickLoop, TICK_MS);
   }
 }
 
-// ---------- STATE POLL (only fetch + draw) ----------
-async function refresh(fromCmd=false){
-  if(stateInFlight) return;
-  if(busy && !fromCmd) return;
-
-  stateInFlight = true;
-  try{
-    const url = '/state?since=' + encodeURIComponent(String(lastVer)) + '&t=' + Date.now();
-    const r = await fetchWithTimeout(url, {cache:'no-store'}, STATE_TO);
-
-    if(r.status === 204){
-      // no changes -> do nothing here (tickLoop handles next/ack)
-      return;
-    }
-    if(!r.ok){
-      st("state HTTP "+r.status);
-      return;
-    }
-
-    S = await r.json();
-    lastVer = S.ver || lastVer;
+function handleWsMessage(text){
+  if(text.startsWith('state|')){
+    S = JSON.parse(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
     draw();
-
-  }catch(e){
-    const es = String(e);
-    if(es.includes("AbortError") || es.includes("timeout")) st("state timeout");
-    else st("offline: "+e);
-  }finally{
-    stateInFlight = false;
+    return;
+  }
+  if(text.startsWith('reply|')){
+    st(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
+    return;
+  }
+  if(text.startsWith('error|')){
+    st(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
   }
 }
 
-async function pollLoop(){
-  while(!stopPoll){
-    await refresh(false);
-    await new Promise(res => setTimeout(res, POLL_MS));
-  }
+function connectWs(){
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const host = location.hostname || window.location.host.split(':')[0];
+  ws = new WebSocket(proto + host + ':' + WS_PORT + '/ws');
+  ws.onopen = () => {
+    setConn('ws connected');
+    st('Explorer websocket connected.');
+    sendWs('hello');
+  };
+  ws.onmessage = (ev) => handleWsMessage(String(ev.data || ''));
+  ws.onclose = () => {
+    setConn('ws disconnected');
+    st('Explorer websocket disconnected. Retrying...');
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
+    setTimeout(connectWs, 1000);
+  };
+  ws.onerror = () => {
+    setConn('ws error');
+  };
 }
 
-pollLoop();
+connectWs();
 tickLoop();
-refresh(true);
 </script>
 </body></html>
 )HTML";
+
+class FloodFillExplorer::WsServerWrapper {
+public:
+  explicit WsServerWrapper(uint16_t port) : server(port) {}
+
+  WiFiServer server;
+  WiFiClient client;
+  bool handshaken = false;
+  uint32_t lastStateVerSent = 0xFFFFFFFFu;
+};
 
 // ----------------- Core constants -----------------
 static const int dx4[4] = {0, 1, 0, -1};
@@ -430,6 +375,10 @@ FloodFillExplorer::~FloodFillExplorer(){
     delete server_;
     server_ = nullptr;
   }
+  if(ws_){
+    delete ws_;
+    ws_ = nullptr;
+  }
 }
 
 void FloodFillExplorer::log_(const String& s){
@@ -450,13 +399,128 @@ FloodFillExplorer::Dir FloodFillExplorer::opposite_(Dir d) const{
   return (Dir)(((uint8_t)d + 2) & 3);
 }
 
-bool FloodFillExplorer::inBounds_(int x,int y){
+bool FloodFillExplorer::inBounds_(int x,int y) const{
   return (x>=0 && x<N && y>=0 && y<N);
 }
 
-bool FloodFillExplorer::isGoal_(int x,int y){
+bool FloodFillExplorer::isGoal_(int x,int y) const{
   return (x >= gx0_ && x < (int)(gx0_ + gw_) &&
           y >= gy0_ && y < (int)(gy0_ + gh_));
+}
+
+bool FloodFillExplorer::atActiveTarget_() const{
+  if(!isGoal_(mx_, my_)) return false;
+  if(!targetHome_) return true;
+  return mh_ == origSh_;
+}
+
+uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
+                                                  uint8_t startW, uint8_t startH,
+                                                  uint8_t goalX0, uint8_t goalY0,
+                                                  uint8_t goalW, uint8_t goalH) const {
+  static constexpr uint16_t INF = 0xFFFF;
+  uint16_t dist[N][N];
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      dist[y][x] = INF;
+    }
+  }
+
+  int qx[N * N], qy[N * N];
+  int qh = 0, qt = 0;
+
+  for (int y = goalY0; y < (int)(goalY0 + goalH); ++y) {
+    for (int x = goalX0; x < (int)(goalX0 + goalW); ++x) {
+      if (!inBounds_(x, y)) continue;
+      dist[y][x] = 0;
+      qx[qt] = x;
+      qy[qt] = y;
+      qt++;
+    }
+  }
+
+  while (qh < qt) {
+    int x = qx[qh];
+    int y = qy[qh];
+    qh++;
+    const uint16_t base = dist[y][x];
+
+    for (int di = 0; di < 4; ++di) {
+      Dir d = (Dir)di;
+      if (knownHasWall_(x, y, d)) continue;
+      int nx = x + dx4[di];
+      int ny = y + dy4[di];
+      if (!inBounds_(nx, ny)) continue;
+      if (dist[ny][nx] > base + 1) {
+        dist[ny][nx] = base + 1;
+        qx[qt] = nx;
+        qy[qt] = ny;
+        qt++;
+      }
+    }
+  }
+
+  uint16_t best = INF;
+  for (int y = startY0; y < (int)(startY0 + startH); ++y) {
+    for (int x = startX0; x < (int)(startX0 + startW); ++x) {
+      if (!inBounds_(x, y)) continue;
+      if (dist[y][x] < best) best = dist[y][x];
+    }
+  }
+  return best;
+}
+
+uint16_t FloodFillExplorer::bestKnownCostOriginalStartToGoal() const {
+  return computeBestKnownCost_(origHx0_, origHy0_, origHw_, origHh_,
+                               origGx0_, origGy0_, origGw_, origGh_);
+}
+
+bool FloodFillExplorer::isInOriginalStart(uint8_t x, uint8_t y) const {
+  return x >= origHx0_ && x < (uint8_t)(origHx0_ + origHw_) &&
+         y >= origHy0_ && y < (uint8_t)(origHy0_ + origHh_);
+}
+
+bool FloodFillExplorer::isInOriginalGoal(uint8_t x, uint8_t y) const {
+  return x >= origGx0_ && x < (uint8_t)(origGx0_ + origGw_) &&
+         y >= origGy0_ && y < (uint8_t)(origGy0_ + origGh_);
+}
+
+void FloodFillExplorer::exportKnownMaze(uint8_t walls[N][N], uint8_t mask[N][N], uint8_t visited[N][N]) const {
+  memcpy(walls, knownWalls_, sizeof(knownWalls_));
+  memcpy(mask, knownMask_, sizeof(knownMask_));
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      visited[y][x] = visited_[y][x] ? 1 : 0;
+    }
+  }
+}
+
+bool FloodFillExplorer::importKnownMaze(const uint8_t walls[N][N], const uint8_t mask[N][N], const uint8_t visited[N][N],
+                                        uint8_t mouseX, uint8_t mouseY, Dir mouseH) {
+  if (!inBounds_(mouseX, mouseY)) return false;
+
+  memcpy(knownWalls_, walls, sizeof(knownWalls_));
+  memcpy(knownMask_, mask, sizeof(knownMask_));
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      visited_[y][x] = visited[y][x] != 0;
+    }
+  }
+
+  mx_ = mouseX;
+  my_ = mouseY;
+  mh_ = mouseH;
+  visited_[my_][mx_] = true;
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+  running_ = false;
+  targetHome_ = false;
+
+  applyBoundaryWalls_();
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+  return true;
 }
 
 const char* FloodFillExplorer::actionName_(Action a) const{
@@ -464,6 +528,7 @@ const char* FloodFillExplorer::actionName_(Action a) const{
     case ACT_NONE:   return "none";
     case ACT_TURN_L: return "turnL";
     case ACT_TURN_R: return "turnR";
+    case ACT_TURN_180: return "turn180";
     case ACT_MOVE_F: return "moveF";
   }
   return "none";
@@ -472,11 +537,30 @@ const char* FloodFillExplorer::actionName_(Action a) const{
 void FloodFillExplorer::markDirty_(){
   stateVer_++;
   buildStateJson_();
+  wsStatePending_ = true;
+}
+
+void FloodFillExplorer::setHardwareMode(bool en) {
+  hardwareMode_ = en;
+  markDirty_();
 }
 
 void FloodFillExplorer::setStart(uint8_t x, uint8_t y, Dir h){
   if(x >= N || y >= N) return;
   sx_ = x; sy_ = y; sh_ = h;
+  origSx_ = x; origSy_ = y; origSh_ = h;
+  targetHome_ = false;
+  markDirty_();
+}
+
+void FloodFillExplorer::setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h){
+  if(w == 0 || h == 0) return;
+  if(x0 >= N || y0 >= N) return;
+  if(x0 + w > N) w = N - x0;
+  if(y0 + h > N) h = N - y0;
+  hx0_ = x0; hy0_ = y0; hw_ = w; hh_ = h;
+  origHx0_ = x0; origHy0_ = y0; origHw_ = w; origHh_ = h;
+  targetHome_ = false;
   markDirty_();
 }
 
@@ -486,7 +570,103 @@ void FloodFillExplorer::setGoalRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h
   if(x0 + w > N) w = N - x0;
   if(y0 + h > N) h = N - y0;
   gx0_ = x0; gy0_ = y0; gw_ = w; gh_ = h;
+  origGx0_ = x0; origGy0_ = y0; origGw_ = gw_; origGh_ = gh_;
+  targetHome_ = false;
   markDirty_();
+}
+
+void FloodFillExplorer::setRunning(bool en) {
+  running_ = en;
+  markDirty_();
+}
+
+void FloodFillExplorer::clearKnownMaze() {
+  memset(visited_, 0, sizeof(visited_));
+  clearKnown_();
+  mx_ = sx_;
+  my_ = sy_;
+  mh_ = sh_;
+  visited_[my_][mx_] = true;
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+void FloodFillExplorer::syncPose(uint8_t x, uint8_t y, Dir h, bool markVisited) {
+  if (x >= N || y >= N) return;
+  mx_ = x;
+  my_ = y;
+  mh_ = h;
+  if (markVisited) visited_[my_][mx_] = true;
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+void FloodFillExplorer::observeRelativeWalls(uint8_t x, uint8_t y, Dir heading,
+                                             bool leftWall, bool frontWall, bool rightWall,
+                                             bool leftValid, bool frontValid, bool rightValid) {
+  if (!inBounds_(x, y)) return;
+
+  auto leftDir = (Dir)(((uint8_t)heading + 3) & 3);
+  auto rightDir = (Dir)(((uint8_t)heading + 1) & 3);
+
+  if (leftValid) confirmObservedWall_(x, y, leftDir, leftWall);
+  if (frontValid) confirmObservedWall_(x, y, heading, frontWall);
+  if (rightValid) confirmObservedWall_(x, y, rightDir, rightWall);
+
+  visited_[y][x] = true;
+  applyBoundaryWalls_();
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+}
+
+FloodFillExplorer::Action FloodFillExplorer::requestNextAction() {
+  if (waitAck_) return pendingAction_;
+
+  Action act = chooseNextAction_();
+  if (act == ACT_NONE) {
+    running_ = false;
+    markDirty_();
+    return ACT_NONE;
+  }
+
+  dispatchAction_(act);
+  return act;
+}
+
+bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h) {
+  if (!waitAck_) return false;
+
+  if (!ok) {
+    running_ = false;
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+    markDirty_();
+    return false;
+  }
+
+  mx_ = x;
+  my_ = y;
+  mh_ = h;
+  visited_[my_][mx_] = true;
+
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+
+  bool reachedGoal = atActiveTarget_();
+  if (reachedGoal) {
+    onGoalReached_();
+    return true;
+  }
+
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+  return false;
 }
 
 bool FloodFillExplorer::begin(const Config& cfg){
@@ -496,21 +676,25 @@ bool FloodFillExplorer::begin(const Config& cfg){
     delete server_;
     server_ = nullptr;
   }
-  server_ = new WebServer(cfg_.port);
+  if(ws_){
+    delete ws_;
+    ws_ = nullptr;
+  }
+  if (cfg_.enableWeb) {
+    server_ = new WebServer(cfg_.port);
+    ws_ = new WsServerWrapper(cfg_.wsPort);
+  }
 
   clearKnown_();
   reset();
 
-  // capture original references ONCE
-  if(!origCaptured_){
-    origSx_ = sx_; origSy_ = sy_; origSh_ = sh_;
-    origGx0_ = gx0_; origGy0_ = gy0_; origGw_ = gw_; origGh_ = gh_;
-    origCaptured_ = true;
-    targetHome_ = false; // start by targeting original goal
-  }
+  targetHome_ = false; // start by targeting original goal
 
-  setupWeb_();
-  server_->begin();
+  if (cfg_.enableWeb && server_) {
+    setupWeb_();
+    server_->begin();
+    setupWs_();
+  }
 
   started_ = true;
   running_ = cfg_.autoRun;
@@ -519,14 +703,21 @@ bool FloodFillExplorer::begin(const Config& cfg){
   pendingAction_ = ACT_NONE;
   pendingSeq_ = 0;
 
-  log_("[Explorer] Web on port " + String(cfg_.port));
+  if (cfg_.enableWeb) {
+    log_("[Explorer] Web on port " + String(cfg_.port) + ", WS on port " + String(cfg_.wsPort));
+  } else {
+    log_("[Explorer] Web disabled");
+  }
   return true;
 }
 
 void FloodFillExplorer::loop() {
-  if (!started_ || !server_) return;
+  if (!started_) return;
 
-  server_->handleClient();
+  if (server_) {
+    server_->handleClient();
+  }
+  serviceWs_();
 
   static uint32_t lastLogMs = 0;
 
@@ -570,6 +761,18 @@ void FloodFillExplorer::setTruthFromWalls(const uint8_t walls16[N][N],
 void FloodFillExplorer::clearKnown_(){
   memset(knownWalls_, 0, sizeof(knownWalls_));
   memset(knownMask_,  0, sizeof(knownMask_));
+  applyBoundaryWalls_();
+}
+
+void FloodFillExplorer::applyBoundaryWalls_() {
+  for (int x = 0; x < N; ++x) {
+    knownSetWallBoth_(x, 0, NORTH, true);
+    knownSetWallBoth_(x, N - 1, SOUTH, true);
+  }
+  for (int y = 0; y < N; ++y) {
+    knownSetWallBoth_(0, y, WEST, true);
+    knownSetWallBoth_(N - 1, y, EAST, true);
+  }
 }
 
 bool FloodFillExplorer::truthHasWall_(int x,int y, Dir d) const{
@@ -580,6 +783,66 @@ bool FloodFillExplorer::knownHasWall_(int x,int y, Dir d) const{
   uint8_t b = bitForDir_(d);
   if((knownMask_[y][x] & b) == 0) return false; // unknown treated open
   return (knownWalls_[y][x] & b) != 0;
+}
+
+bool FloodFillExplorer::getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const {
+  if (!inBounds_(x, y)) {
+    known = false;
+    wall = false;
+    return false;
+  }
+  const uint8_t bit = bitForDir_(d);
+  known = (knownMask_[y][x] & bit) != 0;
+  wall = (knownWalls_[y][x] & bit) != 0;
+  return true;
+}
+
+String FloodFillExplorer::buildKnownMazeAscii(uint8_t mouseX, uint8_t mouseY, Dir mouseH) const {
+  String out;
+  out.reserve(N * N * 8);
+
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      out += "+";
+      bool known = false;
+      bool wall = false;
+      getKnownWall((uint8_t)x, (uint8_t)y, NORTH, known, wall);
+      out += (known && wall) ? "---" : "   ";
+    }
+    out += "+\n";
+
+    for (int x = 0; x < N; ++x) {
+      bool known = false;
+      bool wall = false;
+      getKnownWall((uint8_t)x, (uint8_t)y, WEST, known, wall);
+      out += (known && wall) ? "|" : " ";
+
+      char cell[4] = {' ', ' ', ' ', '\0'};
+      if (x == mouseX && y == mouseY) {
+        static const char kHeading[4] = {'^', '>', 'v', '<'};
+        cell[1] = kHeading[(uint8_t)mouseH & 3];
+      } else if (isGoal_(x, y)) {
+        cell[1] = 'G';
+      } else if (visited_[y][x]) {
+        cell[1] = '.';
+      }
+      out += cell;
+    }
+    bool known = false;
+    bool wall = false;
+    getKnownWall((uint8_t)(N - 1), (uint8_t)y, EAST, known, wall);
+    out += (known && wall) ? "|\n" : " \n";
+  }
+
+  for (int x = 0; x < N; ++x) {
+    out += "+";
+    bool known = false;
+    bool wall = false;
+    getKnownWall((uint8_t)x, (uint8_t)(N - 1), SOUTH, known, wall);
+    out += (known && wall) ? "---" : "   ";
+  }
+  out += "+\n";
+  return out;
 }
 
 void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
@@ -599,7 +862,22 @@ void FloodFillExplorer::knownSetWallBoth_(int x,int y, Dir d, bool on){
   }
 }
 
+bool FloodFillExplorer::confirmObservedWall_(int x, int y, Dir d, bool on) {
+  if (!inBounds_(x, y)) return false;
+
+  const uint8_t bit = bitForDir_(d);
+  const bool known = (knownMask_[y][x] & bit) != 0;
+  const bool currentWall = (knownWalls_[y][x] & bit) != 0;
+
+  if (known && currentWall == on) {
+    return false;
+  }
+  knownSetWallBoth_(x, y, d, on);
+  return true;
+}
+
 void FloodFillExplorer::senseCell_(int x,int y){
+  if (hardwareMode_) return;
   // SIM: use truthWalls_
   for(int di=0; di<4; di++){
     Dir d = (Dir)di;
@@ -728,13 +1006,23 @@ void FloodFillExplorer::computePlan_(){
 // ========================= ACTION (ACK-driven) =========================
 
 FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
-  // SIM: sense current cell before decision
-  senseCell_(mx_, my_);
+  if (!hardwareMode_) {
+    senseCell_(mx_, my_);
+  }
   visited_[my_][mx_] = true;
   computeFloodFill_();
   computePlan_();
 
-  if(isGoal_(mx_, my_)) return ACT_NONE;
+  if(atActiveTarget_()) return ACT_NONE;
+
+  if(targetHome_ && isGoal_(mx_, my_) && mh_ != origSh_){
+    uint8_t curh = (uint8_t)mh_;
+    uint8_t tarh = (uint8_t)origSh_;
+    uint8_t diff = (tarh + 4 - curh) & 3;
+    if(diff == 1) return ACT_TURN_R;
+    if(diff == 3) return ACT_TURN_L;
+    return ACT_TURN_180;
+  }
 
   uint16_t cur = dist_[my_][mx_];
   if(cur == 0xFFFF) return ACT_NONE;
@@ -771,7 +1059,7 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
 
   if(diff == 1) return ACT_TURN_R;
   if(diff == 3) return ACT_TURN_L;
-  return ACT_TURN_L; // diff==2 -> 2 turns, do left first
+  return ACT_TURN_180;
 }
 
 void FloodFillExplorer::dispatchAction_(Action a){
@@ -787,6 +1075,8 @@ void FloodFillExplorer::commitPendingAction_(){
     mh_ = (Dir)(((uint8_t)mh_ + 3) & 3);
   }else if(pendingAction_ == ACT_TURN_R){
     mh_ = (Dir)(((uint8_t)mh_ + 1) & 3);
+  }else if(pendingAction_ == ACT_TURN_180){
+    mh_ = (Dir)(((uint8_t)mh_ + 2) & 3);
   }else if(pendingAction_ == ACT_MOVE_F){
     if(!knownHasWall_(mx_, my_, mh_)){
       int nx = mx_ + dx4[(int)mh_];
@@ -802,16 +1092,51 @@ void FloodFillExplorer::commitPendingAction_(){
   pendingAction_ = ACT_NONE;
 }
 
+bool FloodFillExplorer::performStepMove_(String& reply){
+  if(waitAck_){
+    reply = "waiting ack";
+    return false;
+  }
+
+  for(uint8_t guard = 0; guard < 8; ++guard){
+    Action act = chooseNextAction_();
+    if(act == ACT_NONE){
+      running_ = false;
+      markDirty_();
+      reply = "done";
+      return true;
+    }
+
+    dispatchAction_(act);
+    commitPendingAction_();
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+
+    if(atActiveTarget_()){
+      onGoalReached_();
+      reply = "step move ok (GOAL)";
+      return true;
+    }
+
+    computeFloodFill_();
+    computePlan_();
+    markDirty_();
+
+    if(act == ACT_MOVE_F){
+      reply = "step move ok";
+      return true;
+    }
+  }
+
+  reply = "step move guard";
+  return false;
+}
+
 void FloodFillExplorer::onGoalReached_(){
   // Stop running for safety
   running_ = false;
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
-
-  // Start marker cho UI: start = vị trí hiện tại (vừa tới đích)
-  sx_ = mx_;
-  sy_ = my_;
-  sh_ = mh_;
 
   // --- Toggle target ---
   // Nếu vừa tới GOAL gốc (2x2) => đổi mục tiêu về HOME (start gốc 1 ô)
@@ -819,14 +1144,14 @@ void FloodFillExplorer::onGoalReached_(){
   targetHome_ = !targetHome_;
 
   if(targetHome_){
-    // target HOME (start gốc)
-    gx0_ = origSx_;
-    gy0_ = origSy_;
-    gw_  = 1;
-    gh_  = 1;
-    log_("[FF] reached target -> now GO HOME (1x1 at original start)");
+    // target HOME rectangle
+    gx0_ = origHx0_;
+    gy0_ = origHy0_;
+    gw_  = origHw_;
+    gh_  = origHh_;
+    log_("[FF] reached target -> now GO HOME (original home rect)");
   }else{
-    // target original GOAL (2x2)
+    // target original GOAL rect
     gx0_ = origGx0_;
     gy0_ = origGy0_;
     gw_  = origGw_;
@@ -850,12 +1175,293 @@ void FloodFillExplorer::setupWeb_(){
   server_->on("/ack", HTTP_GET, [this](){ handleAck_(); });
 }
 
+void FloodFillExplorer::setupWs_() {
+  if (!ws_) return;
+  ws_->server.begin();
+  ws_->handshaken = false;
+  ws_->lastStateVerSent = 0xFFFFFFFFu;
+}
+
+bool FloodFillExplorer::handleWsHandshake_() {
+  if (!ws_ || !ws_->client || !ws_->client.connected()) return false;
+
+  ws_->client.setTimeout(50);
+  String key;
+  while (ws_->client.connected()) {
+    String line = ws_->client.readStringUntil('\n');
+    if (line.length() == 0) break;
+    line.trim();
+    if (line.startsWith("Sec-WebSocket-Key:")) {
+      key = line.substring(strlen("Sec-WebSocket-Key:"));
+      key.trim();
+    }
+    if (line.length() == 0) break;
+  }
+
+  if (key.length() == 0) {
+    ws_->client.stop();
+    return false;
+  }
+
+  const String acceptSrc = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  unsigned char sha1[20];
+  mbedtls_sha1((const unsigned char*)acceptSrc.c_str(), acceptSrc.length(), sha1);
+
+  unsigned char base64Out[64];
+  size_t outLen = 0;
+  mbedtls_base64_encode(base64Out, sizeof(base64Out), &outLen, sha1, sizeof(sha1));
+  const String acceptKey = String((const char*)base64Out).substring(0, outLen);
+
+  ws_->client.print(
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n");
+
+  ws_->handshaken = true;
+  ws_->lastStateVerSent = 0xFFFFFFFFu;
+  return true;
+}
+
+bool FloodFillExplorer::readWsFrame_(String& payload, uint8_t& opcode) {
+  if (!ws_ || !ws_->client || !ws_->client.connected() || ws_->client.available() < 2) return false;
+
+  const uint8_t b0 = ws_->client.read();
+  const uint8_t b1 = ws_->client.read();
+  opcode = b0 & 0x0F;
+  uint64_t len = b1 & 0x7F;
+
+  if (len == 126) {
+    while (ws_->client.available() < 2) yield();
+    len = ((uint16_t)ws_->client.read() << 8) | (uint16_t)ws_->client.read();
+  } else if (len == 127) {
+    while (ws_->client.available() < 8) yield();
+    len = 0;
+    for (int i = 0; i < 8; ++i) {
+      len = (len << 8) | (uint64_t)ws_->client.read();
+    }
+  }
+
+  const bool masked = (b1 & 0x80) != 0;
+  uint8_t mask[4] = {0, 0, 0, 0};
+  if (masked) {
+    while (ws_->client.available() < 4) yield();
+    for (int i = 0; i < 4; ++i) mask[i] = ws_->client.read();
+  }
+
+  payload = "";
+  payload.reserve((size_t)len);
+  for (uint64_t i = 0; i < len; ++i) {
+    while (ws_->client.available() < 1) yield();
+    char ch = (char)ws_->client.read();
+    if (masked) ch = (char)(ch ^ mask[i & 3]);
+    payload += ch;
+  }
+  return true;
+}
+
+void FloodFillExplorer::sendWsText_(const String& text) {
+  if (!ws_ || !ws_->client || !ws_->client.connected() || !ws_->handshaken) return;
+
+  const size_t len = text.length();
+  ws_->client.write((uint8_t)0x81);
+  if (len < 126) {
+    ws_->client.write((uint8_t)len);
+  } else if (len < 65536) {
+    ws_->client.write((uint8_t)126);
+    ws_->client.write((uint8_t)((len >> 8) & 0xFF));
+    ws_->client.write((uint8_t)(len & 0xFF));
+  } else {
+    ws_->client.write((uint8_t)127);
+    for (int i = 7; i >= 0; --i) {
+      ws_->client.write((uint8_t)((((uint64_t)len) >> (i * 8)) & 0xFF));
+    }
+  }
+  ws_->client.write((const uint8_t*)text.c_str(), len);
+}
+
+void FloodFillExplorer::sendWsState_() {
+  sendWsText_("state|" + stateJson_);
+  if (ws_) ws_->lastStateVerSent = stateVer_;
+  wsStatePending_ = false;
+}
+
+String FloodFillExplorer::jsonEscape_(const String& s) const {
+  String out;
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); ++i) {
+    const char ch = s[i];
+    if (ch == '\\' || ch == '"') out += '\\';
+    if (ch == '\n') out += "\\n";
+    else if (ch == '\r') out += "\\r";
+    else out += ch;
+  }
+  return out;
+}
+
+void FloodFillExplorer::sendWsReply_(const String& kind, const String& msg) {
+  sendWsText_(kind + "|" + msg);
+}
+
+void FloodFillExplorer::processWsMessage_(const String& msg) {
+  if (msg == "hello") {
+    sendWsState_();
+    return;
+  }
+  if (msg == "next") {
+    if (!running_) { sendWsReply_("reply", "not running"); return; }
+    if (waitAck_) { sendWsReply_("reply", "waiting ack"); return; }
+    Action act = chooseNextAction_();
+    if (act == ACT_NONE) {
+      running_ = false;
+      markDirty_();
+      sendWsReply_("reply", "done");
+      return;
+    }
+    dispatchAction_(act);
+    sendWsReply_("reply", "dispatched");
+    return;
+  }
+  if (msg.startsWith("ack|")) {
+    const int p1 = msg.indexOf('|', 4);
+    if (p1 < 0) { sendWsReply_("error", "bad ack"); return; }
+    const uint32_t seq = (uint32_t)strtoul(msg.substring(4, p1).c_str(), nullptr, 10);
+    const bool ok = msg.substring(p1 + 1) != "0";
+    if (!waitAck_) { sendWsReply_("error", "no pending"); return; }
+    if (seq != pendingSeq_) { sendWsReply_("error", "seq mismatch"); return; }
+    if (!ok) {
+      running_ = false;
+      waitAck_ = false;
+      pendingAction_ = ACT_NONE;
+      markDirty_();
+      sendWsReply_("reply", "ACK FAIL");
+      return;
+    }
+    commitPendingAction_();
+    waitAck_ = false;
+    if (atActiveTarget_()) {
+      onGoalReached_();
+      sendWsReply_("reply", "ACK OK (GOAL)");
+      return;
+    }
+    computeFloodFill_();
+    computePlan_();
+    markDirty_();
+    sendWsReply_("reply", "ACK OK");
+    return;
+  }
+  if (msg.startsWith("setstart|")) {
+    int p1 = msg.indexOf('|', 9);
+    int p2 = p1 < 0 ? -1 : msg.indexOf('|', p1 + 1);
+    if (p1 < 0 || p2 < 0) { sendWsReply_("error", "bad setstart"); return; }
+    int x = msg.substring(9, p1).toInt();
+    int y = msg.substring(p1 + 1, p2).toInt();
+    int h = msg.substring(p2 + 1).toInt();
+    if (x < 0) x = 0; if (x >= N) x = N - 1;
+    if (y < 0) y = 0; if (y >= N) y = N - 1;
+    h &= 3;
+    running_ = false;
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+    sx_ = (uint8_t)x;
+    sy_ = (uint8_t)y;
+    sh_ = (Dir)h;
+    reset();
+    sendWsReply_("reply", "OK");
+    return;
+  }
+  if (msg.startsWith("cmd|")) {
+    const String a = msg.substring(4);
+    if (a == "step") {
+      String reply;
+      performStepMove_(reply);
+      sendWsReply_("reply", reply);
+      return;
+    }
+    if (a == "run") {
+      running_ = true;
+      if (!waitAck_) {
+        Action act = chooseNextAction_();
+        if (act != ACT_NONE) dispatchAction_(act);
+      }
+      markDirty_();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+    if (a == "pause") {
+      running_ = false;
+      markDirty_();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+    if (a == "reset") {
+      reset();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+  }
+  if (msg.startsWith("hwcmd|")) {
+    const String a = msg.substring(6);
+    if (!hardwareMode_ || !webCommandFn_) {
+      sendWsReply_("error", "hardware control unavailable");
+      return;
+    }
+    webCommandFn_(a);
+    sendWsReply_("reply", "hardware " + a + " requested");
+    return;
+  }
+  sendWsReply_("error", "unknown");
+}
+
+void FloodFillExplorer::serviceWs_() {
+  if (!ws_) return;
+
+  if ((!ws_->client || !ws_->client.connected()) && ws_->server.hasClient()) {
+    if (ws_->client) ws_->client.stop();
+    ws_->client = ws_->server.accept();
+    ws_->handshaken = false;
+    ws_->lastStateVerSent = 0xFFFFFFFFu;
+  }
+
+  if (!ws_->client || !ws_->client.connected()) return;
+
+  if (!ws_->handshaken) {
+    if (!handleWsHandshake_()) return;
+    wsStatePending_ = true;
+  }
+
+  while (ws_->client.available() > 1) {
+    String payload;
+    uint8_t opcode = 0;
+    if (!readWsFrame_(payload, opcode)) break;
+    if (opcode == 0x8) {
+      ws_->client.stop();
+      ws_->handshaken = false;
+      return;
+    }
+    if (opcode == 0x9) {
+      ws_->client.write((uint8_t)0x8A);
+      ws_->client.write((uint8_t)0x00);
+      continue;
+    }
+    if (opcode == 0x1) {
+      processWsMessage_(payload);
+    }
+  }
+
+  if (ws_->handshaken && wsStatePending_ && ws_->lastStateVerSent != stateVer_) {
+    sendWsState_();
+  }
+}
+
 void FloodFillExplorer::handleRoot_(){
+  String html = FPSTR(kHtml);
+  html.replace("%WS_PORT%", String(cfg_.wsPort));
   server_->sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   server_->sendHeader("Pragma", "no-cache");
   server_->sendHeader("Expires", "0");
   server_->sendHeader("Connection", "close");
-  server_->send(200, "text/html; charset=utf-8", FPSTR(kHtml));
+  server_->send(200, "text/html; charset=utf-8", html);
 }
 
 void FloodFillExplorer::handleCmd_(){
@@ -869,39 +1475,10 @@ void FloodFillExplorer::handleCmd_(){
 
   // STEP (SIM): dispatch+commit immediately
   if(a == "step"){
-    if(waitAck_){
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "waiting ack");
-      return;
-    }
-
-    Action act = chooseNextAction_();
-    if(act == ACT_NONE){
-      running_ = false;
-      markDirty_();
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "done");
-      return;
-    }
-
-    dispatchAction_(act);
-    commitPendingAction_();
-    waitAck_ = false;
-    pendingAction_ = ACT_NONE;
-
-    if(isGoal_(mx_, my_)){
-      onGoalReached_();
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "step ok (GOAL)");
-      return;
-    }
-
-    computeFloodFill_();
-    computePlan_();
-    markDirty_();
-
+    String reply;
+    performStepMove_(reply);
     server_->sendHeader("Connection", "close");
-    server_->send(200, "text/plain", "step ok");
+    server_->send(200, "text/plain", reply);
     return;
   }
 
@@ -1029,7 +1606,7 @@ void FloodFillExplorer::handleAck_(){
   commitPendingAction_();
   waitAck_ = false;
 
-  if(isGoal_(mx_, my_)){
+  if(atActiveTarget_()){
     onGoalReached_();
     server_->sendHeader("Connection", "close");
     server_->send(200, "text/plain", "ACK OK (GOAL)");
@@ -1083,8 +1660,10 @@ void FloodFillExplorer::buildStateJson_(){
 
   out += "\"mouse\":{\"x\":" + String(mx_) + ",\"y\":" + String(my_) + ",\"h\":" + String((int)mh_) + "},";
   out += "\"start\":{\"x\":" + String(sx_) + ",\"y\":" + String(sy_) + ",\"h\":" + String((int)sh_) + "},";
+  out += "\"home\":{\"x0\":" + String(hx0_) + ",\"y0\":" + String(hy0_) + ",\"w\":" + String(hw_) + ",\"h\":" + String(hh_) + "},";
   out += "\"goal\":{\"x0\":" + String(gx0_) + ",\"y0\":" + String(gy0_) + ",\"w\":" + String(gw_) + ",\"h\":" + String(gh_) + "},";
   out += "\"running\":" + String(running_ ? "true":"false") + ",";
+  out += "\"hardwareMode\":" + String(hardwareMode_ ? "true":"false") + ",";
   out += "\"waitAck\":" + String(waitAck_ ? "true":"false") + ",";
   out += "\"pendingSeq\":" + String((uint32_t)pendingSeq_) + ",";
   out += "\"pendingActionName\":\"" + String(actionName_(pendingAction_)) + "\",";
@@ -1154,3 +1733,5 @@ void FloodFillExplorer::buildStateJson_(){
 
   stateJson_ = out;
 }
+
+

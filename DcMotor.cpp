@@ -91,9 +91,7 @@ bool DcMotor::begin(const Pins& pins,
   resetPID();
 
   // stop motor
-  digitalWrite(_p.in1, LOW);
-  digitalWrite(_p.in2, LOW);
-  pwmWriteDuty(0);
+  coastStop();
 
   return true;
 }
@@ -106,16 +104,8 @@ void DcMotor::applyDuty(int32_t duty) {
   if (duty > (int32_t)_pwmMax) duty = _pwmMax;
   if (duty < -(int32_t)_pwmMax) duty = -_pwmMax;
 
-  // 🔹 Stop (coast)
-  if (duty == 0) {
-    digitalWrite(_p.in1, LOW);
-    digitalWrite(_p.in2, LOW);
-    pwmWriteDuty(0);
-    return;
-  }
-
-  if (duty > 0 && duty < DEADZONE) duty = DEADZONE;
-  if (duty < 0 && duty > -DEADZONE) duty = -DEADZONE;
+  if (duty > 0 && duty < DEADZONE) duty = 0;
+  if (duty < 0 && duty > -DEADZONE) duty = 0;
 
   // 🔹 Direction
   if (duty > 0) {
@@ -147,6 +137,23 @@ void DcMotor::enableSpeedControl(bool en) {
 void DcMotor::setSpeedTPS(float tps) {
   _targetTPS = tps;
   _speedCtrlEnabled = true;
+}
+
+void DcMotor::coastStop() {
+  digitalWrite(_p.in1, LOW);
+  digitalWrite(_p.in2, LOW);
+  pwmWriteDuty(0);
+}
+
+void DcMotor::brakeStop() {
+  applyDuty(0);
+}
+
+void DcMotor::hardStop() {
+  _targetTPS = 0.0f;
+  _speedCtrlEnabled = false;
+  resetPID();
+  brakeStop();
 }
 
 void DcMotor::setSpeedPID(float kp, float ki, float kd,
