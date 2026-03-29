@@ -537,6 +537,7 @@ static void maze_debug_s() {
 
 static void enterIdleMode(const String& reason) {
   serialOutputTemporarilyMuted = false;
+  motionController.setStopOnCompletion(true);
   if (lapTimerRunning) {
     stopLapTimer(false);
   }
@@ -556,6 +557,7 @@ static void enterIdleMode(const String& reason) {
 
 static void enterFaultMode(const String& reason) {
   serialOutputTemporarilyMuted = false;
+  motionController.setStopOnCompletion(true);
   if (lapTimerRunning) {
     stopLapTimer(false);
   }
@@ -614,6 +616,7 @@ static void onExplorerWebCommand(const String& cmd) {
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
   startLapTimer("HG");
+  motionController.setStopOnCompletion(true);
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
@@ -642,6 +645,7 @@ static void beginSpeedRun(uint8_t phase) {
   robotState.speedRunPhase = phase;
   serialOutputTemporarilyMuted = (phase == 1);
   startLapTimer("HG");
+  motionController.setStopOnCompletion(phase != 1);
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -775,13 +779,16 @@ static void handleMotionCompletion() {
   bool skipPostMotionHold = false;
   bool stepBudgetReached = false;
 
-  if (status == MOTION_COMPLETED) {
-    advancePoseForFinishedPrimitive(primitive);
-    debugMotionEvent("[MOTION END]", primitive, status,
-                     beforeX, beforeY, beforeH,
-                     robotState.pose.cellX, robotState.pose.cellY, headingDir());
-    leftMotor.hardStop();
-    rightMotor.hardStop();
+    if (status == MOTION_COMPLETED) {
+      advancePoseForFinishedPrimitive(primitive);
+      debugMotionEvent("[MOTION END]", primitive, status,
+                       beforeX, beforeY, beforeH,
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir());
+      const bool smoothSpeedRun = (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1);
+      if (!smoothSpeedRun) {
+        leftMotor.hardStop();
+        rightMotor.hardStop();
+      }
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
@@ -863,7 +870,7 @@ static void handleMotionCompletion() {
             skipPostMotionHold = true;
             updateRobotLed();
             debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
-            motionController.stop();
+            motionController.clearCompletionState();
             return;
           }
         if (robotState.speedRunPhase == 1) {
@@ -923,10 +930,11 @@ static void handleMotionCompletion() {
       return;
     }
 
-    if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
-        !skipPostMotionHold &&
-        motionController.status() == MOTION_COMPLETED &&
-        robotState.mode != ROBOT_MODE_IDLE &&
+      if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
+          !smoothSpeedRun &&
+          !skipPostMotionHold &&
+          motionController.status() == MOTION_COMPLETED &&
+          robotState.mode != ROBOT_MODE_IDLE &&
         robotState.mode != ROBOT_MODE_FAULT) {
       if (AppConfig::Debug::DEBUG_WALL_APPLY) {
         debugPrintln("[STOP HOLD] wait " + String(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS) +
@@ -946,10 +954,14 @@ static void handleMotionCompletion() {
         headingDir());
     }
     enterFaultMode(motionController.lastError());
-  }
+    }
 
-  motionController.stop();
-}
+    if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1 && status == MOTION_COMPLETED) {
+      motionController.clearCompletionState();
+    } else {
+      motionController.stop();
+    }
+  }
 
 static void updateRobotState() {
   mouseBattery.update();

@@ -111,6 +111,17 @@ void MotionController::abort(const String& reason) {
   snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
+void MotionController::clearCompletionState() {
+  if (status_ == MOTION_RUNNING_PRIMITIVE) return;
+  if (status_ == MOTION_IDLE) return;
+  status_ = MOTION_IDLE;
+  primitive_ = MOTION_NONE;
+  lastFinishedPrimitive_ = MOTION_NONE;
+  lastError_ = "";
+  snapCenterHoldUntilMs_ = 0;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
+}
+
 float MotionController::averageProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
@@ -128,8 +139,10 @@ int32_t MotionController::differentialTicks_() const {
 }
 
 void MotionController::markDone_(MotionStatus status, const String& reason) {
-  left_->hardStop();
-  right_->hardStop();
+  if (status != MOTION_COMPLETED || stopOnCompletion_) {
+    left_->hardStop();
+    right_->hardStop();
+  }
   status_ = status;
   lastError_ = reason;
   lastFinishedPrimitive_ = primitive_;
