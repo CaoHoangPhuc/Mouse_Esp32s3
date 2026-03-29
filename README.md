@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.43`
+Current project version: `0.2.44`
 
 ## Current Status
 
@@ -24,6 +24,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
 - battery monitoring is now telemetry-only and no longer blocks or aborts motion primitives
 - pose and goal are runtime-only again; SPIFFS now stores only maze wall memory
+- SPIFFS persistence now lives in a dedicated module for easier control and future changes
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -49,6 +50,8 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 - [MultiVL53L0X.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\MultiVL53L0X.cpp): sensor reads, correction, thresholding, wall interpretation
 - [FloodFillExplorer.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\FloodFillExplorer.h): floodfill planner / map / web interface
 - [FloodFillExplorer.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\FloodFillExplorer.cpp): planner logic and live web UI
+- [PersistenceStore.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\PersistenceStore.h): SPIFFS persistence interface for saved maze memory
+- [PersistenceStore.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\PersistenceStore.cpp): SPIFFS file format and load/save/clear implementation
 
 ### Connectivity
 - [WiFiOtaWebSerial.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
