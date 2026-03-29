@@ -1,4 +1,5 @@
 #include "WiFiOtaWebSerial.h"
+#include "Config.h"
 
 #include <WiFi.h>
 #include <WebServer.h>
