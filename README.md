@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.26`
+Current project version: `0.0.2.27`
 
 ## Current Status
 
@@ -266,7 +266,8 @@ Current front-sensor behavior:
 
 Battery divider note:
 - current comments assume a `47k / 18k` divider into `GPIO 3`
-- battery voltage now extrapolates below the configured low calibration point instead of clamping to `VOLTAGE_LOW`, so low raw ADC readings can correctly fall into warning or critical state
+- battery voltage now uses the measured ADC node voltage plus the configured divider ratio as the primary pack-voltage estimate
+- on ESP32, battery ADC debug now uses the calibrated millivolt reading path instead of a simple `raw / 4095 * 3.3` approximation
 
 ## Known Limitations
 

@@ -822,6 +822,8 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   mouseBattery.begin(AppConfig::Battery::ADC_PIN);
   mouseBattery.setCalibration(AppConfig::Battery::RAW_LOW, AppConfig::Battery::VOLTAGE_LOW,
                               AppConfig::Battery::RAW_HIGH, AppConfig::Battery::VOLTAGE_HIGH);
+  mouseBattery.setDivider(AppConfig::Battery::DIVIDER_R_TOP_KOHM,
+                          AppConfig::Battery::DIVIDER_R_BOTTOM_KOHM);
   mouseBattery.setThresholds(AppConfig::Battery::WARNING_VOLTAGE,
                              AppConfig::Battery::CRITICAL_VOLTAGE);
   mouseBattery.update();
@@ -1381,10 +1383,8 @@ static void robot_debug_s() {
 
 static void battery_debug_s() {
   const uint16_t raw = mouseBattery.raw();
-  const float adcVolts = 3.3f * ((float)raw / 4095.0f);
-  const float estimatedBatteryFromDivider =
-    adcVolts * ((AppConfig::Battery::DIVIDER_R_TOP_KOHM + AppConfig::Battery::DIVIDER_R_BOTTOM_KOHM) /
-                AppConfig::Battery::DIVIDER_R_BOTTOM_KOHM);
+  const float adcVolts = mouseBattery.adcVoltage();
+  const float estimatedBatteryFromDivider = mouseBattery.dividerEstimatedVoltage();
 
   char buf[160];
   snprintf(buf, sizeof(buf),
