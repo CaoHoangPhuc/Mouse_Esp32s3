@@ -2,6 +2,9 @@
 
 ## Immediate
 
+- Define `speedrun phase 2` on top of the stable `speedrun 1` baseline.
+- Prototype the first single-flow snake move behavior for phase 2 while keeping `speedrun 1` as the fallback path.
+
 - Compile the project against the intended ESP32-S3 board and fix any board/core compile issues.
 - Verify all new source files are included by the Arduino build.
 - Verify browser upload on port 82 works reliably with the intended `.bin` workflow.

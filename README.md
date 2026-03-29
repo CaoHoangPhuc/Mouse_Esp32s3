@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.63`
+Current project version: `0.3.0`
 
 ## Current Status
 
@@ -42,6 +42,9 @@ This repository now includes the first integrated hardware-oriented control stac
 - `speedrun 1` now keeps successful primitive transitions smooth by skipping the normal completion brake/hold between moves and turns, while still stopping normally on finish or fault
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
+
+Release note:
+- see [RELEASE_0.3.0.md](Documents/Arduino/Mouse_esp32s3/RELEASE_0.3.0.md) for the packaged solver milestone summary and the next target after this release
 
 ## Architecture
 
