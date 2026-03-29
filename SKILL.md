@@ -43,7 +43,7 @@ Documentation rule:
 ## Common Workflows
 
 ### 1. Hardware bring-up
-- Open [Mouse_esp32s3.ino](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Mouse_esp32s3.ino) from the Arduino sketch folder, not as an arbitrary loose file.
+- Open [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino) from the Arduino sketch folder, not as an arbitrary loose file.
 - Use the intended ESP32-S3 Arduino settings during bring-up:
   - `USB CDC On Boot`: `Enabled`
   - `Partition Scheme`: the minimal SPIFFS/OTA layout used by this project
@@ -105,3 +105,4 @@ Documentation rule:
 - Adding aggressive speed-run logic before reliable one-cell behavior exists
 - Hiding calibration assumptions in random source files without updating docs
 - Growing the `.ino` back into the main implementation file
+
