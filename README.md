@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.35`
+Current project version: `0.0.2.36`
 
 ## Current Status
 
@@ -16,6 +16,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - task-based planner / executor / telemetry flow
 - Wi-Fi OTA, port `80` control page, and telnet/debug tools
 - centralized configuration for hardware and tuning values
+- Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

@@ -315,12 +315,6 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     return false;
   }
 
-  if (cfg_.enableWeb) {
-    println(String("HTTP: http://") + ip() + "/  (or http://" + cfg_.hostname + ".local/ )");
-  }
-  if (cfg_.enableUploadWeb) {
-    println(String("Upload: http://") + ip() + ":" + String(cfg_.uploadPort) + "/");
-  }
   println(String("OTA Hostname: ") + cfg_.hostname);
   return true;
 }
@@ -361,23 +355,40 @@ void WiFiOtaWebSerial::wifiTaskThunk_(void* arg) {
 
 void WiFiOtaWebSerial::wifiTaskLoop_() {
   uint32_t lastReconnectMs = 0;
+  bool urlsAnnounced = false;
   for (;;) {
     if (started_) {
       serviceUpdateLed_();
       const wl_status_t wifiStatus = WiFi.status();
       if (wifiStatus != WL_CONNECTED) {
+        urlsAnnounced = false;
         if (otaInProgress || webUploadInProgress_ || rebootPending_) {
           vTaskDelay(pdMS_TO_TICKS(50));
           continue;
         }
         const uint32_t now = millis();
-        if (wifiStatus != WL_IDLE_STATUS && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
+        const bool shouldReconnect =
+          wifiStatus == WL_DISCONNECTED ||
+          wifiStatus == WL_CONNECTION_LOST ||
+          wifiStatus == WL_CONNECT_FAILED ||
+          wifiStatus == WL_NO_SSID_AVAIL;
+        if (shouldReconnect && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
           lastReconnectMs = now;
           Serial.println("[WiFi] reconnecting...");
           WiFi.reconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(250));
         continue;
+      }
+      if (!urlsAnnounced) {
+        const String currentIp = WiFi.localIP().toString();
+        if (cfg_.enableWeb) {
+          println(String("HTTP: http://") + currentIp + "/  (or http://" + cfg_.hostname + ".local/ )");
+        }
+        if (cfg_.enableUploadWeb) {
+          println(String("Upload: http://") + currentIp + ":" + String(cfg_.uploadPort) + "/");
+        }
+        urlsAnnounced = true;
       }
       if (otaInProgress) {
         // OTA priority mode
