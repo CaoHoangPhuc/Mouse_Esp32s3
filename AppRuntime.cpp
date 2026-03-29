@@ -391,6 +391,10 @@ static void updateRobotLed() {
       ledController.setRed();
       return;
     default:
+      if (robotState.speedRunReady) {
+        ledController.setWhite();
+        return;
+      }
       ledController.off();
       return;
   }
@@ -1074,9 +1078,13 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   if (!loadPersistentMaze()) {
     explorer.clearKnownMaze();
     explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  } else {
+    robotState.speedRunReady = true;
+    debugPrintln("[SPIFFS] shortest path available from saved maze");
   }
 
   updateRobotState();
+  updateRobotLed();
   printStartupSummary();
 
   xTaskCreatePinnedToCore(motorTask,     "motor",     4096, nullptr, 3, &motorTaskHandle,     0);
