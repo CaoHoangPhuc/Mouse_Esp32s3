@@ -859,12 +859,13 @@ static void handleMotionCompletion() {
             explorer.advanceTargetAfterReach();
             explorer.setRunning(true);
             robotState.goalReached = false;
-          robotState.speedRunReady = true;
-          skipPostMotionHold = true;
-          updateRobotLed();
-          debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
-          return;
-        }
+            robotState.speedRunReady = true;
+            skipPostMotionHold = true;
+            updateRobotLed();
+            debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
+            motionController.stop();
+            return;
+          }
         if (robotState.speedRunPhase == 1) {
           serialOutputTemporarilyMuted = false;
         }
