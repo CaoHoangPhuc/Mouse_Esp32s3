@@ -74,3 +74,4 @@ Keep these files current when architecture or behavior changes:
 Rule:
 - whenever a code change affects setup, commands, tuning, hardware behavior, or operator workflow, update the related `.md` documents in the same change instead of leaving docs as follow-up work
 - whenever a code change changes behavior or tuning, bump the documented project version, then stage and commit that versioned change together
+- whenever a command is added, removed, or its usage changes, update both the serial/web help text and the related documentation in the same change

@@ -33,12 +33,13 @@ void Battery::update() {
   raw_ = (uint16_t)(acc / samples_);
 
   const float rawSpan = (float)(rawHigh_ - rawLow_);
-  float t = rawSpan > 0.0f ? ((float)raw_ - (float)rawLow_) / rawSpan : 0.0f;
-  if (t < 0.0f) t = 0.0f;
-  if (t > 1.0f) t = 1.0f;
+  const float tRaw = rawSpan > 0.0f ? ((float)raw_ - (float)rawLow_) / rawSpan : 0.0f;
+  float tPercent = tRaw;
+  if (tPercent < 0.0f) tPercent = 0.0f;
+  if (tPercent > 1.0f) tPercent = 1.0f;
 
-  voltage_ = voltageLow_ + t * (voltageHigh_ - voltageLow_);
-  percent_ = t * 100.0f;
+  voltage_ = voltageLow_ + tRaw * (voltageHigh_ - voltageLow_);
+  percent_ = tPercent * 100.0f;
 
   if (voltage_ <= criticalVoltage_) {
     state_ = BATTERY_CRITICAL;

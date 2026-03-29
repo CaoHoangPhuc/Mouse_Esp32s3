@@ -18,6 +18,8 @@ static constexpr uint8_t ADC_PIN = 3;
 // Divider ratio at ADC ~= 18 / (47 + 18) = 0.2769
 // Battery voltage ~= ADC voltage * 3.6111
 // This keeps a 2S pack in a safe ADC input range.
+static constexpr float DIVIDER_R_TOP_KOHM = 47.0f;
+static constexpr float DIVIDER_R_BOTTOM_KOHM = 18.0f;
 
 // Two-point ADC calibration.
 // Measure pack voltage with a multimeter and record the matching ADC raw values.

@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.24`
+Current project version: `0.0.2.25`
 
 ## Current Status
 
@@ -165,6 +165,7 @@ Available from the main sketch:
 - `test off`
 - `test loop status|battery|sensors|sensorsraw|encoders|maze|off`
 - `resetpose x y h`
+- `setgoal x y w h`
 - `clearmaze`
 - `test battery`
 - `test sensors`
@@ -184,6 +185,7 @@ Console note:
 - the TCP debug console listens on port `2323`
 - port `80` now serves a simple control page that shows the robot hostname and offers `Reconnect Telnet` plus `Cycle LED`
 - the port `80` control page now also includes a grouped quick-reference for the main CLI commands, so users can see the accepted commands and their purpose before opening telnet
+- the port `80` control page now shows the current battery voltage/state from the live robot state
 - the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
 
 ## Web Debugging
@@ -264,6 +266,7 @@ Current front-sensor behavior:
 
 Battery divider note:
 - current comments assume a `47k / 18k` divider into `GPIO 3`
+- battery voltage now extrapolates below the configured low calibration point instead of clamping to `VOLTAGE_LOW`, so low raw ADC readings can correctly fall into warning or critical state
 
 ## Known Limitations
 

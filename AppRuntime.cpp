@@ -88,6 +88,7 @@ static bool debugClientConnected();
 static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
 static bool onWebTelnetReconnect();
+static String onWebHealthJson();
 static void updateRobotLed();
 static void resetMazeToConfiguredStart();
 static FloodFillExplorer::Dir headingDir();
@@ -306,6 +307,25 @@ static bool onWebLedCommand(const String& cmd, String& response) {
 static bool onWebTelnetReconnect() {
   closeDebugConsole("[NET] disconnected for web telnet reconnect");
   return true;
+}
+
+static String onWebHealthJson() {
+  char batteryText[96];
+  snprintf(batteryText, sizeof(batteryText), "%.2fV (%s, %.0f%%)",
+           robotState.batteryVoltage,
+           batteryStateName(robotState.batteryState),
+           robotState.batteryPercent);
+
+  String out = "\"batteryText\":\"";
+  out += String(batteryText);
+  out += "\",\"batteryVoltage\":";
+  out += String(robotState.batteryVoltage, 2);
+  out += ",\"batteryPercent\":";
+  out += String(robotState.batteryPercent, 0);
+  out += ",\"batteryState\":\"";
+  out += String(batteryStateName(robotState.batteryState));
+  out += "\"";
+  return out;
 }
 
 static bool handleLedCommand(const String& cmd) {
@@ -766,6 +786,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
   dbg.setLedCommandHandler(onWebLedCommand);
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
+  dbg.setHealthJsonProvider(onWebHealthJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
   debugServer.begin();
@@ -1016,7 +1037,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | clearmaze");
+  debugPrintln("[CMD] help | explore | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -1205,6 +1226,24 @@ static void handleSerialCommand(const String& rawLine) {
     }
     return;
   }
+  if (line.startsWith("setgoal")) {
+    int x, y, w, h;
+    if (sscanf(line.c_str(), "setgoal %d %d %d %d", &x, &y, &w, &h) == 4) {
+      x = constrain(x, 0, 15);
+      y = constrain(y, 0, 15);
+      w = constrain(w, 1, 16 - x);
+      h = constrain(h, 1, 16 - y);
+      explorer.setGoalRect((uint8_t)x, (uint8_t)y, (uint8_t)w, (uint8_t)h);
+      robotState.goalReached = false;
+      robotState.speedRunReady = false;
+      resetExploreLoopTracking();
+      debugPrintln("[CMD] goal rect set to (" + String(x) + "," + String(y) +
+                   ") size " + String(w) + "x" + String(h));
+    } else {
+      debugPrintln("[CMD] usage: setgoal x y w h");
+    }
+    return;
+  }
   if (line == "test battery") {
     battery_debug_s();
     return;
@@ -1343,7 +1382,9 @@ static void robot_debug_s() {
 static void battery_debug_s() {
   const uint16_t raw = mouseBattery.raw();
   const float adcVolts = 3.3f * ((float)raw / 4095.0f);
-  const float estimatedBatteryFromDivider = adcVolts * ((47.0f + 18.0f) / 18.0f);
+  const float estimatedBatteryFromDivider =
+    adcVolts * ((AppConfig::Battery::DIVIDER_R_TOP_KOHM + AppConfig::Battery::DIVIDER_R_BOTTOM_KOHM) /
+                AppConfig::Battery::DIVIDER_R_BOTTOM_KOHM);
 
   char buf[160];
   snprintf(buf, sizeof(buf),

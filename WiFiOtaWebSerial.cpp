@@ -53,6 +53,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <b>Hostname</b><span>%HOSTNAME%</span>
       <b>IP</b><span id="robotIp">%IP%</span>
       <b>Telnet</b><span id="telnetTarget">%IP%:%TELNET_PORT%</span>
+      <b>Battery</b><span id="batteryNow">loading...</span>
     </div>
     <div class="row">
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
@@ -92,6 +93,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>maze</code> - print the current maze memory.</li>
           <li><code>clearmaze</code> - clear remembered maze walls and planner state.</li>
           <li><code>resetpose x y h</code> - set pose manually; heading is the numeric enum used by the firmware.</li>
+          <li><code>setgoal x y w h</code> - set the active goal rectangle origin and size.</li>
         </ul>
       </div>
       <div class="group">
@@ -122,6 +124,21 @@ static const char* kIndexHtml PROGMEM = R"HTML(
 let busy = false;
 function setStatus(s){ document.getElementById('status').textContent = s; }
 
+async function refreshHealth(){
+  try {
+    const res = await fetch('/health', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const info = await res.json();
+    document.getElementById('robotIp').textContent = info.ip;
+    document.getElementById('telnetTarget').textContent = info.ip + ':' + info.port;
+    if (info.batteryText) {
+      document.getElementById('batteryNow').textContent = info.batteryText;
+    }
+  } catch (e) {
+    document.getElementById('batteryNow').textContent = 'unavailable';
+  }
+}
+
 async function cycleLed(){
   if (busy) return;
   busy = true;
@@ -150,6 +167,9 @@ async function reconnectTelnet(){
     const info = await res.json();
     document.getElementById('robotIp').textContent = info.ip;
     document.getElementById('telnetTarget').textContent = info.ip + ':' + info.port;
+    if (info.batteryText) {
+      document.getElementById('batteryNow').textContent = info.batteryText;
+    }
     setStatus('Reconnecting telnet to ' + info.ip + ':' + info.port + ' ...');
     window.location.href = 'telnet://' + info.ip + ':' + info.port;
   } catch (e) {
@@ -158,6 +178,9 @@ async function reconnectTelnet(){
     busy = false;
   }
 }
+
+refreshHealth();
+setInterval(refreshHealth, 2000);
 </script>
 </body>
 </html>
@@ -548,19 +571,23 @@ void WiFiOtaWebSerial::setupWeb_() {
 
     const bool ok = telnetReconnectHandler_();
     const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
+    const String extra = healthJsonProvider_ ? (String(",") + healthJsonProvider_()) : String("");
     String body = String("{\"ok\":") + (ok ? "true" : "false") +
                   ",\"ip\":\"" + ip() + "\"" +
                   ",\"hostname\":\"" + host + "\"" +
-                  ",\"port\":" + String(cfg_.debugTcpPort) + "}";
+                  ",\"port\":" + String(cfg_.debugTcpPort) +
+                  extra + "}";
     web_->server.send(ok ? 200 : 500, "application/json", body);
   });
 
   srv.on("/health", HTTP_GET, [this]() {
     const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
+    const String extra = healthJsonProvider_ ? (String(",") + healthJsonProvider_()) : String("");
     web_->server.send(200, "application/json",
                       String("{\"ip\":\"") + ip() +
                       "\",\"hostname\":\"" + host +
-                      "\",\"port\":" + String(cfg_.debugTcpPort) + "}");
+                      "\",\"port\":" + String(cfg_.debugTcpPort) +
+                      extra + "}");
   });
 
   srv.onNotFound([this]() {
