@@ -95,6 +95,7 @@ static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
+static void applyCurrentPoseAsHomeRect();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
 static void maze_debug_s();
@@ -411,6 +412,10 @@ static void applyRuntimeGoalRect() {
   explorer.setGoalRect(runtimeGoalX0, runtimeGoalY0, runtimeGoalW, runtimeGoalH);
 }
 
+static void applyCurrentPoseAsHomeRect() {
+  explorer.setHomeRect(robotState.pose.cellX, robotState.pose.cellY, 1, 1);
+}
+
 static bool beginPersistentStorage() {
   static bool initialized = false;
   static bool ok = false;
@@ -638,8 +643,7 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
-  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
-                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
+  applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
@@ -673,13 +677,12 @@ static void resetMazeToConfiguredStart() {
   resetExploreLoopTracking();
   exploreStepBudget = -1;
 
+  setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.setHardwareMode(true);
-  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
-                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
+  applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.clearKnownMaze();
-  setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
   updateRobotLed();
@@ -697,6 +700,7 @@ static void clearMazeMemoryOnly() {
   explorer.setHardwareMode(true);
   applyRuntimeGoalRect();
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  applyCurrentPoseAsHomeRect();
   explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   clearPersistentMaze();
@@ -1071,8 +1075,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   explorer.setWebCommandHandler(onExplorerWebCommand);
   explorer.begin(AppConfig::makeExplorerConfig());
   explorer.setHardwareMode(true);
-  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
-                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
+  applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   if (!loadPersistentMaze()) {
