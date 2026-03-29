@@ -18,7 +18,7 @@ static constexpr uint8_t ADC_PIN = 3;
 // Divider ratio at ADC ~= 18 / (47 + 18) = 0.2769
 // Battery voltage ~= ADC voltage * 3.6111
 // This keeps a 2S pack in a safe ADC input range.
-static constexpr float DIVIDER_R_TOP_KOHM = 47.0f;
+static constexpr float DIVIDER_R_TOP_KOHM = 56.0f;
 static constexpr float DIVIDER_R_BOTTOM_KOHM = 18.0f;
 
 // Two-point ADC calibration.
@@ -68,7 +68,7 @@ static constexpr const char* PASS = "000000001";
 static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
 // Set false to disable the HTTP web log on port 80.
 // OTA and the TCP debug console can still remain enabled.
-static constexpr bool ENABLE_WEB_LOG = false;
+static constexpr bool ENABLE_WEB_LOG = true;
 // Simple firmware upload page for browser-based wireless updates.
 static constexpr bool ENABLE_UPLOAD_WEB = true;
 static constexpr uint16_t UPLOAD_WEB_PORT = 82;
@@ -237,7 +237,7 @@ namespace Explorer {
 // Floodfill web explorer settings.
 // Affects: debug UI on the network and action ACK timeout behavior.
 // Set false to disable the floodfill web UI on port 81 while keeping floodfill logic active.
-static constexpr bool ENABLE_WEB = false;
+static constexpr bool ENABLE_WEB = true;
 static constexpr uint16_t PORT = 81;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;

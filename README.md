@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.27`
+Current project version: `0.0.2.28`
 
 ## Current Status
 
@@ -57,7 +57,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 8. `explore` and `speedrun` start with one `snapCenter()` alignment primitive before the planner is allowed to run.
 9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `telemetryTask` prints compact runtime state to serial.
+11. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
 12. `explorerTask` serves the web maze view.
 13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
 14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
@@ -268,6 +268,7 @@ Battery divider note:
 - current comments assume a `47k / 18k` divider into `GPIO 3`
 - battery voltage now uses the measured ADC node voltage plus the configured divider ratio as the primary pack-voltage estimate
 - on ESP32, battery ADC debug now uses the calibrated millivolt reading path instead of a simple `raw / 4095 * 3.3` approximation
+- the current tuned divider constant uses an effective top resistor value of `56k` with `18k` bottom to better match the measured pack voltage on this board
 
 ## Known Limitations
 

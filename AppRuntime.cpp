@@ -1003,7 +1003,6 @@ static void telemetryTask(void* arg) {
       vTaskDelayUntil(&last, period);
       continue;
     }
-    robot_debug_s();
     if (robotState.mode == ROBOT_MODE_MANUAL_TEST) {
       switch (testLoopMode) {
         case TEST_LOOP_STATUS:
