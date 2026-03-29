@@ -45,6 +45,9 @@ enum TestLoopMode : uint8_t {
 };
 
 static TestLoopMode testLoopMode = TEST_LOOP_NONE;
+static bool motorBothFlipTestEnabled = false;
+static uint32_t motorFlipLastToggleMs = 0;
+static float motorFlipPower = 1.0f;
 
 MultiVL53L0X tofArray(
   AppConfig::Tof::PCF_ADDRESS, AppConfig::Tof::SENSOR_COUNT,
@@ -82,6 +85,7 @@ static void tof_raw_debug_s();
 static void robot_debug_s();
 static void battery_debug_s();
 static void serviceDebugConsole();
+static void serviceMotorBothFlipTest();
 static void debugPrint(const String& s);
 static void debugPrintln(const String& s = "");
 static void debugPrompt();
@@ -372,6 +376,19 @@ static void updateRobotLed() {
   }
 }
 
+static void serviceMotorBothFlipTest() {
+  if (!motorBothFlipTestEnabled) return;
+
+  const uint32_t now = millis();
+  if ((uint32_t)(now - motorFlipLastToggleMs) < 1000) return;
+
+  motorFlipLastToggleMs = now;
+  motorFlipPower = -motorFlipPower;
+  leftMotor.setPower(motorFlipPower);
+  rightMotor.setPower(motorFlipPower);
+  debugPrintln(String("[TEST] both motors power=") + (motorFlipPower > 0.0f ? "+100%" : "-100%"));
+}
+
 static void resetExploreLoopTracking() {
   lastStableBestCost = 0xFFFF;
   stableRoundTripCount = 0;
@@ -423,6 +440,7 @@ static void enterIdleMode(const String& reason) {
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
+  motorBothFlipTestEnabled = false;
   explorer.setRunning(false);
   motionController.stop();
   updateRobotLed();
@@ -436,6 +454,7 @@ static void enterFaultMode(const String& reason) {
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
+  motorBothFlipTestEnabled = false;
   motionController.abort(reason);
   explorer.setRunning(false);
   updateRobotLed();
@@ -970,6 +989,7 @@ void userTaskBody(void* arg) {
 
     updateRobotState();
     motionController.update(robotState);
+    serviceMotorBothFlipTest();
     serviceDebugConsole();
 
     while (Serial.available() > 0) {
@@ -1366,6 +1386,7 @@ static void handleSerialCommand(const String& rawLine) {
   }
   if (line == "test motorl") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    motorBothFlipTestEnabled = false;
     leftMotor.setSpeedTPS(220.0f);
     rightMotor.coastStop();
     debugPrintln("[TEST] left motor spin");
@@ -1373,9 +1394,20 @@ static void handleSerialCommand(const String& rawLine) {
   }
   if (line == "test motorr") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    motorBothFlipTestEnabled = false;
     leftMotor.coastStop();
     rightMotor.setSpeedTPS(220.0f);
     debugPrintln("[TEST] right motor spin");
+    return;
+  }
+  if (line == "test motor both") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    motorBothFlipTestEnabled = true;
+    motorFlipPower = 1.0f;
+    motorFlipLastToggleMs = millis();
+    leftMotor.setPower(motorFlipPower);
+    rightMotor.setPower(motorFlipPower);
+    debugPrintln("[TEST] both motors flip loop +100%/-100% every 1s");
     return;
   }
   if (line == "test encoders") {

@@ -59,7 +59,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
       <button class="secondary" onclick="openFloodfill()">Open Floodfill</button>
-    </div>
+    </div> 
     <div id="status">Ready.</div>
     <h2>How To Use</h2>
     <p class="hint">Use <b>Reconnect Telnet</b> to open the live CLI in your telnet app. The commands below are the main ones the robot accepts, grouped by purpose so you can quickly find the right action.</p>
@@ -116,6 +116,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>test sensorsraw</code> - print raw TOF sensor readings.</li>
           <li><code>test encoders</code> - print encoder diagnostics.</li>
           <li><code>test motorl</code>, <code>test motorr</code> - spin a single motor for bench checks.</li>
+          <li><code>test motor both</code> - flip both motors between +100% and -100% every second for bench testing.</li>
           <li><code>test loop status|battery|sensors|sensorsraw|encoders|maze|off</code> - start or stop periodic debug printing.</li>
         </ul>
       </div>
