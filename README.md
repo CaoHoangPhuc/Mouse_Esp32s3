@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.29`
+Current project version: `0.0.2.30`
 
 ## Current Status
 
@@ -12,6 +12,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - battery monitoring with safety states
 - primitive motion executor for `move`, `back`, `turn 90 deg`, and `turn 180 deg`
 - floodfill maze state and web visualizer
+- floodfill maze web sync over WebSocket instead of browser polling
 - task-based planner / executor / telemetry flow
 - Wi-Fi OTA, port `80` control page, and telnet/debug tools
 - centralized configuration for hardware and tuning values
@@ -198,6 +199,9 @@ Expected use:
 - verify current pose
 - inspect floodfill distance field
 - confirm planner action sequence
+- the floodfill page now pushes state over WebSocket, so the browser no longer polls the maze state over HTTP while the mouse is running
+- the floodfill web page no longer exposes a web `Set Start` editor; start is now treated as a configured/runtime app concern instead of a browser-side control
+- the floodfill web page now prints planner status in a wrapped status bar so long state text does not stretch or resize the whole page while the mouse is running
 
 ## Wireless Upload
 

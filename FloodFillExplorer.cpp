@@ -1,4 +1,7 @@
 #include "FloodFillExplorer.h"
+#include <WiFi.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha1.h>
 
 // ============================ HTML UI ============================
 // Improvements:
@@ -18,27 +21,22 @@ static const char* kHtml PROGMEM = R"HTML(
   header{background:#111;color:#eee;padding:10px 12px;position:sticky;top:0}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   button{padding:8px 12px;cursor:pointer}
-  input{padding:6px 8px;width:64px}
   canvas{display:block;margin:0 auto;border-top:1px solid #333}
   small{opacity:.85}
-  .lbl{opacity:.85}
   .pill{padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.12)}
   .warn{background:rgba(255,140,0,.18)}
+  .statusbar{background:#f4f6f8;border-bottom:1px solid #d8dde3;padding:8px 12px;
+             font:13px/1.45 ui-monospace,Consolas,monospace;white-space:normal;
+             overflow-wrap:anywhere;word-break:break-word}
 </style>
 </head>
 <body>
 <header>
   <div class="row">
     <b>Flood Fill Explorer</b>
-    <small id="st" class="pill">loading…</small>
+    <small id="conn" class="pill">loading...</small>
 
     <div style="margin-left:auto" class="row">
-      <span class="lbl">Start:</span>
-      <input id="sx" type="number" min="0" max="15" value="0" />
-      <input id="sy" type="number" min="0" max="15" value="15" />
-      <input id="sh" type="number" min="0" max="3"  value="0" />
-      <button onclick="setStart()">Set Start</button>
-
       <button onclick="cmd('step')">Step</button>
       <button onclick="cmd('run')">Run</button>
       <button onclick="cmd('pause')">Pause</button>
@@ -52,101 +50,43 @@ static const char* kHtml PROGMEM = R"HTML(
   </div>
 </header>
 
+<div id="status" class="statusbar">Connecting to explorer...</div>
+
 <canvas id="c" width="720" height="720"></canvas>
 
 <script>
 const N=16;
+const WS_PORT=%WS_PORT%;
 const c=document.getElementById('c');
 const ctx=c.getContext('2d');
 let S=null;
-
+let ws=null;
 let busy=false;
-let stopPoll=false;
-
-let inputsInit=false;
-let lastVer=0;
-
+let stopLoop=false;
 let nextInFlight=false;
 let ackInFlight=false;
-let stateInFlight=false;
 
-// ---- tunables ----
-const POLL_MS = 200;          // /state poll interval
-const TICK_MS = 50;           // state machine tick (next/ack)
-const STATE_TO = 300;         // /state timeout
-const NEXT_TO  = 300;         // /next timeout
-const ACK_TO   = 300;         // /ack timeout
-const AUTO_ACK_DELAY_MS = 50; // simulate speed (increase -> slower)
+const TICK_MS = 50;
+const AUTO_ACK_DELAY_MS = 50;
 
 function st(s){
-  const el=document.getElementById('st');
+  const el=document.getElementById('status');
   el.textContent=s;
 }
 
-function clampInt(v, lo, hi){
-  v = (v|0);
-  if(v<lo) v=lo;
-  if(v>hi) v=hi;
-  return v;
+function setConn(s){
+  const el=document.getElementById('conn');
+  el.textContent=s;
 }
 
-// --- fetch with abort timeout ---
-async function fetchWithTimeout(url, opts={}, timeoutMs=1500){
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-  try{
-    return await fetch(url, {...opts, signal: ctrl.signal});
-  } finally {
-    clearTimeout(t);
-  }
+function wsReady(){
+  return ws && ws.readyState === WebSocket.OPEN;
 }
 
-function initInputsOnce(){
-  if(inputsInit) return;
-  if(S && S.start){
-    document.getElementById('sx').value = S.start.x;
-    document.getElementById('sy').value = S.start.y;
-    document.getElementById('sh').value = S.start.h;
-    inputsInit = true;
-  }
-}
-
-async function cmd(a){
-  if(busy) return;
-  busy=true;
-  try{
-    const r = await fetchWithTimeout('/cmd?a='+encodeURIComponent(a), {cache:'no-store'}, 1200);
-    if(!r.ok) st("cmd failed HTTP "+r.status);
-    await refresh(true);
-  }catch(e){
-    st("cmd err: "+e);
-  }finally{
-    busy=false;
-  }
-}
-
-async function setStart(){
-  if(busy) return;
-  busy=true;
-  try{
-    const x = clampInt(parseInt(document.getElementById('sx').value||"0",10), 0, 15);
-    const y = clampInt(parseInt(document.getElementById('sy').value||"15",10), 0, 15);
-    const h = clampInt(parseInt(document.getElementById('sh').value||"0",10), 0, 3);
-
-    document.getElementById('sx').value = x;
-    document.getElementById('sy').value = y;
-    document.getElementById('sh').value = h;
-
-    const url = `/cmd?a=setstart&x=${x}&y=${y}&h=${h}`;
-    const r = await fetchWithTimeout(url, {cache:'no-store'}, 1200);
-    if(!r.ok) st("setstart failed HTTP "+r.status);
-
-    await refresh(true);
-  }catch(e){
-    st("setstart err: "+e);
-  }finally{
-    busy=false;
-  }
+function sendWs(msg){
+  if(!wsReady()) return false;
+  ws.send(msg);
+  return true;
 }
 
 function cellGeom(){
@@ -169,7 +109,7 @@ function drawPlanPath(geom, plan){
 
   ctx.save();
   ctx.lineWidth = Math.max(1.2, cs*0.040);
-  ctx.strokeStyle = "rgba(255, 130, 0, 0.65)";
+  ctx.strokeStyle = 'rgba(255, 130, 0, 0.65)';
   ctx.setLineDash([cs*0.16, cs*0.11]);
 
   ctx.beginPath();
@@ -202,55 +142,43 @@ function drawPlanPath(geom, plan){
 function draw(){
   if(!S) return;
   const g = cellGeom();
-  const {W,H,cs,ox,oy}=g;
-  ctx.clearRect(0,0,W,H);
+  const {cs,ox,oy}=g;
+  ctx.clearRect(0,0,c.width,c.height);
 
-  initInputsOnce();
-
-  // goal rect
   const gx0=S.goal.x0, gy0=S.goal.y0, gw=S.goal.w, gh=S.goal.h;
-  ctx.fillStyle="rgba(0,0,0,0.06)";
+  ctx.fillStyle='rgba(0,0,0,0.06)';
   ctx.fillRect(ox+gx0*cs, oy+gy0*cs, gw*cs, gh*cs);
 
-  // start marker
-  const sx=S.start.x, sy=S.start.y;
-  ctx.fillStyle="rgba(0,0,0,0.08)";
-  ctx.fillRect(ox+sx*cs, oy+sy*cs, cs, cs);
-
-  // visited shading
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       if(S.visited[y][x]){
-        ctx.fillStyle="rgba(0,0,0,0.03)";
+        ctx.fillStyle='rgba(0,0,0,0.03)';
         ctx.fillRect(ox+x*cs, oy+y*cs, cs, cs);
       }
     }
   }
 
-  // grid
-  ctx.strokeStyle="rgba(0,0,0,0.08)";
+  ctx.strokeStyle='rgba(0,0,0,0.08)';
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       ctx.strokeRect(ox+x*cs, oy+y*cs, cs, cs);
     }
   }
 
-  // dist numbers
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.font=Math.floor(cs*0.35)+"px ui-monospace,monospace";
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.font=Math.floor(cs*0.35)+'px ui-monospace,monospace';
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
       const d=S.dist[y][x];
       if(d!==65535){
-        ctx.fillStyle = S.visited[y][x] ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)";
+        ctx.fillStyle = S.visited[y][x] ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.25)';
         ctx.fillText(String(d), ox+x*cs+cs*0.5, oy+y*cs+cs*0.5);
       }
     }
   }
 
-  // known walls only
-  ctx.strokeStyle="rgba(0,0,0,0.9)";
+  ctx.strokeStyle='rgba(0,0,0,0.9)';
   ctx.lineWidth=Math.max(2, cs*0.08);
   for(let y=0;y<N;y++){
     for(let x=0;x<N;x++){
@@ -265,27 +193,25 @@ function draw(){
     }
   }
 
-  // plan
   if(S.plan) drawPlanPath(g, S.plan);
 
-  // mouse
   const mx=S.mouse.x, my=S.mouse.y, h=S.mouse.h;
   const cc = cellCenter(mx,my,g);
   const cx=cc.cx, cy=cc.cy;
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
   ctx.beginPath();
   ctx.arc(cx, cy, cs*0.30, 0, Math.PI*2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.45)";
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.lineWidth = Math.max(1.5, cs*0.05);
   ctx.beginPath();
   ctx.arc(cx, cy, cs*0.30, 0, Math.PI*2);
   ctx.stroke();
 
   const ax=[0,1,0,-1], ay=[-1,0,1,0];
-  ctx.strokeStyle="rgba(0,0,0,0.35)";
+  ctx.strokeStyle='rgba(0,0,0,0.35)';
   ctx.lineWidth=Math.max(2.2, cs*0.065);
   ctx.beginPath();
   ctx.moveTo(cx,cy);
@@ -293,101 +219,113 @@ function draw(){
   ctx.stroke();
 
   const cur = S.dist[my][mx];
-  const pa = S.pendingActionName || "-";
-  st("ver="+(S.ver||0)+" | mouse=("+mx+","+my+") h="+h+
-     " | running="+S.running+" | waitAck="+S.waitAck+
-     " | seq="+(S.pendingSeq||0)+" | act="+pa+
-     " | dist="+cur+" | planLen="+(S.planLen||0));
+  const pa = S.pendingActionName || '-';
+  const home = S.home ? `home=(${S.home.x0},${S.home.y0}) ${S.home.w}x${S.home.h}` : 'home=-';
+  const goal = S.goal ? `goal=(${S.goal.x0},${S.goal.y0}) ${S.goal.w}x${S.goal.h}` : 'goal=-';
+  st('mouse=('+mx+','+my+') h='+h+
+     ' | running='+S.running+
+     ' | waitAck='+S.waitAck+
+     ' | seq='+(S.pendingSeq||0)+
+     ' | act='+pa+
+     ' | dist='+cur+
+     ' | planLen='+(S.planLen||0)+
+     ' | '+home+
+     ' | '+goal+
+     ' | ver='+(S.ver||0));
 }
 
-// ---------- ACTION STATE MACHINE (separate from refresh) ----------
-async function doNextIfNeeded(){
+function doNextIfNeeded(){
   if(!S || !S.running || S.waitAck) return;
-  if(nextInFlight || busy || ackInFlight || stateInFlight) return;
-  nextInFlight = true;
-  try{
-    await fetchWithTimeout('/next', {cache:'no-store'}, NEXT_TO);
-  }catch(e){}
-  finally{
-    nextInFlight = false;
-  }
+  if(nextInFlight || busy || ackInFlight || !wsReady()) return;
+  nextInFlight = sendWs('next');
 }
 
-async function autoAckIfEnabled(){
+function autoAckIfEnabled(){
   if(!S || !S.running || !S.waitAck) return;
-  if(ackInFlight || busy || stateInFlight) return;
-
+  if(ackInFlight || busy || !wsReady()) return;
   const autoAck = document.getElementById('autoAck').checked;
   if(!autoAck) return;
-
   ackInFlight = true;
-  const seqSnapshot = S.pendingSeq; // snapshot!
-
-  setTimeout(async ()=>{
-    try{
-      await fetchWithTimeout('/ack?seq=' + encodeURIComponent(String(seqSnapshot)) + '&ok=1',
-                             {cache:'no-store'}, ACK_TO);
-    }catch(e){}
-    finally{
+  const seqSnapshot = S.pendingSeq;
+  setTimeout(()=>{
+    if(!wsReady()){
       ackInFlight = false;
+      return;
     }
+    sendWs('ack|' + String(seqSnapshot) + '|1');
   }, AUTO_ACK_DELAY_MS);
 }
 
-async function tickLoop(){
-  if(!stopPoll){
-    // tách action machine ra khỏi /state để tránh burst
-    await doNextIfNeeded();
-    await autoAckIfEnabled();
+function tickLoop(){
+  if(!stopLoop){
+    doNextIfNeeded();
+    autoAckIfEnabled();
     setTimeout(tickLoop, TICK_MS);
   }
 }
 
-// ---------- STATE POLL (only fetch + draw) ----------
-async function refresh(fromCmd=false){
-  if(stateInFlight) return;
-  if(busy && !fromCmd) return;
-
-  stateInFlight = true;
-  try{
-    const url = '/state?since=' + encodeURIComponent(String(lastVer)) + '&t=' + Date.now();
-    const r = await fetchWithTimeout(url, {cache:'no-store'}, STATE_TO);
-
-    if(r.status === 204){
-      // no changes -> do nothing here (tickLoop handles next/ack)
-      return;
-    }
-    if(!r.ok){
-      st("state HTTP "+r.status);
-      return;
-    }
-
-    S = await r.json();
-    lastVer = S.ver || lastVer;
+function handleWsMessage(text){
+  if(text.startsWith('state|')){
+    S = JSON.parse(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
     draw();
-
-  }catch(e){
-    const es = String(e);
-    if(es.includes("AbortError") || es.includes("timeout")) st("state timeout");
-    else st("offline: "+e);
-  }finally{
-    stateInFlight = false;
+    return;
+  }
+  if(text.startsWith('reply|')){
+    st(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
+    return;
+  }
+  if(text.startsWith('error|')){
+    st(text.slice(6));
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
   }
 }
 
-async function pollLoop(){
-  while(!stopPoll){
-    await refresh(false);
-    await new Promise(res => setTimeout(res, POLL_MS));
-  }
+function connectWs(){
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const host = location.hostname || window.location.host.split(':')[0];
+  ws = new WebSocket(proto + host + ':' + WS_PORT + '/ws');
+  ws.onopen = () => {
+    setConn('ws connected');
+    st('Explorer websocket connected.');
+    sendWs('hello');
+  };
+  ws.onmessage = (ev) => handleWsMessage(String(ev.data || ''));
+  ws.onclose = () => {
+    setConn('ws disconnected');
+    st('Explorer websocket disconnected. Retrying...');
+    nextInFlight = false;
+    ackInFlight = false;
+    busy = false;
+    setTimeout(connectWs, 1000);
+  };
+  ws.onerror = () => {
+    setConn('ws error');
+  };
 }
 
-pollLoop();
+connectWs();
 tickLoop();
-refresh(true);
 </script>
 </body></html>
 )HTML";
+
+class FloodFillExplorer::WsServerWrapper {
+public:
+  explicit WsServerWrapper(uint16_t port) : server(port) {}
+
+  WiFiServer server;
+  WiFiClient client;
+  bool handshaken = false;
+  uint32_t lastStateVerSent = 0xFFFFFFFFu;
+};
 
 // ----------------- Core constants -----------------
 static const int dx4[4] = {0, 1, 0, -1};
@@ -429,6 +367,10 @@ FloodFillExplorer::~FloodFillExplorer(){
   if(server_){
     delete server_;
     server_ = nullptr;
+  }
+  if(ws_){
+    delete ws_;
+    ws_ = nullptr;
   }
 }
 
@@ -550,6 +492,7 @@ const char* FloodFillExplorer::actionName_(Action a) const{
 void FloodFillExplorer::markDirty_(){
   stateVer_++;
   buildStateJson_();
+  wsStatePending_ = true;
 }
 
 void FloodFillExplorer::setHardwareMode(bool en) {
@@ -688,8 +631,13 @@ bool FloodFillExplorer::begin(const Config& cfg){
     delete server_;
     server_ = nullptr;
   }
+  if(ws_){
+    delete ws_;
+    ws_ = nullptr;
+  }
   if (cfg_.enableWeb) {
     server_ = new WebServer(cfg_.port);
+    ws_ = new WsServerWrapper(cfg_.wsPort);
   }
 
   clearKnown_();
@@ -700,6 +648,7 @@ bool FloodFillExplorer::begin(const Config& cfg){
   if (cfg_.enableWeb && server_) {
     setupWeb_();
     server_->begin();
+    setupWs_();
   }
 
   started_ = true;
@@ -710,7 +659,7 @@ bool FloodFillExplorer::begin(const Config& cfg){
   pendingSeq_ = 0;
 
   if (cfg_.enableWeb) {
-    log_("[Explorer] Web on port " + String(cfg_.port));
+    log_("[Explorer] Web on port " + String(cfg_.port) + ", WS on port " + String(cfg_.wsPort));
   } else {
     log_("[Explorer] Web disabled");
   }
@@ -718,9 +667,12 @@ bool FloodFillExplorer::begin(const Config& cfg){
 }
 
 void FloodFillExplorer::loop() {
-  if (!started_ || !server_) return;
+  if (!started_) return;
 
-  server_->handleClient();
+  if (server_) {
+    server_->handleClient();
+  }
+  serviceWs_();
 
   static uint32_t lastLogMs = 0;
 
@@ -1138,12 +1090,301 @@ void FloodFillExplorer::setupWeb_(){
   server_->on("/ack", HTTP_GET, [this](){ handleAck_(); });
 }
 
+void FloodFillExplorer::setupWs_() {
+  if (!ws_) return;
+  ws_->server.begin();
+  ws_->handshaken = false;
+  ws_->lastStateVerSent = 0xFFFFFFFFu;
+}
+
+bool FloodFillExplorer::handleWsHandshake_() {
+  if (!ws_ || !ws_->client || !ws_->client.connected()) return false;
+
+  ws_->client.setTimeout(50);
+  String key;
+  while (ws_->client.connected()) {
+    String line = ws_->client.readStringUntil('\n');
+    if (line.length() == 0) break;
+    line.trim();
+    if (line.startsWith("Sec-WebSocket-Key:")) {
+      key = line.substring(strlen("Sec-WebSocket-Key:"));
+      key.trim();
+    }
+    if (line.length() == 0) break;
+  }
+
+  if (key.length() == 0) {
+    ws_->client.stop();
+    return false;
+  }
+
+  const String acceptSrc = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  unsigned char sha1[20];
+  mbedtls_sha1((const unsigned char*)acceptSrc.c_str(), acceptSrc.length(), sha1);
+
+  unsigned char base64Out[64];
+  size_t outLen = 0;
+  mbedtls_base64_encode(base64Out, sizeof(base64Out), &outLen, sha1, sizeof(sha1));
+  const String acceptKey = String((const char*)base64Out).substring(0, outLen);
+
+  ws_->client.print(
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n");
+
+  ws_->handshaken = true;
+  ws_->lastStateVerSent = 0xFFFFFFFFu;
+  return true;
+}
+
+bool FloodFillExplorer::readWsFrame_(String& payload, uint8_t& opcode) {
+  if (!ws_ || !ws_->client || !ws_->client.connected() || ws_->client.available() < 2) return false;
+
+  const uint8_t b0 = ws_->client.read();
+  const uint8_t b1 = ws_->client.read();
+  opcode = b0 & 0x0F;
+  uint64_t len = b1 & 0x7F;
+
+  if (len == 126) {
+    while (ws_->client.available() < 2) yield();
+    len = ((uint16_t)ws_->client.read() << 8) | (uint16_t)ws_->client.read();
+  } else if (len == 127) {
+    while (ws_->client.available() < 8) yield();
+    len = 0;
+    for (int i = 0; i < 8; ++i) {
+      len = (len << 8) | (uint64_t)ws_->client.read();
+    }
+  }
+
+  const bool masked = (b1 & 0x80) != 0;
+  uint8_t mask[4] = {0, 0, 0, 0};
+  if (masked) {
+    while (ws_->client.available() < 4) yield();
+    for (int i = 0; i < 4; ++i) mask[i] = ws_->client.read();
+  }
+
+  payload = "";
+  payload.reserve((size_t)len);
+  for (uint64_t i = 0; i < len; ++i) {
+    while (ws_->client.available() < 1) yield();
+    char ch = (char)ws_->client.read();
+    if (masked) ch = (char)(ch ^ mask[i & 3]);
+    payload += ch;
+  }
+  return true;
+}
+
+void FloodFillExplorer::sendWsText_(const String& text) {
+  if (!ws_ || !ws_->client || !ws_->client.connected() || !ws_->handshaken) return;
+
+  const size_t len = text.length();
+  ws_->client.write((uint8_t)0x81);
+  if (len < 126) {
+    ws_->client.write((uint8_t)len);
+  } else if (len < 65536) {
+    ws_->client.write((uint8_t)126);
+    ws_->client.write((uint8_t)((len >> 8) & 0xFF));
+    ws_->client.write((uint8_t)(len & 0xFF));
+  } else {
+    ws_->client.write((uint8_t)127);
+    for (int i = 7; i >= 0; --i) {
+      ws_->client.write((uint8_t)((((uint64_t)len) >> (i * 8)) & 0xFF));
+    }
+  }
+  ws_->client.write((const uint8_t*)text.c_str(), len);
+}
+
+void FloodFillExplorer::sendWsState_() {
+  sendWsText_("state|" + stateJson_);
+  if (ws_) ws_->lastStateVerSent = stateVer_;
+  wsStatePending_ = false;
+}
+
+String FloodFillExplorer::jsonEscape_(const String& s) const {
+  String out;
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); ++i) {
+    const char ch = s[i];
+    if (ch == '\\' || ch == '"') out += '\\';
+    if (ch == '\n') out += "\\n";
+    else if (ch == '\r') out += "\\r";
+    else out += ch;
+  }
+  return out;
+}
+
+void FloodFillExplorer::sendWsReply_(const String& kind, const String& msg) {
+  sendWsText_(kind + "|" + msg);
+}
+
+void FloodFillExplorer::processWsMessage_(const String& msg) {
+  if (msg == "hello") {
+    sendWsState_();
+    return;
+  }
+  if (msg == "next") {
+    if (!running_) { sendWsReply_("reply", "not running"); return; }
+    if (waitAck_) { sendWsReply_("reply", "waiting ack"); return; }
+    Action act = chooseNextAction_();
+    if (act == ACT_NONE) {
+      running_ = false;
+      markDirty_();
+      sendWsReply_("reply", "done");
+      return;
+    }
+    dispatchAction_(act);
+    sendWsReply_("reply", "dispatched");
+    return;
+  }
+  if (msg.startsWith("ack|")) {
+    const int p1 = msg.indexOf('|', 4);
+    if (p1 < 0) { sendWsReply_("error", "bad ack"); return; }
+    const uint32_t seq = (uint32_t)strtoul(msg.substring(4, p1).c_str(), nullptr, 10);
+    const bool ok = msg.substring(p1 + 1) != "0";
+    if (!waitAck_) { sendWsReply_("error", "no pending"); return; }
+    if (seq != pendingSeq_) { sendWsReply_("error", "seq mismatch"); return; }
+    if (!ok) {
+      running_ = false;
+      waitAck_ = false;
+      pendingAction_ = ACT_NONE;
+      markDirty_();
+      sendWsReply_("reply", "ACK FAIL");
+      return;
+    }
+    commitPendingAction_();
+    waitAck_ = false;
+    if (atActiveTarget_()) {
+      onGoalReached_();
+      sendWsReply_("reply", "ACK OK (GOAL)");
+      return;
+    }
+    computeFloodFill_();
+    computePlan_();
+    markDirty_();
+    sendWsReply_("reply", "ACK OK");
+    return;
+  }
+  if (msg.startsWith("setstart|")) {
+    int p1 = msg.indexOf('|', 9);
+    int p2 = p1 < 0 ? -1 : msg.indexOf('|', p1 + 1);
+    if (p1 < 0 || p2 < 0) { sendWsReply_("error", "bad setstart"); return; }
+    int x = msg.substring(9, p1).toInt();
+    int y = msg.substring(p1 + 1, p2).toInt();
+    int h = msg.substring(p2 + 1).toInt();
+    if (x < 0) x = 0; if (x >= N) x = N - 1;
+    if (y < 0) y = 0; if (y >= N) y = N - 1;
+    h &= 3;
+    running_ = false;
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+    sx_ = (uint8_t)x;
+    sy_ = (uint8_t)y;
+    sh_ = (Dir)h;
+    reset();
+    sendWsReply_("reply", "OK");
+    return;
+  }
+  if (msg.startsWith("cmd|")) {
+    const String a = msg.substring(4);
+    if (a == "step") {
+      if (waitAck_) { sendWsReply_("reply", "waiting ack"); return; }
+      Action act = chooseNextAction_();
+      if (act == ACT_NONE) {
+        running_ = false;
+        markDirty_();
+        sendWsReply_("reply", "done");
+        return;
+      }
+      dispatchAction_(act);
+      commitPendingAction_();
+      waitAck_ = false;
+      pendingAction_ = ACT_NONE;
+      if (atActiveTarget_()) {
+        onGoalReached_();
+        sendWsReply_("reply", "step ok (GOAL)");
+        return;
+      }
+      computeFloodFill_();
+      computePlan_();
+      markDirty_();
+      sendWsReply_("reply", "step ok");
+      return;
+    }
+    if (a == "run") {
+      running_ = true;
+      if (!waitAck_) {
+        Action act = chooseNextAction_();
+        if (act != ACT_NONE) dispatchAction_(act);
+      }
+      markDirty_();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+    if (a == "pause") {
+      running_ = false;
+      markDirty_();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+    if (a == "reset") {
+      reset();
+      sendWsReply_("reply", "OK");
+      return;
+    }
+  }
+  sendWsReply_("error", "unknown");
+}
+
+void FloodFillExplorer::serviceWs_() {
+  if (!ws_) return;
+
+  if ((!ws_->client || !ws_->client.connected()) && ws_->server.hasClient()) {
+    if (ws_->client) ws_->client.stop();
+    ws_->client = ws_->server.available();
+    ws_->handshaken = false;
+    ws_->lastStateVerSent = 0xFFFFFFFFu;
+  }
+
+  if (!ws_->client || !ws_->client.connected()) return;
+
+  if (!ws_->handshaken) {
+    if (!handleWsHandshake_()) return;
+    wsStatePending_ = true;
+  }
+
+  while (ws_->client.available() > 1) {
+    String payload;
+    uint8_t opcode = 0;
+    if (!readWsFrame_(payload, opcode)) break;
+    if (opcode == 0x8) {
+      ws_->client.stop();
+      ws_->handshaken = false;
+      return;
+    }
+    if (opcode == 0x9) {
+      ws_->client.write((uint8_t)0x8A);
+      ws_->client.write((uint8_t)0x00);
+      continue;
+    }
+    if (opcode == 0x1) {
+      processWsMessage_(payload);
+    }
+  }
+
+  if (ws_->handshaken && wsStatePending_ && ws_->lastStateVerSent != stateVer_) {
+    sendWsState_();
+  }
+}
+
 void FloodFillExplorer::handleRoot_(){
+  String html = FPSTR(kHtml);
+  html.replace("%WS_PORT%", String(cfg_.wsPort));
   server_->sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   server_->sendHeader("Pragma", "no-cache");
   server_->sendHeader("Expires", "0");
   server_->sendHeader("Connection", "close");
-  server_->send(200, "text/html; charset=utf-8", FPSTR(kHtml));
+  server_->send(200, "text/html; charset=utf-8", html);
 }
 
 void FloodFillExplorer::handleCmd_(){
@@ -1444,4 +1685,5 @@ void FloodFillExplorer::buildStateJson_(){
 
   stateJson_ = out;
 }
+
 

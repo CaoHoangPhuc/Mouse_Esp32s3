@@ -239,6 +239,7 @@ namespace Explorer {
 // Set false to disable the floodfill web UI on port 81 while keeping floodfill logic active.
 static constexpr bool ENABLE_WEB = true;
 static constexpr uint16_t PORT = 81;
+static constexpr uint16_t WS_PORT = 83;
 static constexpr bool AUTO_RUN = false;
 static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
 static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
@@ -287,6 +288,7 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
   FloodFillExplorer::Config cfg;
   cfg.enableWeb = Explorer::ENABLE_WEB;
   cfg.port = Explorer::PORT;
+  cfg.wsPort = Explorer::WS_PORT;
   cfg.autoRun = Explorer::AUTO_RUN;
   cfg.ackTimeoutMs = Explorer::ACK_TIMEOUT_MS;
   cfg.pauseOnAckTimeout = Explorer::PAUSE_ON_ACK_TIMEOUT;

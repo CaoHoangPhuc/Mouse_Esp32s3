@@ -38,6 +38,7 @@ public:
 
   struct Config {
     uint16_t port = 80;
+    uint16_t wsPort = 83;
     bool enableWeb = true;
     bool autoRun = false;
 
@@ -93,11 +94,20 @@ public:
 private:
   // --- web handlers ---
   void setupWeb_();
+  void setupWs_();
   void handleRoot_();
   void handleState_();
   void handleCmd_();
   void handleNext_();
   void handleAck_();
+  void serviceWs_();
+  bool handleWsHandshake_();
+  bool readWsFrame_(String& payload, uint8_t& opcode);
+  void sendWsText_(const String& text);
+  void sendWsState_();
+  void processWsMessage_(const String& msg);
+  String jsonEscape_(const String& s) const;
+  void sendWsReply_(const String& kind, const String& msg);
 
   // --- state / json ---
   void buildStateJson_();
@@ -148,6 +158,8 @@ private:
 
 private:
   WebServer* server_ = nullptr;
+  class WsServerWrapper;
+  WsServerWrapper* ws_ = nullptr;
   Config cfg_{};
 
   bool started_ = false;
@@ -172,6 +184,7 @@ private:
 
   uint32_t stateVer_ = 0;
   String stateJson_;
+  volatile bool wsStatePending_ = false;
 
   // ACK state
   bool waitAck_ = false;
