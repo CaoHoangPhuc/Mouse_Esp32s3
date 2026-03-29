@@ -28,6 +28,11 @@ static const char* kHtml PROGMEM = R"HTML(
   .statusbar{background:#f4f6f8;border-bottom:1px solid #d8dde3;padding:8px 12px;
              font:13px/1.45 ui-monospace,Consolas,monospace;white-space:normal;
              overflow-wrap:anywhere;word-break:break-word}
+  .lapbar{background:#eef3f6;border-bottom:1px solid #d8dde3;padding:8px 12px;
+          font:13px/1.5 ui-monospace,Consolas,monospace}
+  .lapbar b{display:block;margin-bottom:4px}
+  .lapbar ul{margin:6px 0 0;padding-left:20px}
+  .lapbar li{margin:2px 0}
 </style>
 </head>
 <body>
@@ -51,6 +56,11 @@ static const char* kHtml PROGMEM = R"HTML(
 </header>
 
 <div id="status" class="statusbar">Connecting to explorer...</div>
+<div id="lapbar" class="lapbar">
+  <b>Lap Timing</b>
+  <div id="lapCurrent">Waiting to start...</div>
+  <ul id="lapHistory"></ul>
+</div>
 
 <canvas id="c" width="720" height="720"></canvas>
 
@@ -65,6 +75,7 @@ let busy=false;
 let stopLoop=false;
 let nextInFlight=false;
 let ackInFlight=false;
+let lapStateRxMs = 0;
 
 const TICK_MS = 50;
 const AUTO_ACK_DELAY_MS = 50;
@@ -239,6 +250,43 @@ function draw(){
      ' | '+home+
      ' | '+goal+
      ' | ver='+(S.ver||0));
+  renderLap();
+}
+
+function fmtMs(ms){
+  const total = Math.max(0, Math.floor(ms || 0));
+  const min = Math.floor(total / 60000);
+  const sec = Math.floor((total % 60000) / 1000);
+  const rem = total % 1000;
+  return `${min}:${String(sec).padStart(2,'0')}.${String(rem).padStart(3,'0')}`;
+}
+
+function renderLap(){
+  const currentEl = document.getElementById('lapCurrent');
+  const listEl = document.getElementById('lapHistory');
+  if(!currentEl || !listEl) return;
+  listEl.innerHTML = '';
+
+  if(!S || !S.lap){
+    currentEl.textContent = 'Waiting to start...';
+    return;
+  }
+
+  let currentMs = S.lap.currentMs || 0;
+  if(S.lap.running){
+    currentMs += Math.max(0, Date.now() - lapStateRxMs);
+    currentEl.textContent = `Lap ${S.lap.nextLap} running: ${fmtMs(currentMs)}`;
+  } else if((S.lap.historyMs || []).length > 0){
+    currentEl.textContent = `Last lap: ${fmtMs(S.lap.historyMs[S.lap.historyMs.length - 1])}`;
+  } else {
+    currentEl.textContent = 'Waiting to start...';
+  }
+
+  (S.lap.historyMs || []).forEach((ms, idx) => {
+    const li = document.createElement('li');
+    li.textContent = `Lap ${idx + 1}: ${fmtMs(ms)}`;
+    listEl.appendChild(li);
+  });
 }
 
 function doNextIfNeeded(){
@@ -274,6 +322,7 @@ function tickLoop(){
 function handleWsMessage(text){
   if(text.startsWith('state|')){
     S = JSON.parse(text.slice(6));
+    lapStateRxMs = Date.now();
     nextInFlight = false;
     ackInFlight = false;
     busy = false;
@@ -320,6 +369,7 @@ function connectWs(){
 
 connectWs();
 tickLoop();
+setInterval(renderLap, 200);
 </script>
 </body></html>
 )HTML";
@@ -542,6 +592,10 @@ void FloodFillExplorer::markDirty_(){
 
 void FloodFillExplorer::setHardwareMode(bool en) {
   hardwareMode_ = en;
+  markDirty_();
+}
+
+void FloodFillExplorer::notifyStateChanged() {
   markDirty_();
 }
 
@@ -1742,6 +1796,14 @@ void FloodFillExplorer::buildStateJson_(){
     out += "}";
   }
   out += "]";
+
+  if (stateExtrasJsonFn_) {
+    const String extras = stateExtrasJsonFn_();
+    if (extras.length() > 0) {
+      out += ",";
+      out += extras;
+    }
+  }
 
   out += "}";
 

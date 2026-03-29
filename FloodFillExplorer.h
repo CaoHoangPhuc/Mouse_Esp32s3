@@ -52,6 +52,7 @@ public:
 
   using LogFn = void(*)(const String&);
   using WebCommandFn = void(*)(const String&);
+  using StateExtrasJsonFn = String(*)();
 
   FloodFillExplorer();
   ~FloodFillExplorer();
@@ -61,7 +62,9 @@ public:
 
   void setLog(LogFn fn) { logFn_ = fn; }
   void setWebCommandHandler(WebCommandFn fn) { webCommandFn_ = fn; }
+  void setStateExtrasJsonProvider(StateExtrasJsonFn fn) { stateExtrasJsonFn_ = fn; }
   void setHardwareMode(bool en);
+  void notifyStateChanged();
 
   void setStart(uint8_t x, uint8_t y, Dir h);
   void setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h);
@@ -201,5 +204,6 @@ private:
 
   LogFn logFn_ = nullptr;
   WebCommandFn webCommandFn_ = nullptr;
+  StateExtrasJsonFn stateExtrasJsonFn_ = nullptr;
 };
 

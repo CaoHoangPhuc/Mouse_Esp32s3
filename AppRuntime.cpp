@@ -111,6 +111,10 @@ static bool startRunSnapSequence(const char* label);
 static bool shouldSnapCenterAfterTurn();
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
+static void resetLapHistory();
+static void startLapTimer();
+static void stopLapTimer(bool record);
+static String explorerLapStateJson();
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
@@ -124,6 +128,12 @@ static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
 static int32_t exploreStepBudget = -1;
 static bool serialOutputTemporarilyMuted = false;
+static bool lapTimerRunning = false;
+static uint32_t lapStartMs = 0;
+static uint32_t lapCurrentMsSnapshot = 0;
+static constexpr uint8_t kLapHistoryMax = 16;
+static uint32_t lapHistoryMs[kLapHistoryMax] = {};
+static uint8_t lapHistoryCount = 0;
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
 static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
@@ -149,6 +159,59 @@ static bool debugClientConnected() {
 
 static bool serialOutputEnabled() {
   return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
+}
+
+static void resetLapHistory() {
+  lapTimerRunning = false;
+  lapStartMs = 0;
+  lapCurrentMsSnapshot = 0;
+  lapHistoryCount = 0;
+  memset(lapHistoryMs, 0, sizeof(lapHistoryMs));
+}
+
+static void startLapTimer() {
+  lapTimerRunning = true;
+  lapStartMs = millis();
+  lapCurrentMsSnapshot = 0;
+  explorer.notifyStateChanged();
+}
+
+static void stopLapTimer(bool record) {
+  if (!lapTimerRunning) {
+    if (!record) {
+      explorer.notifyStateChanged();
+    }
+    return;
+  }
+  lapCurrentMsSnapshot = millis() - lapStartMs;
+  lapTimerRunning = false;
+  if (record) {
+    if (lapHistoryCount < kLapHistoryMax) {
+      lapHistoryMs[lapHistoryCount++] = lapCurrentMsSnapshot;
+    } else {
+      memmove(&lapHistoryMs[0], &lapHistoryMs[1], sizeof(lapHistoryMs[0]) * (kLapHistoryMax - 1));
+      lapHistoryMs[kLapHistoryMax - 1] = lapCurrentMsSnapshot;
+    }
+  }
+  explorer.notifyStateChanged();
+}
+
+static String explorerLapStateJson() {
+  uint32_t currentMs = lapTimerRunning ? (millis() - lapStartMs) : lapCurrentMsSnapshot;
+  String out = "\"lap\":{";
+  out += "\"running\":";
+  out += lapTimerRunning ? "true" : "false";
+  out += ",\"currentMs\":";
+  out += String(currentMs);
+  out += ",\"nextLap\":";
+  out += String((int)lapHistoryCount + 1);
+  out += ",\"historyMs\":[";
+  for (uint8_t i = 0; i < lapHistoryCount; ++i) {
+    if (i) out += ",";
+    out += String(lapHistoryMs[i]);
+  }
+  out += "]}";
+  return out;
 }
 
 static uint8_t speedRunBasePhase(uint8_t phase) {
@@ -452,6 +515,9 @@ static void maze_debug_s() {
 
 static void enterIdleMode(const String& reason) {
   serialOutputTemporarilyMuted = false;
+  if (lapTimerRunning) {
+    stopLapTimer(false);
+  }
   robotState.mode = ROBOT_MODE_IDLE;
   robotState.motionStatus = MOTION_IDLE;
   robotState.activePrimitive = MOTION_NONE;
@@ -468,6 +534,9 @@ static void enterIdleMode(const String& reason) {
 
 static void enterFaultMode(const String& reason) {
   serialOutputTemporarilyMuted = false;
+  if (lapTimerRunning) {
+    stopLapTimer(false);
+  }
   robotState.mode = ROBOT_MODE_FAULT;
   robotState.lastFault = reason;
   robotState.faultCount++;
@@ -522,6 +591,8 @@ static void onExplorerWebCommand(const String& cmd) {
 
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
+  resetLapHistory();
+  startLapTimer();
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
@@ -549,6 +620,8 @@ static void beginSpeedRun(uint8_t phase) {
   if (phase < 1 || phase > 4) phase = 1;
   robotState.speedRunPhase = phase;
   serialOutputTemporarilyMuted = (phase == 1);
+  resetLapHistory();
+  startLapTimer();
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -750,6 +823,9 @@ static void handleMotionCompletion() {
     }
 
     if (reachedGoal) {
+      if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
+        stopLapTimer(true);
+      }
       if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1) {
         serialOutputTemporarilyMuted = false;
       }
@@ -769,6 +845,7 @@ static void handleMotionCompletion() {
         } else if (explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY) &&
                    reachedOriginalGoalOnThisLoop) {
           reachedOriginalGoalOnThisLoop = false;
+          startLapTimer();
           if (bestCost == lastStableBestCost) {
             stableRoundTripCount++;
           } else {
@@ -935,6 +1012,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   dbg.setHealthJsonProvider(onWebHealthJson);
   dbg.setSerialOutputAllowedHandler(serialOutputEnabled);
+  explorer.setStateExtrasJsonProvider(explorerLapStateJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
   debugServer.begin();
