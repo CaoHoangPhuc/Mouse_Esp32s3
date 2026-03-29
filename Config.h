@@ -54,8 +54,8 @@ static constexpr uint8_t HOME_H = 1;
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 6;
-static constexpr uint8_t GOAL_Y0 = 9;
+static constexpr uint8_t GOAL_X0 = 4;
+static constexpr uint8_t GOAL_Y0 = 4;
 static constexpr uint8_t GOAL_W = 1;
 static constexpr uint8_t GOAL_H = 1;
 }
