@@ -786,7 +786,7 @@ static void applyWallsToExplorer() {
   );
 }
 
-static bool shouldSnapCenterAfterTurn() {
+static bool shouldSnapCenterFromKnownBackWall() {
   const FloodFillExplorer::Dir backDir = oppositeDir(headingDir());
   bool known = false;
   bool wall = false;
@@ -794,8 +794,17 @@ static bool shouldSnapCenterAfterTurn() {
   return known && wall;
 }
 
+static bool shouldSnapCenterAfterTurn() {
+  return shouldSnapCenterFromKnownBackWall();
+}
+
 static bool startRunSnapSequence(const char* label) {
   explorer.setRunning(false);
+  if (!shouldSnapCenterFromKnownBackWall()) {
+    explorer.setRunning(robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN);
+    debugPrintln(String("[SNAP] skip ") + label + " (no known back wall)");
+    return true;
+  }
   if (!motionController.snapCenter()) {
     enterFaultMode(String("failed to start ") + label);
     return false;

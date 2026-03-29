@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.33`
+Current project version: `0.0.2.34`
 
 ## Current Status
 
@@ -55,7 +55,7 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 5. `motorTask` continuously updates motor PID loops.
 6. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
-8. `explore` and `speedrun` start with one `snapCenter()` alignment primitive before the planner is allowed to run.
+8. `explore` and `speedrun` only start with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
