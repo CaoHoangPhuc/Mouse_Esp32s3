@@ -144,14 +144,18 @@ static bool debugClientConnected() {
 }
 
 static void debugPrint(const String& s) {
-  Serial.print(s);
+  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+    Serial.print(s);
+  }
   if (debugClientConnected()) {
     debugClient.print(s);
   }
 }
 
 static void debugPrintln(const String& s) {
-  Serial.println(s);
+  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+    Serial.println(s);
+  }
   if (debugClientConnected()) {
     debugClient.println(s);
   }
@@ -1500,24 +1504,43 @@ static void robot_debug_s() {
   lastStatusMs = now;
 
   char buf[256];
-  snprintf(buf, sizeof(buf),
-           "MODE=%s motion=%s pose=(%u,%u,%u) batt=%.2fV(%s) tps=(%.1f,%.1f) walls=%d/%d/%d dist=%u/%u/%u fault=%s",
-           modeName(robotState.mode),
-           motionStatusName(robotState.motionStatus),
-           robotState.pose.cellX,
-           robotState.pose.cellY,
-           robotState.pose.heading,
-           robotState.batteryVoltage,
-           batteryStateName(robotState.batteryState),
-           robotState.leftTps,
-           robotState.rightTps,
-           robotState.walls.leftWall,
-           robotState.walls.frontWall,
-           robotState.walls.rightWall,
-           robotState.walls.leftMm,
-           robotState.walls.frontMm,
-           robotState.walls.rightMm,
-           robotState.lastFault.c_str());
+  if (AppConfig::Debug::PRINT_STATUS_TPS) {
+    snprintf(buf, sizeof(buf),
+             "MODE=%s motion=%s pose=(%u,%u,%u) batt=%.2fV(%s) tps=(%.1f,%.1f) walls=%d/%d/%d dist=%u/%u/%u fault=%s",
+             modeName(robotState.mode),
+             motionStatusName(robotState.motionStatus),
+             robotState.pose.cellX,
+             robotState.pose.cellY,
+             robotState.pose.heading,
+             robotState.batteryVoltage,
+             batteryStateName(robotState.batteryState),
+             robotState.leftTps,
+             robotState.rightTps,
+             robotState.walls.leftWall,
+             robotState.walls.frontWall,
+             robotState.walls.rightWall,
+             robotState.walls.leftMm,
+             robotState.walls.frontMm,
+             robotState.walls.rightMm,
+             robotState.lastFault.c_str());
+  } else {
+    snprintf(buf, sizeof(buf),
+             "MODE=%s motion=%s pose=(%u,%u,%u) batt=%.2fV(%s) walls=%d/%d/%d dist=%u/%u/%u fault=%s",
+             modeName(robotState.mode),
+             motionStatusName(robotState.motionStatus),
+             robotState.pose.cellX,
+             robotState.pose.cellY,
+             robotState.pose.heading,
+             robotState.batteryVoltage,
+             batteryStateName(robotState.batteryState),
+             robotState.walls.leftWall,
+             robotState.walls.frontWall,
+             robotState.walls.rightWall,
+             robotState.walls.leftMm,
+             robotState.walls.frontMm,
+             robotState.walls.rightMm,
+             robotState.lastFault.c_str());
+  }
   debugPrintln(String(buf));
 }
 

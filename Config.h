@@ -88,6 +88,18 @@ static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
   }
 
+namespace Debug {
+// Global serial output switch.
+// Set false to mute Serial.print/println output across the app while still
+// allowing the serial port to be opened for input if needed.
+static constexpr bool ENABLE_SERIAL_OUTPUT = false;
+
+// Compact status line option.
+// Set false to keep status prints but hide motor TPS values.
+// Affects: periodic `status`/telemetry output formatting only.
+static constexpr bool PRINT_STATUS_TPS = false;
+}
+
 namespace I2C {
 // ESP32 I2C pins used for the TOF bus.
 // Affects: Wire.begin() and I2C recovery.

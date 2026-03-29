@@ -375,7 +375,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
           wifiStatus == WL_NO_SSID_AVAIL;
         if (shouldReconnect && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
           lastReconnectMs = now;
-          Serial.println("[WiFi] reconnecting...");
+          if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println("[WiFi] reconnecting...");
           WiFi.reconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -432,7 +432,7 @@ void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {
     atLineStart_ = false;
   }
 
-  if (mirrorToSerial) Serial.print(s);
+  if (mirrorToSerial && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.print(s);
 }
 
 void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
@@ -444,7 +444,7 @@ void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
   }
   atLineStart_ = true;
 
-  if (mirrorToSerial) Serial.println(s);
+  if (mirrorToSerial && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println(s);
 }
 
 void WiFiOtaWebSerial::clear() {
@@ -471,12 +471,14 @@ bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
   while (WiFi.status() != WL_CONNECTED) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (timeoutMs > 0 && millis() - start >= timeoutMs) {
-      Serial.println("[WiFi] connect timeout");
+      if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println("[WiFi] connect timeout");
       return false;
     }
   }
-  Serial.println("[WiFi] Connected");
-  Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
+  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+    Serial.println("[WiFi] Connected");
+    Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
+  }
   if (MDNS.begin(cfg_.hostname)) {
     if (cfg_.enableWeb) {
       MDNS.addService("http", "tcp", cfg_.port);
