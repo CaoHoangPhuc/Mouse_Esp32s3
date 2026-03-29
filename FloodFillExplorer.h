@@ -52,6 +52,7 @@ public:
 
   using LogFn = void(*)(const String&);
   using WebCommandFn = void(*)(const String&);
+  using StateExtrasJsonFn = String(*)();
 
   FloodFillExplorer();
   ~FloodFillExplorer();
@@ -61,7 +62,9 @@ public:
 
   void setLog(LogFn fn) { logFn_ = fn; }
   void setWebCommandHandler(WebCommandFn fn) { webCommandFn_ = fn; }
+  void setStateExtrasJsonProvider(StateExtrasJsonFn fn) { stateExtrasJsonFn_ = fn; }
   void setHardwareMode(bool en);
+  void notifyStateChanged();
 
   void setStart(uint8_t x, uint8_t y, Dir h);
   void setHomeRect(uint8_t x0, uint8_t y0, uint8_t w, uint8_t h);
@@ -73,6 +76,7 @@ public:
                             bool leftWall, bool frontWall, bool rightWall,
                             bool leftValid = true, bool frontValid = true, bool rightValid = true);
   Action requestNextAction();
+  Action requestNextActionNoAck();
   bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
 
   // SIM truth walls (optional). If you don't call this, truthWalls_ default 0 (no walls),
@@ -87,6 +91,7 @@ public:
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
   bool atGoal() const { return atActiveTarget_(); }
+  void advanceTargetAfterReach();
   bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
   String buildKnownMazeAscii(uint8_t mouseX = 255, uint8_t mouseY = 255, Dir mouseH = NORTH) const;
   uint16_t bestKnownCostOriginalStartToGoal() const;
@@ -200,5 +205,6 @@ private:
 
   LogFn logFn_ = nullptr;
   WebCommandFn webCommandFn_ = nullptr;
+  StateExtrasJsonFn stateExtrasJsonFn_ = nullptr;
 };
 

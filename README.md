@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.44`
+Current project version: `0.2.62`
 
 ## Current Status
 
@@ -25,6 +25,21 @@ This repository now includes the first integrated hardware-oriented control stac
 - battery monitoring is now telemetry-only and no longer blocks or aborts motion primitives
 - pose and goal are runtime-only again; SPIFFS now stores only maze wall memory
 - SPIFFS persistence now lives in a dedicated module for easier control and future changes
+- wall-centering now blends smoothly when transitioning between both-wall centering and single-wall following
+- wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
+- wall-centering now captures left/right targets once at the start of a straight move, only when both walls are visible and nearly balanced
+- added `test motor both` for a simple full-power forward/reverse bench loop on both motors
+- compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
+- serial output can now be globally muted with a config flag while keeping the serial port open for input
+- `speedrun [1-4]` is now phase-aware, and phase 1 runs the known shortest path directly without wall updates, ACK handshakes, or snap-center recovery motions
+- `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
+- `speedrun 1` now flips the active target at the goal and continues the shortest-path run back home before finishing
+- `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
+- `speedrun` now means `speedrun 1`, and phases 2-4 are defined as incremental layers that inherit the previous phase until tuned separately
+- fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
+- the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
+- fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
+- `speedrun 1` now keeps successful primitive transitions smooth by skipping the normal completion brake/hold between moves and turns, while still stopping normally on finish or fault
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -66,18 +81,19 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 5. `motorTask` continuously updates motor PID loops.
 6. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
-8. `explore` and `speedrun` only start with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
-9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
-10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
-12. `explorerTask` serves the web maze view.
-13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
-14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
-15. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
-16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
-17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
-18. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
-19. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
+8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
+9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
+10. After a 90-degree or 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
+11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
+12. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
+13. `explorerTask` serves the web maze view.
+14. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
+15. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
+16. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
+17. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
+18. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
+19. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
+20. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
 20. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
 
 Planner synchronization note:
@@ -171,6 +187,10 @@ Available from the main sketch:
 - `explore`
 - `explore n`
 - `speedrun`
+- `speedrun 1`
+- `speedrun 2`
+- `speedrun 3`
+- `speedrun 4`
 - `idle`
 - `stop`
 - `brake`
@@ -194,6 +214,7 @@ Available from the main sketch:
 - `test sensorsraw`
 - `test motorl`
 - `test motorr`
+- `test motor both`
 - `test encoders`
 
 Manual motion note:

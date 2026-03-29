@@ -48,6 +48,7 @@ public:
     void setWallThreshold(uint16_t th) { _wallThreshold = th; }
     uint16_t wallThreshold() const { return _wallThreshold; }
     void setCenterPid(float kp, float ki, float kd, float iLimit, float outLimit);
+    void setCenterTargets(float leftMm, float rightMm);
     void resetCenterPid();
 
     // ---- Sensors ----
@@ -65,8 +66,6 @@ public:
     bool readTOF_fast(uint8_t addr, uint16_t &dist);
     
     uint16_t err_count = 0;
-
-    float CENTER_TARGET    = 100;
 
 private:
     // I2C
@@ -115,6 +114,12 @@ private:
     float _centerOutLimit = 50.0f;
     float _centerIntegral = 0.0f;
     float _centerPrevError = 0.0f;
+    float _centerRawFiltered = 0.0f;
+    float _lastDualWallError = 0.0f;
+    float _dualWallBlend = 0.0f;
+    float _centerTargetLeft = 100.0f;
+    float _centerTargetRight = 100.0f;
+    bool _captureCenterTargetsOnFirstSample = true;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
 
