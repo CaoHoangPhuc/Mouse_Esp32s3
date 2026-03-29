@@ -364,6 +364,8 @@ float MultiVL53L0X::computeError(float headingError) {
 
     float dualErr = 0.0f;
     if (dualWallValid) {
+        _centerTargetLeft = (0.8f * _centerTargetLeft) + (0.2f * (float)left);
+        _centerTargetRight = (0.8f * _centerTargetRight) + (0.2f * (float)right);
         dualErr = 0.5f * ((_centerTargetBoth - (float)left) +
                           ((float)right - _centerTargetBoth));
         _lastDualWallError = dualErr;
