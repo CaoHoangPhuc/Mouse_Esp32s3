@@ -1047,6 +1047,46 @@ void FloodFillExplorer::commitPendingAction_(){
   pendingAction_ = ACT_NONE;
 }
 
+bool FloodFillExplorer::performStepMove_(String& reply){
+  if(waitAck_){
+    reply = "waiting ack";
+    return false;
+  }
+
+  for(uint8_t guard = 0; guard < 8; ++guard){
+    Action act = chooseNextAction_();
+    if(act == ACT_NONE){
+      running_ = false;
+      markDirty_();
+      reply = "done";
+      return true;
+    }
+
+    dispatchAction_(act);
+    commitPendingAction_();
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+
+    if(atActiveTarget_()){
+      onGoalReached_();
+      reply = "step move ok (GOAL)";
+      return true;
+    }
+
+    computeFloodFill_();
+    computePlan_();
+    markDirty_();
+
+    if(act == ACT_MOVE_F){
+      reply = "step move ok";
+      return true;
+    }
+  }
+
+  reply = "step move guard";
+  return false;
+}
+
 void FloodFillExplorer::onGoalReached_(){
   // Stop running for safety
   running_ = false;
@@ -1288,27 +1328,9 @@ void FloodFillExplorer::processWsMessage_(const String& msg) {
   if (msg.startsWith("cmd|")) {
     const String a = msg.substring(4);
     if (a == "step") {
-      if (waitAck_) { sendWsReply_("reply", "waiting ack"); return; }
-      Action act = chooseNextAction_();
-      if (act == ACT_NONE) {
-        running_ = false;
-        markDirty_();
-        sendWsReply_("reply", "done");
-        return;
-      }
-      dispatchAction_(act);
-      commitPendingAction_();
-      waitAck_ = false;
-      pendingAction_ = ACT_NONE;
-      if (atActiveTarget_()) {
-        onGoalReached_();
-        sendWsReply_("reply", "step ok (GOAL)");
-        return;
-      }
-      computeFloodFill_();
-      computePlan_();
-      markDirty_();
-      sendWsReply_("reply", "step ok");
+      String reply;
+      performStepMove_(reply);
+      sendWsReply_("reply", reply);
       return;
     }
     if (a == "run") {
@@ -1398,39 +1420,10 @@ void FloodFillExplorer::handleCmd_(){
 
   // STEP (SIM): dispatch+commit immediately
   if(a == "step"){
-    if(waitAck_){
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "waiting ack");
-      return;
-    }
-
-    Action act = chooseNextAction_();
-    if(act == ACT_NONE){
-      running_ = false;
-      markDirty_();
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "done");
-      return;
-    }
-
-    dispatchAction_(act);
-    commitPendingAction_();
-    waitAck_ = false;
-    pendingAction_ = ACT_NONE;
-
-    if(atActiveTarget_()){
-      onGoalReached_();
-      server_->sendHeader("Connection", "close");
-      server_->send(200, "text/plain", "step ok (GOAL)");
-      return;
-    }
-
-    computeFloodFill_();
-    computePlan_();
-    markDirty_();
-
+    String reply;
+    performStepMove_(reply);
     server_->sendHeader("Connection", "close");
-    server_->send(200, "text/plain", "step ok");
+    server_->send(200, "text/plain", reply);
     return;
   }
 

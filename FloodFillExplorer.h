@@ -143,6 +143,7 @@ private:
   Action chooseNextAction_();
   void dispatchAction_(Action a);
   void commitPendingAction_();
+  bool performStepMove_(String& reply);
   void onGoalReached_();
 
   void log_(const String& s);
