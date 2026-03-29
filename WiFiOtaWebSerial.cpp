@@ -19,78 +19,43 @@ static const char* kIndexHtml PROGMEM = R"HTML(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>%HOSTNAME% Terminal</title>
+  <title>%HOSTNAME% Control</title>
   <style>
     :root { color-scheme: light; }
-    body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; margin: 0; background: #eef3ea; color: #102017; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #eef3ea; color: #102017; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
     .card { background: #fbfdf9; border-radius: 18px; box-shadow: 0 10px 28px rgba(0,0,0,0.08); padding: 22px; }
-    h1 { margin: 0 0 8px; font-size: 1.5rem; font-family: "Segoe UI", Arial, sans-serif; }
-    .sub { color: #4f5f55; margin-bottom: 18px; font-family: "Segoe UI", Arial, sans-serif; }
-    .meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin-bottom: 18px; font-family: "Segoe UI", Arial, sans-serif; }
+    h1 { margin: 0 0 8px; font-size: 1.5rem; }
+    .sub { color: #4f5f55; margin-bottom: 20px; }
+    .meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin-bottom: 20px; }
     .meta b { color: #355040; }
-    .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom: 14px; }
-    button { padding: 11px 14px; cursor: pointer; border: 0; border-radius: 12px; font-weight: 600; font-family: "Segoe UI", Arial, sans-serif; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    button { padding: 11px 14px; cursor: pointer; border: 0; border-radius: 12px; font-weight: 600; }
     .primary { background: #1d6b45; color: white; }
     .secondary { background: #1d4f6b; color: white; }
-    #term { background: #122018; color: #d8f3dc; padding: 14px; border-radius: 14px; min-height: 360px; max-height: 58vh; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-    .cmdrow { display:flex; gap:10px; margin-top: 14px; }
-    #cmd { flex: 1; padding: 12px 14px; border-radius: 12px; border: 1px solid #b6c9bb; font: inherit; }
-    #status { margin-top: 12px; min-height: 1.3em; color: #44584a; font-family: "Segoe UI", Arial, sans-serif; }
+    #status { margin-top: 16px; min-height: 1.3em; color: #44584a; }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
     <h1>%HOSTNAME%</h1>
-    <div class="sub">Browser terminal on port 80.</div>
+    <div class="sub">Simple robot control page on port 80.</div>
     <div class="meta">
       <b>Hostname</b><span>%HOSTNAME%</span>
-      <b>IP</b><span>%IP%</span>
-      <b>CLI</b><span>Same commands as serial/telnet</span>
+      <b>IP</b><span id="robotIp">%IP%</span>
+      <b>Telnet</b><span id="telnetTarget">%IP%:%TELNET_PORT%</span>
     </div>
-    <div class="toolbar">
+    <div class="row">
+      <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
-      <button class="secondary" onclick="clearTerminal()">Clear View</button>
-    </div>
-    <pre id="term"></pre>
-    <div class="cmdrow">
-      <input id="cmd" type="text" autocomplete="off" spellcheck="false" placeholder="Type a command like status, maze, explore, brake" />
-      <button class="primary" onclick="sendCmd()">Send</button>
     </div>
     <div id="status">Ready.</div>
   </div>
 </div>
 <script>
 let busy = false;
-let logOffset = 0;
-const term = document.getElementById('term');
-const cmdInput = document.getElementById('cmd');
 function setStatus(s){ document.getElementById('status').textContent = s; }
-function scrollTerm(){ term.scrollTop = term.scrollHeight; }
-
-async function fetchLog() {
-  if (busy) return;
-  try {
-    const res = await fetch('/log?from=' + logOffset + '&t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const chunk = await res.text();
-    if (!chunk) return;
-    if (chunk.startsWith('RESET\n')) {
-      term.textContent = '';
-      logOffset = 0;
-      const rest = chunk.slice(6);
-      term.textContent += rest;
-      logOffset += rest.length;
-    } else {
-      term.textContent += chunk;
-      logOffset += chunk.length;
-    }
-    scrollTerm();
-  } catch (e) {
-    setStatus('Log fetch failed: ' + e);
-  }
-}
 
 async function cycleLed(){
   if (busy) return;
@@ -104,7 +69,6 @@ async function cycleLed(){
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     setStatus('LED cycle command sent.');
-    await fetchLog();
   } catch (e) {
     setStatus('LED command failed: ' + e);
   } finally {
@@ -112,46 +76,23 @@ async function cycleLed(){
   }
 }
 
-async function sendCmd(){
-  const line = cmdInput.value.trim();
-  if (!line || busy) return;
+async function reconnectTelnet(){
+  if (busy) return;
   busy = true;
   try {
-    const res = await fetch('/cmd', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/x-www-form-urlencoded' },
-      body: 'line=' + encodeURIComponent(line),
-      cache: 'no-store'
-    });
+    const res = await fetch('/telnet/reconnect', { method: 'POST', cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    cmdInput.value = '';
-    setStatus('Sent: ' + line);
-    await fetchLog();
+    const info = await res.json();
+    document.getElementById('robotIp').textContent = info.ip;
+    document.getElementById('telnetTarget').textContent = info.ip + ':' + info.port;
+    setStatus('Reconnecting telnet to ' + info.ip + ':' + info.port + ' ...');
+    window.location.href = 'telnet://' + info.ip + ':' + info.port;
   } catch (e) {
-    setStatus('Command failed: ' + e);
+    setStatus('Telnet reconnect failed: ' + e);
   } finally {
     busy = false;
-    cmdInput.focus();
   }
 }
-
-async function clearTerminal(){
-  term.textContent = '';
-  logOffset = 0;
-  setStatus('Terminal view cleared.');
-  await fetchLog();
-}
-
-cmdInput.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter') {
-    ev.preventDefault();
-    sendCmd();
-  }
-});
-
-setInterval(fetchLog, 250);
-fetchLog();
-cmdInput.focus();
 </script>
 </body>
 </html>
@@ -509,26 +450,8 @@ void WiFiOtaWebSerial::setupWeb_() {
     String html = FPSTR(kIndexHtml);
     html.replace("%HOSTNAME%", String(cfg_.hostname ? cfg_.hostname : "esp32"));
     html.replace("%IP%", ip());
+    html.replace("%TELNET_PORT%", String(cfg_.debugTcpPort));
     web_->server.send(200, "text/html; charset=utf-8", html);
-  });
-
-  srv.on("/log", HTTP_GET, [this]() {
-    size_t from = 0;
-    if (web_->server.hasArg("from")) {
-      from = (size_t)web_->server.arg("from").toInt();
-    }
-
-    String copy;
-    if (logMutex_) xSemaphoreTake(logMutex_, portMAX_DELAY);
-    copy = log_;
-    if (logMutex_) xSemaphoreGive(logMutex_);
-
-    if (from > copy.length()) {
-      web_->server.send(200, "text/plain; charset=utf-8", String("RESET\n") + copy);
-      return;
-    }
-
-    web_->server.send(200, "text/plain; charset=utf-8", copy.substring(from));
   });
 
   srv.on("/led", HTTP_POST, [this]() {
@@ -552,19 +475,18 @@ void WiFiOtaWebSerial::setupWeb_() {
     web_->server.send(200, "text/plain", "OK");
   });
 
-  srv.on("/cmd", HTTP_POST, [this]() {
-    String line = web_->server.arg("line");
-    line.trim();
-
-    if (!commandHandler_) {
-      web_->server.send(503, "application/json", "{\"ok\":false,\"error\":\"cli unavailable\"}");
+  srv.on("/telnet/reconnect", HTTP_POST, [this]() {
+    if (!telnetReconnectHandler_) {
+      web_->server.send(503, "application/json", "{\"ok\":false,\"error\":\"telnet unavailable\"}");
       return;
     }
 
-    String response;
-    const bool ok = commandHandler_(line, response);
+    const bool ok = telnetReconnectHandler_();
+    const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
     String body = String("{\"ok\":") + (ok ? "true" : "false") +
-                  ",\"response\":\"" + response + "\"}";
+                  ",\"ip\":\"" + ip() + "\"" +
+                  ",\"hostname\":\"" + host + "\"" +
+                  ",\"port\":" + String(cfg_.debugTcpPort) + "}";
     web_->server.send(ok ? 200 : 500, "application/json", body);
   });
 
@@ -572,7 +494,8 @@ void WiFiOtaWebSerial::setupWeb_() {
     const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
     web_->server.send(200, "application/json",
                       String("{\"ip\":\"") + ip() +
-                      "\",\"hostname\":\"" + host + "\"}");
+                      "\",\"hostname\":\"" + host +
+                      "\",\"port\":" + String(cfg_.debugTcpPort) + "}");
   });
 
   srv.onNotFound([this]() {
@@ -689,5 +612,6 @@ void WiFiOtaWebSerial::serviceUpdateLed_() {
   ledBlinkOn_ = !ledBlinkOn_;
   setLedState_(ledBlinkOn_ ? "blue" : "off");
 }
+
 
 

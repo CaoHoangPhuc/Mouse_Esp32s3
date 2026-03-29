@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.21`
+Current project version: `0.0.2.22`
 
 ## Current Status
 
@@ -42,8 +42,8 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 - [FloodFillExplorer.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\FloodFillExplorer.cpp): planner logic and live web UI
 
 ### Connectivity
-- [WiFiOtaWebSerial.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\WiFiOtaWebSerial.h): OTA and lightweight port `80` browser terminal API
-- [WiFiOtaWebSerial.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\WiFiOtaWebSerial.cpp): Wi-Fi task, browser terminal page, Arduino OTA, browser upload page, LED control
+- [WiFiOtaWebSerial.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
+- [WiFiOtaWebSerial.cpp](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
 
 ## Runtime Flow
 
@@ -91,7 +91,7 @@ Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
 - `AppConfig::Maze`: start pose and goal rectangle
   Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle at `(6,9)` size `1x1`.
-- `AppConfig::Wifi`: Wi-Fi / OTA / browser-terminal settings
+- `AppConfig::Wifi`: Wi-Fi / OTA / control-page settings
 - `AppConfig::I2C`: SDA/SCL and bus speed
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
@@ -181,12 +181,12 @@ Console note:
 - `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` follows the normal coast-to-idle path
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - the TCP debug console listens on port `2323`
-- port `80` now serves a browser terminal page that shows the robot hostname, streams runtime output, and can send the same CLI commands as serial/telnet
-- the browser terminal also includes a `Cycle LED` button to identify which robot is being controlled
+- port `80` now serves a simple control page that shows the robot hostname and offers `Reconnect Telnet` plus `Cycle LED`
+- the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
 
 ## Web Debugging
 
-Port `80` is now a lightweight browser terminal, and the floodfill explorer still runs on port `81` as the live maze debug tool.
+Port `80` is now a lightweight control page, and the floodfill explorer still runs on port `81` as the live maze debug tool.
 
 Expected use:
 - verify discovered walls
