@@ -1008,7 +1008,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore | speedrun | idle | stop | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | clearmaze");
+  debugPrintln("[CMD] help | explore | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | clearmaze");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -1132,6 +1132,16 @@ static void handleSerialCommand(const String& rawLine) {
   if (line == "stop") {
     motionController.stop();
     enterIdleMode("manual stop");
+    return;
+  }
+  if (line == "brake") {
+    leftMotor.hardStop();
+    rightMotor.hardStop();
+    robotState.motionStatus = MOTION_IDLE;
+    robotState.activePrimitive = MOTION_NONE;
+    robotState.pose.forwardProgressMm = 0.0f;
+    robotState.pose.turnProgressDeg = 0.0f;
+    debugPrintln("[CMD] brake stop");
     return;
   }
   if (line == "move") {

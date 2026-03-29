@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.15`
+Current project version: `0.0.2.16`
 
 ## Current Status
 
@@ -149,6 +149,7 @@ Available from the main sketch:
 - `speedrun`
 - `idle`
 - `stop`
+- `brake`
 - `restart`
 - `move`
 - `back`
@@ -176,6 +177,7 @@ Manual motion note:
 Console note:
 - periodic debug output pauses briefly while you type on serial or telnet, then resumes automatically
 - `restart` closes the TCP debug console first, then reboots the ESP32
+- `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` follows the normal coast-to-idle path
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - when `AppConfig::Wifi::ENABLE_WEB_LOG` is `false`, `dbg.print/println` no longer feed the HTTP log buffer and behave as Serial-only status output
 - the TCP debug console listens on port `2323`
