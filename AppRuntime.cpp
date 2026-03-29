@@ -99,6 +99,7 @@ static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void beginSpeedRun(uint8_t phase = 1);
+static uint8_t speedRunBasePhase(uint8_t phase);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
 static void applyCurrentPoseAsHomeRect();
@@ -148,6 +149,12 @@ static bool debugClientConnected() {
 
 static bool serialOutputEnabled() {
   return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
+}
+
+static uint8_t speedRunBasePhase(uint8_t phase) {
+  if (phase <= 1) return 1;
+  if (phase > 4) return 1;
+  return phase - 1;
 }
 
 static void debugPrint(const String& s) {
@@ -553,8 +560,12 @@ static void beginSpeedRun(uint8_t phase) {
   explorer.setRunning(true);
   updateRobotLed();
   debugPrintln("[MODE] SPEED RUN " + String((int)phase));
-  if (phase > 1) {
-    debugPrintln("[SPEEDRUN] phase " + String((int)phase) + " currently uses phase 1 runtime behavior");
+  if (phase == 1) {
+    debugPrintln("[SPEEDRUN] phase 1 is the baseline shortest-path run");
+  } else {
+    debugPrintln("[SPEEDRUN] phase " + String((int)phase) +
+                 " inherits phase " + String((int)speedRunBasePhase(phase)) +
+                 " behavior until its profile is tuned");
   }
 }
 
