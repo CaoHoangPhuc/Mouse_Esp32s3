@@ -98,9 +98,9 @@ bool DcMotor::begin(const Pins& pins,
 
 void DcMotor::applyDuty(int32_t duty) {
   if (duty == -1) {
-    digitalWrite(_p.in1, HIGH);
+    digitalWrite(_p.in1, LOW);
     digitalWrite(_p.in2, HIGH);
-    pwmWriteDuty(0);
+    pwmWriteDuty(1);
     return;
   }
   // 🔹 Handle inversion
@@ -160,9 +160,7 @@ void DcMotor::setSpeedTPS(float tps) {
 }
 
 void DcMotor::coastStop() {
-  digitalWrite(_p.in1, LOW);
-  digitalWrite(_p.in2, LOW);
-  pwmWriteDuty(0);
+  applyDuty(0);
 }
 
 void DcMotor::brakeStop() {
