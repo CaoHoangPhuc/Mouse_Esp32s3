@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.22`
+Current project version: `0.0.2.23`
 
 ## Current Status
 
@@ -182,6 +182,7 @@ Console note:
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - the TCP debug console listens on port `2323`
 - port `80` now serves a simple control page that shows the robot hostname and offers `Reconnect Telnet` plus `Cycle LED`
+- the port `80` control page now also includes a grouped quick-reference for the main CLI commands, so users can see the accepted commands and their purpose before opening telnet
 - the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
 
 ## Web Debugging

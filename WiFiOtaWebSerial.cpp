@@ -30,6 +30,14 @@ static const char* kIndexHtml PROGMEM = R"HTML(
     .meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin-bottom: 20px; }
     .meta b { color: #355040; }
     .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    h2 { margin: 24px 0 10px; font-size: 1.05rem; color: #1d3b2b; }
+    .hint { margin: 0 0 12px; color: #4f5f55; line-height: 1.5; }
+    .guide { display: grid; gap: 12px; margin-top: 8px; }
+    .group { background: #f4f8f1; border: 1px solid #d9e6d7; border-radius: 14px; padding: 14px; }
+    .group h3 { margin: 0 0 8px; font-size: 0.98rem; color: #284735; }
+    .group ul { margin: 0; padding-left: 18px; }
+    .group li { margin: 6px 0; line-height: 1.4; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #e8efe6; padding: 1px 5px; border-radius: 6px; }
     button { padding: 11px 14px; cursor: pointer; border: 0; border-radius: 12px; font-weight: 600; }
     .primary { background: #1d6b45; color: white; }
     .secondary { background: #1d4f6b; color: white; }
@@ -51,6 +59,63 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
     </div>
     <div id="status">Ready.</div>
+    <h2>How To Use</h2>
+    <p class="hint">Use <b>Reconnect Telnet</b> to open the live CLI in your telnet app. The commands below are the main ones the robot accepts, grouped by purpose so you can quickly find the right action.</p>
+    <div class="guide">
+      <div class="group">
+        <h3>Run Control</h3>
+        <ul>
+          <li><code>help</code> - print the command list in the robot console.</li>
+          <li><code>status</code> - show mode, pose, battery, motion, and wall state.</li>
+          <li><code>explore</code> - start floodfill exploration using the current map.</li>
+          <li><code>speedrun</code> - start the speed-run mode when ready.</li>
+          <li><code>idle</code> - switch the robot back to idle mode.</li>
+          <li><code>restart</code> - reboot the robot after closing the debug client.</li>
+        </ul>
+      </div>
+      <div class="group">
+        <h3>Motion</h3>
+        <ul>
+          <li><code>move</code> - move forward one cell.</li>
+          <li><code>back</code> - move backward using the configured short reverse distance.</li>
+          <li><code>left</code> - turn left 90 degrees.</li>
+          <li><code>right</code> - turn right 90 degrees.</li>
+          <li><code>uturn</code> - turn 180 degrees.</li>
+          <li><code>testsnap</code> - run the snap-center combo for alignment tuning.</li>
+          <li><code>stop</code> - stop with the normal coast-to-idle path.</li>
+          <li><code>brake</code> - apply the active brake immediately for bench testing.</li>
+        </ul>
+      </div>
+      <div class="group">
+        <h3>Maze And Pose</h3>
+        <ul>
+          <li><code>maze</code> - print the current maze memory.</li>
+          <li><code>clearmaze</code> - clear remembered maze walls and planner state.</li>
+          <li><code>resetpose x y h</code> - set pose manually; heading is the numeric enum used by the firmware.</li>
+        </ul>
+      </div>
+      <div class="group">
+        <h3>LED Control</h3>
+        <ul>
+          <li><code>led cycle</code> - step through LED states to identify the robot.</li>
+          <li><code>led rotate</code> - rotate LED colors.</li>
+          <li><code>led off</code>, <code>led red</code>, <code>led green</code>, <code>led blue</code>, <code>led cyan</code>, <code>led white</code> - force a specific LED state.</li>
+        </ul>
+      </div>
+      <div class="group">
+        <h3>Test And Debug</h3>
+        <ul>
+          <li><code>test</code> - enter test mode.</li>
+          <li><code>test off</code> - leave test mode.</li>
+          <li><code>test battery</code> - print battery diagnostics.</li>
+          <li><code>test sensors</code> - print interpreted wall-sensor readings.</li>
+          <li><code>test sensorsraw</code> - print raw TOF sensor readings.</li>
+          <li><code>test encoders</code> - print encoder diagnostics.</li>
+          <li><code>test motorl</code>, <code>test motorr</code> - spin a single motor for bench checks.</li>
+          <li><code>test loop status|battery|sensors|sensorsraw|encoders|maze|off</code> - start or stop periodic debug printing.</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </div>
 <script>
