@@ -629,6 +629,9 @@ static void beginSpeedRun(uint8_t phase) {
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
+  explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  applyCurrentPoseAsHomeRect();
+  applyRuntimeGoalRect();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   explorer.setRunning(true);
   updateRobotLed();
@@ -1497,6 +1500,8 @@ static void handleSerialCommand(const String& rawLine) {
       y = constrain(y, 0, 15);
       h &= 3;
       setPose((uint8_t)x, (uint8_t)y, (FloodFillExplorer::Dir)h);
+      explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+      applyCurrentPoseAsHomeRect();
       explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
       debugPrintln("[CMD] pose reset");
     } else {

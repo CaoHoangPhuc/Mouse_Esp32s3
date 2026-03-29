@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.58`
+Current project version: `0.2.59`
 
 ## Current Status
 
@@ -34,6 +34,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - `speedrun [1-4]` is now phase-aware, and phase 1 runs the known shortest path directly without wall updates, ACK handshakes, or snap-center recovery motions
 - `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
 - `speedrun 1` now flips the active target at the goal and continues the shortest-path run back home before finishing
+- `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
 - `speedrun` now means `speedrun 1`, and phases 2-4 are defined as incremental layers that inherit the previous phase until tuned separately
 - fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
 - the floodfill web now shows a live home-to-goal lap timer and lap history list so you can compare run times across laps
