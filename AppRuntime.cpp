@@ -87,7 +87,7 @@ static void debugPrompt();
 static bool debugClientConnected();
 static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
-static bool onWebTelnetReconnect();
+static bool onWebCliCommand(const String& line, String& response);
 static void updateRobotLed();
 static void resetMazeToConfiguredStart();
 static FloodFillExplorer::Dir headingDir();
@@ -303,8 +303,9 @@ static bool onWebLedCommand(const String& cmd, String& response) {
   return ledController.handleCommand(cmd, &response);
 }
 
-static bool onWebTelnetReconnect() {
-  closeDebugConsole("[NET] disconnected for web telnet reconnect");
+static bool onWebCliCommand(const String& line, String& response) {
+  response = "OK";
+  handleSerialCommand(line);
   return true;
 }
 
@@ -765,7 +766,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.wifiConnectTimeoutMs = AppConfig::Wifi::CONNECT_TIMEOUT_MS;
   wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
   dbg.setLedCommandHandler(onWebLedCommand);
-  dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
+  dbg.setCommandHandler(onWebCliCommand);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
   debugServer.begin();

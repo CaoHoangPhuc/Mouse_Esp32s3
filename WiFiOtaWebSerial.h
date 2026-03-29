@@ -6,7 +6,7 @@
 class WiFiOtaWebSerial {
 public:
   using LedCommandHandler = bool (*)(const String& cmd, String& response);
-  using TelnetReconnectHandler = bool (*)();
+  using CommandHandler = bool (*)(const String& line, String& response);
 
   struct Config {
     const char* ssid       = nullptr;
@@ -45,7 +45,7 @@ public:
   void println(const String& s, bool mirrorToSerial = true);
   void clear();
   void setLedCommandHandler(LedCommandHandler handler) { ledCommandHandler_ = handler; }
-  void setTelnetReconnectHandler(TelnetReconnectHandler handler) { telnetReconnectHandler_ = handler; }
+  void setCommandHandler(CommandHandler handler) { commandHandler_ = handler; }
 
   // Info
   String ip() const;
@@ -74,7 +74,7 @@ private:
   volatile bool rebootPending_ = false;
   uint32_t rebootAtMs_ = 0;
   LedCommandHandler ledCommandHandler_ = nullptr;
-  TelnetReconnectHandler telnetReconnectHandler_ = nullptr;
+  CommandHandler commandHandler_ = nullptr;
 
 private:
   static void wifiTaskThunk_(void* arg);
