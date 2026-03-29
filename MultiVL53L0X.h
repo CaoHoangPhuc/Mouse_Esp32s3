@@ -48,7 +48,7 @@ public:
     void setWallThreshold(uint16_t th) { _wallThreshold = th; }
     uint16_t wallThreshold() const { return _wallThreshold; }
     void setCenterPid(float kp, float ki, float kd, float iLimit, float outLimit);
-    void setCenterTargets(float bothMm, float leftMm, float rightMm);
+    void setCenterTargets(float leftMm, float rightMm);
     void resetCenterPid();
 
     // ---- Sensors ----
@@ -117,7 +117,6 @@ private:
     float _centerRawFiltered = 0.0f;
     float _lastDualWallError = 0.0f;
     float _dualWallBlend = 0.0f;
-    float _centerTargetBoth = 100.0f;
     float _centerTargetLeft = 100.0f;
     float _centerTargetRight = 100.0f;
     uint32_t _centerPrevMs = 0;

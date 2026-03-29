@@ -37,8 +37,7 @@ void MultiVL53L0X::setCenterPid(float kp, float ki, float kd, float iLimit, floa
     _centerOutLimit = fabsf(outLimit);
 }
 
-void MultiVL53L0X::setCenterTargets(float bothMm, float leftMm, float rightMm) {
-    _centerTargetBoth = bothMm;
+void MultiVL53L0X::setCenterTargets(float leftMm, float rightMm) {
     _centerTargetLeft = leftMm;
     _centerTargetRight = rightMm;
 }
@@ -366,8 +365,8 @@ float MultiVL53L0X::computeError(float headingError) {
     if (dualWallValid) {
         _centerTargetLeft = (0.8f * _centerTargetLeft) + (0.2f * (float)left);
         _centerTargetRight = (0.8f * _centerTargetRight) + (0.2f * (float)right);
-        dualErr = 0.5f * ((_centerTargetBoth - (float)left) +
-                          ((float)right - _centerTargetBoth));
+        dualErr = 0.5f * ((_centerTargetLeft - (float)left) +
+                          ((float)right - _centerTargetRight));
         _lastDualWallError = dualErr;
     }
 
