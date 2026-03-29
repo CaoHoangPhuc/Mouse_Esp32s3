@@ -115,6 +115,8 @@ static void resetLapHistory();
 static void startLapTimer(const char* legLabel);
 static void stopLapTimer(bool record);
 static String explorerLapStateJson();
+static void resetLoopWatchdogState(struct LoopWatchdogState& state);
+static void serviceLoopWatchdog(struct LoopWatchdogState& state, uint32_t expectedMs);
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
@@ -136,6 +138,18 @@ static constexpr uint8_t kLapHistoryMax = 16;
 static uint32_t lapHistoryMs[kLapHistoryMax] = {};
 static String lapHistoryLabels[kLapHistoryMax];
 static uint8_t lapHistoryCount = 0;
+struct LoopWatchdogState {
+  const char* taskName = "";
+  TickType_t lastTick = 0;
+  TickType_t lastWarnTick = 0;
+  uint32_t warningCount = 0;
+};
+static LoopWatchdogState motorLoopWatchdog{"motorTask"};
+static LoopWatchdogState tofLoopWatchdog{"tofTask"};
+static LoopWatchdogState userLoopWatchdog{"userTaskBody"};
+static LoopWatchdogState plannerLoopWatchdog{"plannerTaskBody"};
+static LoopWatchdogState telemetryLoopWatchdog{"telemetryTask"};
+static LoopWatchdogState explorerLoopWatchdog{"explorerTask"};
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
 static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
@@ -161,6 +175,43 @@ static bool debugClientConnected() {
 
 static bool serialOutputEnabled() {
   return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
+}
+
+static void resetLoopWatchdogState(LoopWatchdogState& state) {
+  state.lastTick = 0;
+  state.lastWarnTick = 0;
+  state.warningCount = 0;
+}
+
+static void serviceLoopWatchdog(LoopWatchdogState& state, uint32_t expectedMs) {
+  if (!AppConfig::Debug::ENABLE_LOOP_WATCHDOG) return;
+
+  const TickType_t now = xTaskGetTickCount();
+  if (state.lastTick == 0) {
+    state.lastTick = now;
+    return;
+  }
+
+  const uint32_t actualMs = (uint32_t)(now - state.lastTick) * (uint32_t)portTICK_PERIOD_MS;
+  state.lastTick = now;
+
+  if (actualMs <= expectedMs + AppConfig::Debug::LOOP_WATCHDOG_TOLERANCE_MS) return;
+
+  const uint32_t sinceLastWarnMs =
+    (state.lastWarnTick == 0) ? UINT32_MAX :
+    (uint32_t)(now - state.lastWarnTick) * (uint32_t)portTICK_PERIOD_MS;
+  if (sinceLastWarnMs < AppConfig::Debug::LOOP_WATCHDOG_RATE_LIMIT_MS) return;
+
+  state.lastWarnTick = now;
+  state.warningCount++;
+
+  const uint32_t lateMs = actualMs - expectedMs;
+  debugPrintln("[LOOP WARN] task=" + String(state.taskName) +
+               " period=" + String(expectedMs) + "ms" +
+               " actual=" + String(actualMs) + "ms" +
+               " late=" + String(lateMs) + "ms" +
+               " core=" + String((int)xPortGetCoreID()) +
+               " count=" + String(state.warningCount));
 }
 
 static void resetLapHistory() {
@@ -1158,8 +1209,10 @@ void userTaskBody(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(20);
 
   for (;;) {
+    serviceLoopWatchdog(userLoopWatchdog, 20);
     updateOtaSafeMode();
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(userLoopWatchdog);
       vTaskDelayUntil(&lastWake, period);
       continue;
     }
@@ -1192,7 +1245,9 @@ void plannerTaskBody(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(50);
 
   for (;;) {
+    serviceLoopWatchdog(plannerLoopWatchdog, 50);
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(plannerLoopWatchdog);
       vTaskDelayUntil(&last, period);
       continue;
     }
@@ -1250,7 +1305,9 @@ static void motorTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(5);
 
   for (;;) {
+    serviceLoopWatchdog(motorLoopWatchdog, 5);
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(motorLoopWatchdog);
       vTaskDelayUntil(&last, period);
       continue;
     }
@@ -1262,13 +1319,18 @@ static void motorTask(void* arg) {
 
 static void explorerTask(void* arg) {
   (void)arg;
+  TickType_t last = xTaskGetTickCount();
+  const TickType_t period = pdMS_TO_TICKS(10);
   for (;;) {
+    serviceLoopWatchdog(explorerLoopWatchdog, 10);
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(explorerLoopWatchdog);
       vTaskDelay(pdMS_TO_TICKS(50));
+      last = xTaskGetTickCount();
       continue;
     }
     explorer.loop();
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelayUntil(&last, period);
   }
 }
 
@@ -1278,7 +1340,9 @@ static void tofTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(5);
 
   for (;;) {
+    serviceLoopWatchdog(tofLoopWatchdog, 5);
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(tofLoopWatchdog);
       vTaskDelayUntil(&lastWake, period);
       continue;
     }
@@ -1293,7 +1357,9 @@ static void telemetryTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(1000);
 
   for (;;) {
+    serviceLoopWatchdog(telemetryLoopWatchdog, 1000);
     if (dbg.isUpdateInProgress()) {
+      resetLoopWatchdogState(telemetryLoopWatchdog);
       vTaskDelayUntil(&last, period);
       continue;
     }
