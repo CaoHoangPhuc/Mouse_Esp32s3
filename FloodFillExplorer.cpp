@@ -459,6 +459,12 @@ bool FloodFillExplorer::isGoal_(int x,int y) const{
           y >= gy0_ && y < (int)(gy0_ + gh_));
 }
 
+bool FloodFillExplorer::atActiveTarget_() const{
+  if(!isGoal_(mx_, my_)) return false;
+  if(!targetHome_) return true;
+  return mh_ == origSh_;
+}
+
 uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
                                                   uint8_t startW, uint8_t startH,
                                                   uint8_t goalX0, uint8_t goalY0,
@@ -663,7 +669,7 @@ bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, 
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
 
-  bool reachedGoal = isGoal_(mx_, my_);
+  bool reachedGoal = atActiveTarget_();
   if (reachedGoal) {
     onGoalReached_();
     return true;
@@ -1010,7 +1016,16 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
   computeFloodFill_();
   computePlan_();
 
-  if(isGoal_(mx_, my_)) return ACT_NONE;
+  if(atActiveTarget_()) return ACT_NONE;
+
+  if(targetHome_ && isGoal_(mx_, my_) && mh_ != origSh_){
+    uint8_t curh = (uint8_t)mh_;
+    uint8_t tarh = (uint8_t)origSh_;
+    uint8_t diff = (tarh + 4 - curh) & 3;
+    if(diff == 1) return ACT_TURN_R;
+    if(diff == 3) return ACT_TURN_L;
+    return ACT_TURN_180;
+  }
 
   uint16_t cur = dist_[my_][mx_];
   if(cur == 0xFFFF) return ACT_NONE;
@@ -1162,7 +1177,7 @@ void FloodFillExplorer::handleCmd_(){
     waitAck_ = false;
     pendingAction_ = ACT_NONE;
 
-    if(isGoal_(mx_, my_)){
+    if(atActiveTarget_()){
       onGoalReached_();
       server_->sendHeader("Connection", "close");
       server_->send(200, "text/plain", "step ok (GOAL)");
@@ -1302,7 +1317,7 @@ void FloodFillExplorer::handleAck_(){
   commitPendingAction_();
   waitAck_ = false;
 
-  if(isGoal_(mx_, my_)){
+  if(atActiveTarget_()){
     onGoalReached_();
     server_->sendHeader("Connection", "close");
     server_->send(200, "text/plain", "ACK OK (GOAL)");

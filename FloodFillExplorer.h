@@ -83,7 +83,7 @@ public:
   bool isWaitAck() const { return waitAck_; }
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
-  bool atGoal() const { return isGoal_(mx_, my_); }
+  bool atGoal() const { return atActiveTarget_(); }
   bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
   String buildKnownMazeAscii(uint8_t mouseX = 255, uint8_t mouseY = 255, Dir mouseH = NORTH) const;
   uint16_t bestKnownCostOriginalStartToGoal() const;
@@ -107,6 +107,7 @@ private:
   // --- floodfill core ---
   bool inBounds_(int x,int y) const;
   bool isGoal_(int x,int y) const;
+  bool atActiveTarget_() const;
   uint16_t computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
                                  uint8_t startW, uint8_t startH,
                                  uint8_t goalX0, uint8_t goalY0,
