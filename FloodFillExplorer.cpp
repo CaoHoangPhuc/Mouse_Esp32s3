@@ -638,6 +638,20 @@ FloodFillExplorer::Action FloodFillExplorer::requestNextAction() {
   return act;
 }
 
+FloodFillExplorer::Action FloodFillExplorer::requestNextActionNoAck() {
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+
+  Action act = chooseNextAction_();
+  if (act == ACT_NONE) {
+    running_ = false;
+    markDirty_();
+    return ACT_NONE;
+  }
+
+  return act;
+}
+
 bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h) {
   if (!waitAck_) return false;
 

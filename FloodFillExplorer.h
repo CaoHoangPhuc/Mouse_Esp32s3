@@ -73,6 +73,7 @@ public:
                             bool leftWall, bool frontWall, bool rightWall,
                             bool leftValid = true, bool frontValid = true, bool rightValid = true);
   Action requestNextAction();
+  Action requestNextActionNoAck();
   bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
 
   // SIM truth walls (optional). If you don't call this, truthWalls_ default 0 (no walls),

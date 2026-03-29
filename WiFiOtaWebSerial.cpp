@@ -71,7 +71,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>status</code> - show mode, pose, battery, motion, and wall state.</li>
           <li><code>explore</code> - start floodfill exploration using the current map.</li>
           <li><code>explore n</code> - explore for <code>n</code> forward cell moves, then stop cleanly.</li>
-          <li><code>speedrun</code> - start the speed-run mode when ready.</li>
+          <li><code>speedrun [1-4]</code> - start the speed-run mode when ready; phase 1 is the current direct shortest-path run.</li>
           <li><code>idle</code> - switch the robot back to idle mode.</li>
           <li><code>restart</code> - reboot the robot after closing the debug client.</li>
         </ul>

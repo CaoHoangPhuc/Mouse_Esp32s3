@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.52`
+Current project version: `0.2.53`
 
 ## Current Status
 
@@ -31,6 +31,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
+- `speedrun [1-4]` is now phase-aware, and phase 1 runs the known shortest path directly without wall updates, ACK handshakes, or snap-center recovery motions
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -72,18 +73,19 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 5. `motorTask` continuously updates motor PID loops.
 6. `userTask()` remains visible in the `.ino`, but forwards to `MainApp::userTaskBody(...)`.
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
-8. `explore` and `speedrun` only start with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
-9. After a motion completes in hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
-10. After a 90-degree or 180-degree turn in hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
-12. `explorerTask` serves the web maze view.
-13. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
-14. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
-15. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
-16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
-17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
-18. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
-19. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
+8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
+9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
+10. After a 90-degree or 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
+11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
+12. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
+13. `explorerTask` serves the web maze view.
+14. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
+15. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
+16. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
+17. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
+18. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
+19. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
+20. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
 20. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
 
 Planner synchronization note:
@@ -177,6 +179,10 @@ Available from the main sketch:
 - `explore`
 - `explore n`
 - `speedrun`
+- `speedrun 1`
+- `speedrun 2`
+- `speedrun 3`
+- `speedrun 4`
 - `idle`
 - `stop`
 - `brake`

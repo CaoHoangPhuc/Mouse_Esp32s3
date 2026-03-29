@@ -97,6 +97,7 @@ static String onWebHealthJson();
 static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
+static void beginSpeedRun(uint8_t phase = 1);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
 static void applyCurrentPoseAsHomeRect();
@@ -528,7 +529,9 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   startRunSnapSequence("run-start snapcenter");
 }
 
-static void beginSpeedRun() {
+static void beginSpeedRun(uint8_t phase) {
+  if (phase < 1 || phase > 4) phase = 1;
+  robotState.speedRunPhase = phase;
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -537,9 +540,12 @@ static void beginSpeedRun() {
   runStartSnapMode = ROBOT_MODE_IDLE;
   explorer.setHardwareMode(true);
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  explorer.setRunning(true);
   updateRobotLed();
-  debugPrintln("[MODE] SPEED RUN");
-  startRunSnapSequence("run-start snapcenter");
+  debugPrintln("[MODE] SPEED RUN " + String((int)phase));
+  if (phase > 1) {
+    debugPrintln("[SPEEDRUN] phase " + String((int)phase) + " currently uses phase 1 runtime behavior");
+  }
 }
 
 static void resetMazeToConfiguredStart() {
@@ -662,7 +668,7 @@ static void handleMotionCompletion() {
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
-        (robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN) &&
+        robotState.mode == ROBOT_MODE_EXPLORE &&
         shouldSnapCenterAfterTurn()) {
       if (!motionController.snapCenter()) {
         enterFaultMode("failed to start post-turn snapcenter");
@@ -678,12 +684,17 @@ static void handleMotionCompletion() {
     }
 
     updateRobotState();
-    debugWallApplyEvent("[WALL APPLY]", "motion_complete");
-    applyWallsToExplorer();
-    debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
+    if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+      debugWallApplyEvent("[WALL APPLY]", "motion_complete");
+      applyWallsToExplorer();
+      debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
+    }
 
     bool reachedGoal = false;
-    if (deferPlannerAckUntilSnapCenter) {
+    if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+      explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+      reachedGoal = explorer.atGoal();
+    } else if (deferPlannerAckUntilSnapCenter) {
       deferPlannerAckUntilSnapCenter = false;
       reachedGoal = explorer.ackPendingActionExternal(true,
         robotState.pose.cellX,
@@ -784,10 +795,12 @@ static void handleMotionCompletion() {
                      beforeX, beforeY, beforeH,
                      robotState.pose.cellX, robotState.pose.cellY, headingDir(),
                      "error=" + motionController.lastError());
-    explorer.ackPendingActionExternal(false,
-      robotState.pose.cellX,
-      robotState.pose.cellY,
-      headingDir());
+    if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+      explorer.ackPendingActionExternal(false,
+        robotState.pose.cellX,
+        robotState.pose.cellY,
+        headingDir());
+    }
     enterFaultMode(motionController.lastError());
   }
 
@@ -1042,11 +1055,16 @@ void plannerTaskBody(void* arg) {
         enterFaultMode("robot not ready for motion");
       } else {
         updateRobotState();
-        debugWallApplyEvent("[WALL APPLY]", "planner_idle");
-        applyWallsToExplorer();
-        debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-        FloodFillExplorer::Action act = explorer.requestNextAction();
+        FloodFillExplorer::Action act = FloodFillExplorer::ACT_NONE;
+        if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+          act = explorer.requestNextActionNoAck();
+        } else {
+          debugWallApplyEvent("[WALL APPLY]", "planner_idle");
+          applyWallsToExplorer();
+          debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
+          act = explorer.requestNextAction();
+        }
         if (act == FloodFillExplorer::ACT_NONE) {
           if (robotState.mode == ROBOT_MODE_EXPLORE && explorer.atGoal()) {
             robotState.goalReached = true;
@@ -1054,6 +1072,8 @@ void plannerTaskBody(void* arg) {
             updateRobotLed();
             enterIdleMode("explore finished");
           } else if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+            robotState.goalReached = true;
+            updateRobotLed();
             enterIdleMode("speed run finished");
           }
         } else {
@@ -1158,7 +1178,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore [n] | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -1276,12 +1296,22 @@ static void handleSerialCommand(const String& rawLine) {
     clearMazeMemoryOnly();
     return;
   }
-  if (line == "speedrun") {
+  if (line == "speedrun" || line.startsWith("speedrun ")) {
     if (!robotState.speedRunReady) {
       debugPrintln("[CMD] speed run not ready yet");
       return;
     }
-    beginSpeedRun();
+    uint8_t phase = 1;
+    if (line.startsWith("speedrun ")) {
+      const String arg = line.substring(9);
+      const int parsed = arg.toInt();
+      if (parsed < 1 || parsed > 4) {
+        debugPrintln("[CMD] usage: speedrun [1-4]");
+        return;
+      }
+      phase = (uint8_t)parsed;
+    }
+    beginSpeedRun(phase);
     return;
   }
   if (line == "idle") {
