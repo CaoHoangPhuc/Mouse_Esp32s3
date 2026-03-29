@@ -485,6 +485,44 @@ bool FloodFillExplorer::isInOriginalGoal(uint8_t x, uint8_t y) const {
          y >= origGy0_ && y < (uint8_t)(origGy0_ + origGh_);
 }
 
+void FloodFillExplorer::exportKnownMaze(uint8_t walls[N][N], uint8_t mask[N][N], uint8_t visited[N][N]) const {
+  memcpy(walls, knownWalls_, sizeof(knownWalls_));
+  memcpy(mask, knownMask_, sizeof(knownMask_));
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      visited[y][x] = visited_[y][x] ? 1 : 0;
+    }
+  }
+}
+
+bool FloodFillExplorer::importKnownMaze(const uint8_t walls[N][N], const uint8_t mask[N][N], const uint8_t visited[N][N],
+                                        uint8_t mouseX, uint8_t mouseY, Dir mouseH) {
+  if (!inBounds_(mouseX, mouseY)) return false;
+
+  memcpy(knownWalls_, walls, sizeof(knownWalls_));
+  memcpy(knownMask_, mask, sizeof(knownMask_));
+  for (int y = 0; y < N; ++y) {
+    for (int x = 0; x < N; ++x) {
+      visited_[y][x] = visited[y][x] != 0;
+    }
+  }
+
+  mx_ = mouseX;
+  my_ = mouseY;
+  mh_ = mouseH;
+  visited_[my_][mx_] = true;
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+  running_ = false;
+  targetHome_ = false;
+
+  applyBoundaryWalls_();
+  computeFloodFill_();
+  computePlan_();
+  markDirty_();
+  return true;
+}
+
 const char* FloodFillExplorer::actionName_(Action a) const{
   switch(a){
     case ACT_NONE:   return "none";

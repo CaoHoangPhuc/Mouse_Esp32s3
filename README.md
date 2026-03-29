@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.36`
+Current project version: `0.0.2.37`
 
 ## Current Status
 
@@ -17,6 +17,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - Wi-Fi OTA, port `80` control page, and telnet/debug tools
 - centralized configuration for hardware and tuning values
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
+- SPIFFS persistence for pose, goal, and saved maze memory when the shortest path is known
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -66,6 +67,9 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 15. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
 17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
+18. On boot, the runtime restores the last saved pose, goal rectangle, and maze wall memory from SPIFFS when those files exist.
+19. `resetpose` and `setgoal` now save the updated pose/goal immediately, while `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
+20. When explore decides the shortest path is known, the runtime saves pose, goal, and maze memory to SPIFFS automatically before going idle.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -93,13 +97,22 @@ All hard configuration now lives in [Config.h](c:\Users\donot\OneDrive\Documents
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
 - `AppConfig::Maze`: start pose and goal rectangle
-  Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle at `(6,9)` size `1x1`.
+  Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle defined in `Config.h`.
 - `AppConfig::Wifi`: Wi-Fi / OTA / control-page settings
 - `AppConfig::I2C`: SDA/SCL and bus speed
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
 - `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning
 - `AppConfig::Explorer`: web floodfill UI settings, whether explore should continue looping between goal and home after a target is reached, and how many stable round trips are required before the shortest path is considered known
+
+## Persistence
+
+- pose and goal rectangle are saved in SPIFFS when you use:
+  - `resetpose x y h`
+  - `setgoal x y w h`
+- maze wall memory is saved in SPIFFS automatically when explore reports `shortest path known`
+- on boot, the runtime restores saved pose, goal, and maze wall memory if the SPIFFS files are present
+- `clearmaze` now clears only the remembered wall map and deletes the saved maze-memory file; it no longer resets pose or goal
 
 ## Dependencies / Build Expectations
 

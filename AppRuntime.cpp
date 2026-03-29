@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SPIFFS.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
 
@@ -93,6 +94,7 @@ static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void resetMazeToConfiguredStart();
+static void clearMazeMemoryOnly();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
 static void maze_debug_s();
@@ -100,6 +102,12 @@ static void closeDebugConsole(const String& reason = "");
 static bool startRunSnapSequence(const char* label);
 static bool shouldSnapCenterAfterTurn();
 static void resetExploreLoopTracking();
+static bool beginPersistentStorage();
+static bool loadPersistentPoseGoal();
+static bool loadPersistentMaze();
+static bool savePersistentPoseGoal();
+static bool savePersistentMaze();
+static bool clearPersistentMaze();
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
@@ -126,6 +134,29 @@ static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, Mot
                              uint8_t afterX, uint8_t afterY, FloodFillExplorer::Dir afterH,
                              const String& extra = "");
 static void debugWallApplyEvent(const char* tag, const char* source, const String& extra = "");
+
+static constexpr uint32_t kPoseGoalMagic = 0x50474D31u; // PGM1
+static constexpr uint32_t kMazeMagic = 0x4D415A31u;     // MAZ1
+static constexpr const char* kPoseGoalPath = "/pose_goal.bin";
+static constexpr const char* kMazePath = "/maze_state.bin";
+
+struct PersistedPoseGoalData {
+  uint32_t magic;
+  uint8_t poseX;
+  uint8_t poseY;
+  uint8_t poseH;
+  uint8_t goalX0;
+  uint8_t goalY0;
+  uint8_t goalW;
+  uint8_t goalH;
+};
+
+struct PersistedMazeData {
+  uint32_t magic;
+  uint8_t walls[FloodFillExplorer::N][FloodFillExplorer::N];
+  uint8_t mask[FloodFillExplorer::N][FloodFillExplorer::N];
+  uint8_t visited[FloodFillExplorer::N][FloodFillExplorer::N];
+};
 
 static void logToDbg(const String& s) {
   debugPrintln(s);
@@ -375,6 +406,127 @@ static void applyRuntimeGoalRect() {
   explorer.setGoalRect(runtimeGoalX0, runtimeGoalY0, runtimeGoalW, runtimeGoalH);
 }
 
+static bool beginPersistentStorage() {
+  static bool initialized = false;
+  static bool ok = false;
+  if (initialized) return ok;
+  initialized = true;
+  ok = SPIFFS.begin(true);
+  debugPrintln(String("[SPIFFS] ") + (ok ? "ready" : "failed"));
+  return ok;
+}
+
+static bool loadPersistentPoseGoal() {
+  if (!beginPersistentStorage()) return false;
+  File f = SPIFFS.open(kPoseGoalPath, FILE_READ);
+  if (!f) return false;
+
+  PersistedPoseGoalData data{};
+  const size_t n = f.readBytes(reinterpret_cast<char*>(&data), sizeof(data));
+  f.close();
+  if (n != sizeof(data) || data.magic != kPoseGoalMagic) {
+    debugPrintln("[SPIFFS] pose/goal restore skipped (invalid file)");
+    return false;
+  }
+
+  setPose(constrain((int)data.poseX, 0, 15),
+          constrain((int)data.poseY, 0, 15),
+          (FloodFillExplorer::Dir)(data.poseH & 3));
+  runtimeGoalX0 = constrain((int)data.goalX0, 0, 15);
+  runtimeGoalY0 = constrain((int)data.goalY0, 0, 15);
+  runtimeGoalW = constrain((int)data.goalW, 1, 16 - runtimeGoalX0);
+  runtimeGoalH = constrain((int)data.goalH, 1, 16 - runtimeGoalY0);
+  debugPrintln("[SPIFFS] restored pose/goal");
+  return true;
+}
+
+static bool savePersistentPoseGoal() {
+  if (!beginPersistentStorage()) return false;
+  if (SPIFFS.exists(kPoseGoalPath)) {
+    SPIFFS.remove(kPoseGoalPath);
+  }
+  File f = SPIFFS.open(kPoseGoalPath, FILE_WRITE);
+  if (!f) {
+    debugPrintln("[SPIFFS] failed to open pose/goal file for write");
+    return false;
+  }
+
+  PersistedPoseGoalData data{};
+  data.magic = kPoseGoalMagic;
+  data.poseX = robotState.pose.cellX;
+  data.poseY = robotState.pose.cellY;
+  data.poseH = robotState.pose.heading & 3;
+  data.goalX0 = runtimeGoalX0;
+  data.goalY0 = runtimeGoalY0;
+  data.goalW = runtimeGoalW;
+  data.goalH = runtimeGoalH;
+
+  const bool ok = f.write(reinterpret_cast<const uint8_t*>(&data), sizeof(data)) == sizeof(data);
+  f.close();
+  if (!ok) {
+    debugPrintln("[SPIFFS] failed to save pose/goal");
+    return false;
+  }
+  debugPrintln("[SPIFFS] saved pose/goal");
+  return true;
+}
+
+static bool loadPersistentMaze() {
+  if (!beginPersistentStorage()) return false;
+  File f = SPIFFS.open(kMazePath, FILE_READ);
+  if (!f) return false;
+
+  PersistedMazeData data{};
+  const size_t n = f.readBytes(reinterpret_cast<char*>(&data), sizeof(data));
+  f.close();
+  if (n != sizeof(data) || data.magic != kMazeMagic) {
+    debugPrintln("[SPIFFS] maze restore skipped (invalid file)");
+    return false;
+  }
+
+  if (!explorer.importKnownMaze(data.walls, data.mask, data.visited,
+                                robotState.pose.cellX, robotState.pose.cellY, headingDir())) {
+    debugPrintln("[SPIFFS] maze restore failed");
+    return false;
+  }
+
+  debugPrintln("[SPIFFS] restored maze memory");
+  return true;
+}
+
+static bool savePersistentMaze() {
+  if (!beginPersistentStorage()) return false;
+  if (SPIFFS.exists(kMazePath)) {
+    SPIFFS.remove(kMazePath);
+  }
+  File f = SPIFFS.open(kMazePath, FILE_WRITE);
+  if (!f) {
+    debugPrintln("[SPIFFS] failed to open maze file for write");
+    return false;
+  }
+
+  PersistedMazeData data{};
+  data.magic = kMazeMagic;
+  explorer.exportKnownMaze(data.walls, data.mask, data.visited);
+
+  const bool ok = f.write(reinterpret_cast<const uint8_t*>(&data), sizeof(data)) == sizeof(data);
+  f.close();
+  if (!ok) {
+    debugPrintln("[SPIFFS] failed to save maze memory");
+    return false;
+  }
+  debugPrintln("[SPIFFS] saved maze memory");
+  return true;
+}
+
+static bool clearPersistentMaze() {
+  if (!beginPersistentStorage()) return false;
+  if (!SPIFFS.exists(kMazePath)) return true;
+  const bool ok = SPIFFS.remove(kMazePath);
+  debugPrintln(ok ? "[SPIFFS] cleared saved maze memory" : "[SPIFFS] failed to clear saved maze memory");
+  return ok;
+}
+
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
   robotState.pose.cellX = x;
   robotState.pose.cellY = y;
@@ -527,6 +679,24 @@ static void resetMazeToConfiguredStart() {
   applyWallsToExplorer();
   updateRobotLed();
   debugPrintln("[CMD] maze cleared and pose reset to configured start");
+}
+
+static void clearMazeMemoryOnly() {
+  enterIdleMode("maze memory cleared");
+  robotState.goalReached = false;
+  robotState.speedRunReady = false;
+  robotState.lastFault = "";
+  resetExploreLoopTracking();
+  exploreStepBudget = -1;
+
+  explorer.setHardwareMode(true);
+  applyRuntimeGoalRect();
+  explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  explorer.clearKnownMaze();
+  explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  clearPersistentMaze();
+  updateRobotLed();
+  debugPrintln("[CMD] maze memory cleared at current pose");
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
@@ -697,6 +867,8 @@ static void handleMotionCompletion() {
               stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
             robotState.speedRunReady = true;
             debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
+            savePersistentPoseGoal();
+            savePersistentMaze();
             enterIdleMode("shortest path known");
             return;
           }
@@ -825,6 +997,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
+  loadPersistentPoseGoal();
   ledController.begin();
 
   WiFiOtaWebSerial::Config wifiCfg;
@@ -896,10 +1069,11 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
                        AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
   applyRuntimeGoalRect();
-  explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
-  explorer.clearKnownMaze();
-  explorer.syncPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y,
-                    AppConfig::Maze::START_HEADING, true);
+  explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  if (!loadPersistentMaze()) {
+    explorer.clearKnownMaze();
+    explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  }
 
   updateRobotState();
   printStartupSummary();
@@ -1210,7 +1384,7 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
   if (line == "clearmaze" || line == "mazereset" || line == "resetstart") {
-    resetMazeToConfiguredStart();
+    clearMazeMemoryOnly();
     return;
   }
   if (line == "speedrun") {
@@ -1287,6 +1461,7 @@ static void handleSerialCommand(const String& rawLine) {
       h &= 3;
       setPose((uint8_t)x, (uint8_t)y, (FloodFillExplorer::Dir)h);
       explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+      savePersistentPoseGoal();
       debugPrintln("[CMD] pose reset");
     } else {
       debugPrintln("[CMD] usage: resetpose x y h");
@@ -1308,9 +1483,10 @@ static void handleSerialCommand(const String& rawLine) {
       robotState.goalReached = false;
       robotState.speedRunReady = false;
       resetExploreLoopTracking();
+      savePersistentPoseGoal();
       debugPrintln("[CMD] goal rect set to (" + String(x) + "," + String(y) +
                    ") size " + String(w) + "x" + String(h) +
-                   " for current runtime");
+                   " and saved");
     } else {
       debugPrintln("[CMD] usage: setgoal x y w h");
     }

@@ -93,9 +93,9 @@ static const char* kIndexHtml PROGMEM = R"HTML(
         <h3>Maze And Pose</h3>
         <ul>
           <li><code>maze</code> - print the current maze memory.</li>
-          <li><code>clearmaze</code> - clear remembered maze walls and planner state.</li>
-          <li><code>resetpose x y h</code> - set pose manually; heading is the numeric enum used by the firmware.</li>
-          <li><code>setgoal x y w h</code> - set the active goal rectangle origin and size.</li>
+          <li><code>clearmaze</code> - clear remembered maze walls only; keep the current pose and remove saved wall memory from SPIFFS.</li>
+          <li><code>resetpose x y h</code> - set pose manually and save it; heading is the numeric enum used by the firmware.</li>
+          <li><code>setgoal x y w h</code> - set the active goal rectangle origin and size, then save it.</li>
         </ul>
       </div>
       <div class="group">

@@ -92,6 +92,9 @@ public:
   uint16_t bestKnownCostOriginalStartToGoal() const;
   bool isInOriginalStart(uint8_t x, uint8_t y) const;
   bool isInOriginalGoal(uint8_t x, uint8_t y) const;
+  void exportKnownMaze(uint8_t walls[N][N], uint8_t mask[N][N], uint8_t visited[N][N]) const;
+  bool importKnownMaze(const uint8_t walls[N][N], const uint8_t mask[N][N], const uint8_t visited[N][N],
+                       uint8_t mouseX, uint8_t mouseY, Dir mouseH);
   
 private:
   // --- web handlers ---
