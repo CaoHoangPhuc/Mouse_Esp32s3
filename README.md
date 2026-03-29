@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.42`
+Current project version: `0.0.2.43`
 
 ## Current Status
 
@@ -17,12 +17,13 @@ This repository now includes the first integrated hardware-oriented control stac
 - Wi-Fi OTA, port `80` control page, and telnet/debug tools
 - centralized configuration for hardware and tuning values
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
-- SPIFFS persistence for pose, goal, and saved maze memory when the shortest path is known
+- SPIFFS persistence for saved maze memory when the shortest path is known
 - build fixes for the SPIFFS persistence integration and WebSocket accept path on the current ESP32 core
 - when a saved maze is restored successfully at boot, the robot marks shortest-path-ready immediately and shows white LED in idle
 - explore now uses the current pose as the active home target for goal/home swapping, so `resetpose` affects the next explore loop as expected
 - far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
 - battery monitoring is now telemetry-only and no longer blocks or aborts motion primitives
+- pose and goal are runtime-only again; SPIFFS now stores only maze wall memory
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -72,9 +73,9 @@ This is a bring-up and integration version, not a race-tuned final solver yet.
 15. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 16. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
 17. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
-18. On boot, the runtime restores the last saved pose, goal rectangle, and maze wall memory from SPIFFS when those files exist.
-19. `resetpose` and `setgoal` now save the updated pose/goal immediately, while `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
-20. When explore decides the shortest path is known, the runtime saves pose, goal, and maze memory to SPIFFS automatically before going idle.
+18. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
+19. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
+20. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -112,11 +113,8 @@ Key sections:
 
 ## Persistence
 
-- pose and goal rectangle are saved in SPIFFS when you use:
-  - `resetpose x y h`
-  - `setgoal x y w h`
 - maze wall memory is saved in SPIFFS automatically when explore reports `shortest path known`
-- on boot, the runtime restores saved pose, goal, and maze wall memory if the SPIFFS files are present
+- on boot, the runtime restores saved maze wall memory if the SPIFFS file is present
 - `clearmaze` now clears only the remembered wall map and deletes the saved maze-memory file; it no longer resets pose or goal
 
 ## Dependencies / Build Expectations
@@ -152,7 +150,7 @@ Primitive execution currently includes:
 - simple stall detection
 - front-wall stop support based directly on front distance threshold
 - side-wall centering correction using a wall PID error term
-- battery-critical abort
+- battery state is still reported, but it no longer aborts or blocks motion
 - motor control now separates coast stop from active brake: motion-completion and transition paths use brake, while general stop/idle paths can still coast
 - on the current driver setup, `coastStop()` explicitly sets `IN1=LOW`, `IN2=LOW`, `PWM=0`, while `brakeStop()` routes through the zero-duty motor drive path that holds the wheel in position
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
@@ -209,7 +207,7 @@ Console note:
 - the port `80` control page now renders the current battery voltage/state directly into the page when it loads, without background polling
 - the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
 - the port `80` control page now also has an `Open Floodfill` button that jumps straight to the live floodfill viewer on port `81`
-- `setgoal x y w h` now updates the active runtime goal rectangle used by `explore`, so starting explore no longer snaps the target back to the compiled default goal until the robot reboots
+- `setgoal x y w h` now updates the active runtime goal rectangle used by `explore` for the current runtime
 
 ## Web Debugging
 

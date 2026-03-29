@@ -104,9 +104,7 @@ static bool startRunSnapSequence(const char* label);
 static bool shouldSnapCenterAfterTurn();
 static void resetExploreLoopTracking();
 static bool beginPersistentStorage();
-static bool loadPersistentPoseGoal();
 static bool loadPersistentMaze();
-static bool savePersistentPoseGoal();
 static bool savePersistentMaze();
 static bool clearPersistentMaze();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
@@ -137,21 +135,8 @@ static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, Mot
                              const String& extra = "");
 static void debugWallApplyEvent(const char* tag, const char* source, const String& extra = "");
 
-static constexpr uint32_t kPoseGoalMagic = 0x50474D31u; // PGM1
 static constexpr uint32_t kMazeMagic = 0x4D415A31u;     // MAZ1
-static constexpr const char* kPoseGoalPath = "/pose_goal.bin";
 static constexpr const char* kMazePath = "/maze_state.bin";
-
-struct PersistedPoseGoalData {
-  uint32_t magic;
-  uint8_t poseX;
-  uint8_t poseY;
-  uint8_t poseH;
-  uint8_t goalX0;
-  uint8_t goalY0;
-  uint8_t goalW;
-  uint8_t goalH;
-};
 
 struct PersistedMazeData {
   uint32_t magic;
@@ -424,61 +409,6 @@ static bool beginPersistentStorage() {
   ok = SPIFFS.begin(true);
   debugPrintln(String("[SPIFFS] ") + (ok ? "ready" : "failed"));
   return ok;
-}
-
-static bool loadPersistentPoseGoal() {
-  if (!beginPersistentStorage()) return false;
-  File f = SPIFFS.open(kPoseGoalPath, FILE_READ);
-  if (!f) return false;
-
-  PersistedPoseGoalData data{};
-  const size_t n = f.readBytes(reinterpret_cast<char*>(&data), sizeof(data));
-  f.close();
-  if (n != sizeof(data) || data.magic != kPoseGoalMagic) {
-    debugPrintln("[SPIFFS] pose/goal restore skipped (invalid file)");
-    return false;
-  }
-
-  setPose(constrain((int)data.poseX, 0, 15),
-          constrain((int)data.poseY, 0, 15),
-          (FloodFillExplorer::Dir)(data.poseH & 3));
-  runtimeGoalX0 = constrain((int)data.goalX0, 0, 15);
-  runtimeGoalY0 = constrain((int)data.goalY0, 0, 15);
-  runtimeGoalW = constrain((int)data.goalW, 1, 16 - runtimeGoalX0);
-  runtimeGoalH = constrain((int)data.goalH, 1, 16 - runtimeGoalY0);
-  debugPrintln("[SPIFFS] restored pose/goal");
-  return true;
-}
-
-static bool savePersistentPoseGoal() {
-  if (!beginPersistentStorage()) return false;
-  if (SPIFFS.exists(kPoseGoalPath)) {
-    SPIFFS.remove(kPoseGoalPath);
-  }
-  File f = SPIFFS.open(kPoseGoalPath, FILE_WRITE);
-  if (!f) {
-    debugPrintln("[SPIFFS] failed to open pose/goal file for write");
-    return false;
-  }
-
-  PersistedPoseGoalData data{};
-  data.magic = kPoseGoalMagic;
-  data.poseX = robotState.pose.cellX;
-  data.poseY = robotState.pose.cellY;
-  data.poseH = robotState.pose.heading & 3;
-  data.goalX0 = runtimeGoalX0;
-  data.goalY0 = runtimeGoalY0;
-  data.goalW = runtimeGoalW;
-  data.goalH = runtimeGoalH;
-
-  const bool ok = f.write(reinterpret_cast<const uint8_t*>(&data), sizeof(data)) == sizeof(data);
-  f.close();
-  if (!ok) {
-    debugPrintln("[SPIFFS] failed to save pose/goal");
-    return false;
-  }
-  debugPrintln("[SPIFFS] saved pose/goal");
-  return true;
 }
 
 static bool loadPersistentMaze() {
@@ -876,7 +806,6 @@ static void handleMotionCompletion() {
               stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
             robotState.speedRunReady = true;
             debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
-            savePersistentPoseGoal();
             savePersistentMaze();
             enterIdleMode("shortest path known");
             return;
@@ -1006,7 +935,6 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
-  loadPersistentPoseGoal();
   ledController.begin();
 
   WiFiOtaWebSerial::Config wifiCfg;
@@ -1473,7 +1401,6 @@ static void handleSerialCommand(const String& rawLine) {
       h &= 3;
       setPose((uint8_t)x, (uint8_t)y, (FloodFillExplorer::Dir)h);
       explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-      savePersistentPoseGoal();
       debugPrintln("[CMD] pose reset");
     } else {
       debugPrintln("[CMD] usage: resetpose x y h");
@@ -1495,10 +1422,8 @@ static void handleSerialCommand(const String& rawLine) {
       robotState.goalReached = false;
       robotState.speedRunReady = false;
       resetExploreLoopTracking();
-      savePersistentPoseGoal();
       debugPrintln("[CMD] goal rect set to (" + String(x) + "," + String(y) +
-                   ") size " + String(w) + "x" + String(h) +
-                   " and saved");
+                   ") size " + String(w) + "x" + String(h));
     } else {
       debugPrintln("[CMD] usage: setgoal x y w h");
     }
