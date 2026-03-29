@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.19`
+Current project version: `0.0.2.20`
 
 ## Current Status
 
@@ -90,7 +90,7 @@ All hard configuration now lives in [Config.h](c:\Users\donot\OneDrive\Documents
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
 - `AppConfig::Maze`: start pose and goal rectangle
-  Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle at `(4,4)` size `1x1`.
+  Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle at `(6,9)` size `1x1`.
 - `AppConfig::Wifi`: Wi-Fi / OTA / control-page settings
 - `AppConfig::I2C`: SDA/SCL and bus speed
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
@@ -133,7 +133,7 @@ Primitive execution currently includes:
 - side-wall centering correction using a wall PID error term
 - battery-critical abort
 - motor control now separates coast stop from active brake: motion-completion and transition paths use brake, while general stop/idle paths can still coast
-- active brake now uses the driver-specific `applyDuty(-1)` sentinel path with `IN1=LOW`, `IN2=HIGH`, and `PWM=1`
+- on the current driver setup, `coastStop()` explicitly sets `IN1=LOW`, `IN2=LOW`, `PWM=0`, while `brakeStop()` routes through the zero-duty motor drive path that holds the wheel in position
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 - motion start/end debug hooks in the runtime for tracing primitive flow during tuning
 - a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action

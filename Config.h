@@ -52,8 +52,8 @@ static constexpr uint8_t HOME_H = 1;
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 4;
-static constexpr uint8_t GOAL_Y0 = 4;
+static constexpr uint8_t GOAL_X0 = 6;
+static constexpr uint8_t GOAL_Y0 = 9;
 static constexpr uint8_t GOAL_W = 1;
 static constexpr uint8_t GOAL_H = 1;
 }
@@ -176,10 +176,10 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 // Encoder differential ticks needed for a 90-degree turn.
 // Affects: turnLeft90() / turnRight90() completion.
 // One of the most important hardware tuning values.
-static constexpr int32_t TURN_TICKS_90 = 200;
+static constexpr int32_t TURN_TICKS_90 = 210;
 // Encoder differential ticks needed for a 180-degree turn.
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr int32_t TURN_TICKS_180 = 420;
+static constexpr int32_t TURN_TICKS_180 = 440;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
@@ -188,11 +188,11 @@ static constexpr float MOVE_SPEED_TPS = 350.0f;
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 300.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 100.0f;
+static constexpr float REVERSE_DISTANCE_MM = 150.0f;
 static constexpr float REVERSE_SPEED_TPS = 300.0f;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
-static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 50;
+static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
 static constexpr float TURN_SPEED_TPS = 300.0f;
 
 // Wall-centering correction gain while driving straight.
@@ -200,8 +200,8 @@ static constexpr float TURN_SPEED_TPS = 300.0f;
 // Affects: corridor following stability.
 static constexpr float CENTERING_GAIN = 1.0f;
 static constexpr float CENTER_PID_KP = 1.5f;
-static constexpr float CENTER_PID_KI = 0.00f;
-static constexpr float CENTER_PID_KD = 0.4f;
+static constexpr float CENTER_PID_KI = 0.0f;
+static constexpr float CENTER_PID_KD = 0.5f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 
@@ -228,7 +228,7 @@ static constexpr float MM_PER_TICK = 0.54f;
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
-static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 100;
+static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
 }
 
 namespace Explorer {
