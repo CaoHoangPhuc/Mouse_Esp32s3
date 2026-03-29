@@ -36,6 +36,7 @@ bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
 
 bool MotionController::moveOneCell() {
   if (!startPrimitive_(MOTION_MOVE_ONE_CELL)) return false;
+  tof_->resetCenterPid();
   left_->setSpeedTPS(cfg_.moveSpeedTps);
   right_->setSpeedTPS(cfg_.moveSpeedTps);
   return true;

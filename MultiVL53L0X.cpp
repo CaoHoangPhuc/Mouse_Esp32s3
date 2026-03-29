@@ -1,4 +1,5 @@
 #include "common/tusb_fifo.h"
+#include "Config.h"
 #include "MultiVL53L0X.h"
 
 uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
@@ -48,6 +49,7 @@ void MultiVL53L0X::resetCenterPid() {
     _centerRawFiltered = 0.0f;
     _lastDualWallError = 0.0f;
     _dualWallBlend = 0.0f;
+    _captureCenterTargetsOnFirstSample = true;
     _centerPrevMs = 0;
     _centerPidPrimed = false;
     error = 0.0f;
@@ -360,11 +362,16 @@ float MultiVL53L0X::computeError(float headingError) {
     const bool leftValid  = isGood(leftState);
     const bool rightValid = isGood(rightState);
     const bool dualWallValid = leftValid && rightValid;
+    const bool shouldCaptureTargets = _captureCenterTargetsOnFirstSample;
+    _captureCenterTargetsOnFirstSample = false;
 
     float dualErr = 0.0f;
     if (dualWallValid) {
-        _centerTargetLeft = (0.8f * _centerTargetLeft) + (0.2f * (float)left);
-        _centerTargetRight = (0.8f * _centerTargetRight) + (0.2f * (float)right);
+        if (shouldCaptureTargets &&
+            fabsf((float)left - (float)right) <= AppConfig::Motion::CENTER_TARGET_CAPTURE_WINDOW_MM) {
+            _centerTargetLeft = (float)left;
+            _centerTargetRight = (float)right;
+        }
         dualErr = 0.5f * ((_centerTargetLeft - (float)left) +
                           ((float)right - _centerTargetRight));
         _lastDualWallError = dualErr;

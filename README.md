@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.49`
+Current project version: `0.2.50`
 
 ## Current Status
 
@@ -27,7 +27,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - SPIFFS persistence now lives in a dedicated module for easier control and future changes
 - wall-centering now blends smoothly when transitioning between both-wall centering and single-wall following
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
-- when both walls are visible, the left/right targets self-refresh with a simple `0.8 old + 0.2 new` filter
+- wall-centering now captures left/right targets once at the start of a straight move, only when both walls are visible and nearly balanced
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
