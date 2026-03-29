@@ -112,7 +112,7 @@ static bool shouldSnapCenterAfterTurn();
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 static void resetLapHistory();
-static void startLapTimer();
+static void startLapTimer(const char* legLabel);
 static void stopLapTimer(bool record);
 static String explorerLapStateJson();
 
@@ -131,8 +131,10 @@ static bool serialOutputTemporarilyMuted = false;
 static bool lapTimerRunning = false;
 static uint32_t lapStartMs = 0;
 static uint32_t lapCurrentMsSnapshot = 0;
+static String lapCurrentLabel = "HG";
 static constexpr uint8_t kLapHistoryMax = 16;
 static uint32_t lapHistoryMs[kLapHistoryMax] = {};
+static String lapHistoryLabels[kLapHistoryMax];
 static uint8_t lapHistoryCount = 0;
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
@@ -165,14 +167,22 @@ static void resetLapHistory() {
   lapTimerRunning = false;
   lapStartMs = 0;
   lapCurrentMsSnapshot = 0;
+  lapCurrentLabel = "HG";
   lapHistoryCount = 0;
   memset(lapHistoryMs, 0, sizeof(lapHistoryMs));
+  for (uint8_t i = 0; i < kLapHistoryMax; ++i) {
+    lapHistoryLabels[i] = "";
+  }
 }
 
-static void startLapTimer() {
+static void startLapTimer(const char* legLabel) {
+  if (lapTimerRunning) {
+    stopLapTimer(false);
+  }
   lapTimerRunning = true;
   lapStartMs = millis();
   lapCurrentMsSnapshot = 0;
+  lapCurrentLabel = legLabel ? String(legLabel) : String("HG");
   explorer.notifyStateChanged();
 }
 
@@ -187,10 +197,15 @@ static void stopLapTimer(bool record) {
   lapTimerRunning = false;
   if (record) {
     if (lapHistoryCount < kLapHistoryMax) {
+      lapHistoryLabels[lapHistoryCount] = lapCurrentLabel;
       lapHistoryMs[lapHistoryCount++] = lapCurrentMsSnapshot;
     } else {
       memmove(&lapHistoryMs[0], &lapHistoryMs[1], sizeof(lapHistoryMs[0]) * (kLapHistoryMax - 1));
       lapHistoryMs[kLapHistoryMax - 1] = lapCurrentMsSnapshot;
+      for (uint8_t i = 0; i < kLapHistoryMax - 1; ++i) {
+        lapHistoryLabels[i] = lapHistoryLabels[i + 1];
+      }
+      lapHistoryLabels[kLapHistoryMax - 1] = lapCurrentLabel;
     }
   }
   explorer.notifyStateChanged();
@@ -201,14 +216,21 @@ static String explorerLapStateJson() {
   String out = "\"lap\":{";
   out += "\"running\":";
   out += lapTimerRunning ? "true" : "false";
+  out += ",\"currentLabel\":\"";
+  out += lapCurrentLabel;
+  out += "\"";
   out += ",\"currentMs\":";
   out += String(currentMs);
   out += ",\"nextLap\":";
   out += String((int)lapHistoryCount + 1);
-  out += ",\"historyMs\":[";
+  out += ",\"history\":[";
   for (uint8_t i = 0; i < lapHistoryCount; ++i) {
     if (i) out += ",";
+    out += "{\"label\":\"";
+    out += lapHistoryLabels[i];
+    out += "\",\"ms\":";
     out += String(lapHistoryMs[i]);
+    out += "}";
   }
   out += "]}";
   return out;
@@ -591,8 +613,7 @@ static void onExplorerWebCommand(const String& cmd) {
 
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
-  resetLapHistory();
-  startLapTimer();
+  startLapTimer("HG");
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
@@ -620,8 +641,7 @@ static void beginSpeedRun(uint8_t phase) {
   if (phase < 1 || phase > 4) phase = 1;
   robotState.speedRunPhase = phase;
   serialOutputTemporarilyMuted = (phase == 1);
-  resetLapHistory();
-  startLapTimer();
+  startLapTimer("HG");
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -826,16 +846,19 @@ static void handleMotionCompletion() {
     }
 
     if (reachedGoal) {
-      if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
+      const bool atOriginalGoal = explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY);
+      const bool atOriginalStart = explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY);
+      if (atOriginalGoal || atOriginalStart) {
         stopLapTimer(true);
       }
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-        if (robotState.speedRunPhase == 1 &&
-            explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY) &&
-            !explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY)) {
-          explorer.advanceTargetAfterReach();
-          explorer.setRunning(true);
-          robotState.goalReached = false;
+          if (robotState.speedRunPhase == 1 &&
+              atOriginalGoal &&
+              !atOriginalStart) {
+            startLapTimer("GH");
+            explorer.advanceTargetAfterReach();
+            explorer.setRunning(true);
+            robotState.goalReached = false;
           robotState.speedRunReady = true;
           skipPostMotionHold = true;
           updateRobotLed();
@@ -857,13 +880,14 @@ static void handleMotionCompletion() {
         debugPrintln("[GOAL] Goal reached");
         exploreGoalSeen = true;
         const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
-        if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
+        if (atOriginalGoal) {
           reachedOriginalGoalOnThisLoop = true;
           debugPrintln("[EXPLORE] reached goal leg bestCost=" + String(bestCost));
-        } else if (explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY) &&
+          startLapTimer("GH");
+        } else if (atOriginalStart &&
                    reachedOriginalGoalOnThisLoop) {
           reachedOriginalGoalOnThisLoop = false;
-          startLapTimer();
+          startLapTimer("HG");
           if (bestCost == lastStableBestCost) {
             stableRoundTripCount++;
           } else {

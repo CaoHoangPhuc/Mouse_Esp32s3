@@ -56,8 +56,8 @@ static const char* kHtml PROGMEM = R"HTML(
 </header>
 
 <div id="status" class="statusbar">Connecting to explorer...</div>
-<div id="lapbar" class="lapbar">
-  <b>Lap Timing</b>
+  <div id="lapbar" class="lapbar">
+    <b>Run Timing</b>
   <div id="lapCurrent">Waiting to start...</div>
   <ul id="lapHistory"></ul>
 </div>
@@ -261,33 +261,35 @@ function fmtMs(ms){
   return `${min}:${String(sec).padStart(2,'0')}.${String(rem).padStart(3,'0')}`;
 }
 
-function renderLap(){
-  const currentEl = document.getElementById('lapCurrent');
-  const listEl = document.getElementById('lapHistory');
+  function renderLap(){
+    const currentEl = document.getElementById('lapCurrent');
+    const listEl = document.getElementById('lapHistory');
   if(!currentEl || !listEl) return;
   listEl.innerHTML = '';
 
-  if(!S || !S.lap){
-    currentEl.textContent = 'Waiting to start...';
-    return;
-  }
+    if(!S || !S.lap){
+      currentEl.textContent = 'Waiting to start...';
+      return;
+    }
 
-  let currentMs = S.lap.currentMs || 0;
-  if(S.lap.running){
-    currentMs += Math.max(0, Date.now() - lapStateRxMs);
-    currentEl.textContent = `Lap ${S.lap.nextLap} running: ${fmtMs(currentMs)}`;
-  } else if((S.lap.historyMs || []).length > 0){
-    currentEl.textContent = `Last lap: ${fmtMs(S.lap.historyMs[S.lap.historyMs.length - 1])}`;
-  } else {
-    currentEl.textContent = 'Waiting to start...';
-  }
+    let currentMs = S.lap.currentMs || 0;
+    const currentLabel = S.lap.currentLabel || 'HG';
+    if(S.lap.running){
+      currentMs += Math.max(0, Date.now() - lapStateRxMs);
+      currentEl.textContent = `Leg ${S.lap.nextLap} (${currentLabel}) running: ${fmtMs(currentMs)}`;
+    } else if((S.lap.history || []).length > 0){
+      const last = S.lap.history[S.lap.history.length - 1];
+      currentEl.textContent = `Last leg (${last.label || 'HG'}): ${fmtMs(last.ms || 0)}`;
+    } else {
+      currentEl.textContent = 'Waiting to start...';
+    }
 
-  (S.lap.historyMs || []).forEach((ms, idx) => {
-    const li = document.createElement('li');
-    li.textContent = `Lap ${idx + 1}: ${fmtMs(ms)}`;
-    listEl.appendChild(li);
-  });
-}
+    (S.lap.history || []).forEach((entry, idx) => {
+      const li = document.createElement('li');
+      li.textContent = `Leg ${idx + 1} (${entry.label || 'HG'}): ${fmtMs(entry.ms || 0)}`;
+      listEl.appendChild(li);
+    });
+  }
 
 function doNextIfNeeded(){
   if(!S || !S.running || S.waitAck) return;
