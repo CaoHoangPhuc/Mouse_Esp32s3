@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.40`
+Current project version: `0.0.2.41`
 
 ## Current Status
 
@@ -21,6 +21,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - build fixes for the SPIFFS persistence integration and WebSocket accept path on the current ESP32 core
 - when a saved maze is restored successfully at boot, the robot marks shortest-path-ready immediately and shows white LED in idle
 - explore now uses the current pose as the active home target for goal/home swapping, so `resetpose` affects the next explore loop as expected
+- far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

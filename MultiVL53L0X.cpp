@@ -234,15 +234,20 @@ void MultiVL53L0X::detectLayout() {
 // 🔥 Unified sensor read
 MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
     SensorState s = {false, false, false, false, false, false, 0, 0, 0};
+    auto isObservable = [&](uint8_t index) {
+        if (index >= _numSensors) return false;
+        uint8_t state = stateTimeout(index);
+        return state == 0 || state == 1 || state == 2;
+    };
 
     if (_version == SENSOR_V1) {
         uint16_t left  = getDistance(0);
         uint16_t front = getDistance(2);
         uint16_t right = getDistance(4);
 
-        s.leftValid = isGoodReading_(0);
-        s.frontValid = isGoodReading_(2);
-        s.rightValid = isGoodReading_(4);
+        s.leftValid = isObservable(0);
+        s.frontValid = isObservable(2);
+        s.rightValid = isObservable(4);
         s.leftMm = left;
         s.frontMm = front;
         s.rightMm = right;
@@ -258,16 +263,16 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
 
         uint8_t flState = stateTimeout(0);
         uint8_t frState = stateTimeout(3);
-        bool flValid = isGoodReading_(0);
-        bool frValidRaw = isGoodReading_(3);
+        bool flValid = isObservable(0);
+        bool frValidRaw = isObservable(3);
         // S3 is front-right. On current hardware it is only trustworthy when
         // S0 (front-left) is also seeing the front wall region.
         bool frValid = flValid && frValidRaw;
         bool flFar = flState == 2;
         bool frFar = frState == 2;
-        s.leftValid  = isGoodReading_(1);
-        s.rightValid = isGoodReading_(2);
-        s.frontValid = flValid || frValid;
+        s.leftValid  = isObservable(1);
+        s.rightValid = isObservable(2);
+        s.frontValid = flValid || frValid || (flFar && frFar);
         s.leftMm = l;
         s.rightMm = r;
         if (flValid && frValid) s.frontMm = min(fl, fr);
