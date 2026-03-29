@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.43`
+Current project version: `0.2.43`
 
 ## Current Status
 
