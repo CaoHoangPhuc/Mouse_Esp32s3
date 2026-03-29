@@ -58,6 +58,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
     <div class="row">
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
+      <button class="secondary" onclick="openFloodfill()">Open Floodfill</button>
     </div>
     <div id="status">Ready.</div>
     <h2>How To Use</h2>
@@ -163,6 +164,12 @@ async function reconnectTelnet(){
   } finally {
     busy = false;
   }
+}
+
+function openFloodfill(){
+  const ip = document.getElementById('robotIp').textContent || location.hostname;
+  setStatus('Opening floodfill viewer on ' + ip + ':81 ...');
+  window.location.href = 'http://' + ip + ':81/';
 }
 </script>
 </body>

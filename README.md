@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.34`
+Current project version: `0.0.2.35`
 
 ## Current Status
 
@@ -189,6 +189,7 @@ Console note:
 - the port `80` control page now also includes a grouped quick-reference for the main CLI commands, so users can see the accepted commands and their purpose before opening telnet
 - the port `80` control page now renders the current battery voltage/state directly into the page when it loads, without background polling
 - the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
+- the port `80` control page now also has an `Open Floodfill` button that jumps straight to the live floodfill viewer on port `81`
 - `setgoal x y w h` now updates the active runtime goal rectangle used by `explore`, so starting explore no longer snaps the target back to the compiled default goal until the robot reboots
 
 ## Web Debugging
