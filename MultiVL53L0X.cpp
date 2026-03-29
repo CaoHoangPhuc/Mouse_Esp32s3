@@ -40,6 +40,9 @@ void MultiVL53L0X::setCenterPid(float kp, float ki, float kd, float iLimit, floa
 void MultiVL53L0X::resetCenterPid() {
     _centerIntegral = 0.0f;
     _centerPrevError = 0.0f;
+    _centerRawFiltered = 0.0f;
+    _lastDualWallError = 0.0f;
+    _dualWallBlend = 0.0f;
     _centerPrevMs = 0;
     _centerPidPrimed = false;
     error = 0.0f;
@@ -351,17 +354,20 @@ float MultiVL53L0X::computeError(float headingError) {
 
     const bool leftValid  = isGood(leftState);
     const bool rightValid = isGood(rightState);
+    const bool dualWallValid = leftValid && rightValid;
 
-    float rawErr = 0.0f;
-    if (leftValid && rightValid) {
-        rawErr = 0.5f * (((float)CENTER_TARGET - (float)left) +
-                         ((float)right - (float)CENTER_TARGET));
-    } else if (leftValid) {
-        rawErr = (float)CENTER_TARGET - (float)left;
-    } else if (rightValid) {
-        rawErr = (float)right - (float)CENTER_TARGET;
-    } else {
-        rawErr = headingError;
+    float dualErr = 0.0f;
+    if (dualWallValid) {
+        dualErr = 0.5f * (((float)CENTER_TARGET - (float)left) +
+                          ((float)right - (float)CENTER_TARGET));
+        _lastDualWallError = dualErr;
+    }
+
+    float singleErr = headingError;
+    if (leftValid && !rightValid) {
+        singleErr = (float)CENTER_TARGET - (float)left;
+    } else if (rightValid && !leftValid) {
+        singleErr = (float)right - (float)CENTER_TARGET;
     }
 
     const uint32_t now = millis();
@@ -373,9 +379,31 @@ float MultiVL53L0X::computeError(float headingError) {
 
     if (!_centerPidPrimed) {
         _centerIntegral = 0.0f;
-        _centerPrevError = rawErr;
+        _centerPrevError = 0.0f;
+        _centerRawFiltered = dualWallValid ? dualErr : singleErr;
+        _dualWallBlend = dualWallValid ? 1.0f : 0.0f;
         _centerPidPrimed = true;
     }
+
+    const float blendTarget = dualWallValid ? 1.0f : 0.0f;
+    const float blendTauSec = 0.18f;
+    const float blendAlpha = dt / (blendTauSec + dt);
+    _dualWallBlend += (blendTarget - _dualWallBlend) * blendAlpha;
+    if (_dualWallBlend < 0.0f) _dualWallBlend = 0.0f;
+    if (_dualWallBlend > 1.0f) _dualWallBlend = 1.0f;
+
+    float targetRawErr = headingError;
+    if (dualWallValid) {
+        targetRawErr = dualErr;
+    } else if (leftValid || rightValid) {
+        targetRawErr = (_dualWallBlend * _lastDualWallError) +
+                       ((1.0f - _dualWallBlend) * singleErr);
+    }
+
+    const float rawTauSec = 0.10f;
+    const float rawAlpha = dt / (rawTauSec + dt);
+    _centerRawFiltered += (targetRawErr - _centerRawFiltered) * rawAlpha;
+    const float rawErr = _centerRawFiltered;
 
     _centerIntegral += rawErr * dt;
     if (_centerIntegral > _centerILimit) _centerIntegral = _centerILimit;

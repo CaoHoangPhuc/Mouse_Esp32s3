@@ -115,6 +115,9 @@ private:
     float _centerOutLimit = 50.0f;
     float _centerIntegral = 0.0f;
     float _centerPrevError = 0.0f;
+    float _centerRawFiltered = 0.0f;
+    float _lastDualWallError = 0.0f;
+    float _dualWallBlend = 0.0f;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
 
