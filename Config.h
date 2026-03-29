@@ -201,6 +201,9 @@ static constexpr float TURN_SPEED_TPS = 300.0f;
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
 static constexpr float CENTERING_GAIN = 1.0f;
+static constexpr float CENTER_TARGET_BOTH_MM = 100.0f;
+static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
+static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
 static constexpr float CENTER_PID_KP = 1.5f;
 static constexpr float CENTER_PID_KI = 0.0f;
 static constexpr float CENTER_PID_KD = 0.5f;

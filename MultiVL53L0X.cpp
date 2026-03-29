@@ -37,6 +37,12 @@ void MultiVL53L0X::setCenterPid(float kp, float ki, float kd, float iLimit, floa
     _centerOutLimit = fabsf(outLimit);
 }
 
+void MultiVL53L0X::setCenterTargets(float bothMm, float leftMm, float rightMm) {
+    _centerTargetBoth = bothMm;
+    _centerTargetLeft = leftMm;
+    _centerTargetRight = rightMm;
+}
+
 void MultiVL53L0X::resetCenterPid() {
     _centerIntegral = 0.0f;
     _centerPrevError = 0.0f;
@@ -358,16 +364,16 @@ float MultiVL53L0X::computeError(float headingError) {
 
     float dualErr = 0.0f;
     if (dualWallValid) {
-        dualErr = 0.5f * (((float)CENTER_TARGET - (float)left) +
-                          ((float)right - (float)CENTER_TARGET));
+        dualErr = 0.5f * ((_centerTargetBoth - (float)left) +
+                          ((float)right - _centerTargetBoth));
         _lastDualWallError = dualErr;
     }
 
     float singleErr = headingError;
     if (leftValid && !rightValid) {
-        singleErr = (float)CENTER_TARGET - (float)left;
+        singleErr = _centerTargetLeft - (float)left;
     } else if (rightValid && !leftValid) {
-        singleErr = (float)right - (float)CENTER_TARGET;
+        singleErr = (float)right - _centerTargetRight;
     }
 
     const uint32_t now = millis();
