@@ -91,6 +91,7 @@ public:
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
   bool atGoal() const { return atActiveTarget_(); }
+  void advanceTargetAfterReach();
   bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
   String buildKnownMazeAscii(uint8_t mouseX = 255, uint8_t mouseY = 255, Dir mouseH = NORTH) const;
   uint16_t bestKnownCostOriginalStartToGoal() const;

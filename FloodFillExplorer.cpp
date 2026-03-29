@@ -706,6 +706,10 @@ FloodFillExplorer::Action FloodFillExplorer::requestNextActionNoAck() {
   return act;
 }
 
+void FloodFillExplorer::advanceTargetAfterReach() {
+  onGoalReached_();
+}
+
 bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h) {
   if (!waitAck_) return false;
 

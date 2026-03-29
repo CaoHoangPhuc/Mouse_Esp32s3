@@ -826,17 +826,32 @@ static void handleMotionCompletion() {
       if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
         stopLapTimer(true);
       }
-      if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1) {
-        serialOutputTemporarilyMuted = false;
-      }
-      robotState.goalReached = true;
-      updateRobotLed();
-      debugPrintln("[GOAL] Goal reached");
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+        if (robotState.speedRunPhase == 1 &&
+            explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY) &&
+            !explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY)) {
+          explorer.advanceTargetAfterReach();
+          explorer.setRunning(true);
+          robotState.goalReached = false;
+          robotState.speedRunReady = true;
+          skipPostMotionHold = true;
+          updateRobotLed();
+          debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
+          return;
+        }
+        if (robotState.speedRunPhase == 1) {
+          serialOutputTemporarilyMuted = false;
+        }
+        robotState.goalReached = true;
+        updateRobotLed();
+        debugPrintln("[GOAL] Goal reached");
         robotState.speedRunReady = true;
         enterIdleMode("speed run finished");
       } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
                  AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
+        robotState.goalReached = true;
+        updateRobotLed();
+        debugPrintln("[GOAL] Goal reached");
         exploreGoalSeen = true;
         const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
         if (explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY)) {
