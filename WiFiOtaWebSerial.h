@@ -8,6 +8,7 @@ public:
   using LedCommandHandler = bool (*)(const String& cmd, String& response);
   using TelnetReconnectHandler = bool (*)();
   using HealthJsonProvider = String (*)();
+  using SerialOutputAllowedFn = bool (*)();
 
   struct Config {
     const char* ssid       = nullptr;
@@ -48,6 +49,7 @@ public:
   void setLedCommandHandler(LedCommandHandler handler) { ledCommandHandler_ = handler; }
   void setTelnetReconnectHandler(TelnetReconnectHandler handler) { telnetReconnectHandler_ = handler; }
   void setHealthJsonProvider(HealthJsonProvider provider) { healthJsonProvider_ = provider; }
+  void setSerialOutputAllowedHandler(SerialOutputAllowedFn fn) { serialOutputAllowedFn_ = fn; }
 
   // Info
   String ip() const;
@@ -78,6 +80,7 @@ private:
   LedCommandHandler ledCommandHandler_ = nullptr;
   TelnetReconnectHandler telnetReconnectHandler_ = nullptr;
   HealthJsonProvider healthJsonProvider_ = nullptr;
+  SerialOutputAllowedFn serialOutputAllowedFn_ = nullptr;
 
 private:
   static void wifiTaskThunk_(void* arg);

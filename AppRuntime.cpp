@@ -90,6 +90,7 @@ static void debugPrint(const String& s);
 static void debugPrintln(const String& s = "");
 static void debugPrompt();
 static bool debugClientConnected();
+static bool serialOutputEnabled();
 static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
 static bool onWebTelnetReconnect();
@@ -121,6 +122,7 @@ static uint8_t stableRoundTripCount = 0;
 static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
 static int32_t exploreStepBudget = -1;
+static bool serialOutputTemporarilyMuted = false;
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
 static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
@@ -144,8 +146,12 @@ static bool debugClientConnected() {
   return debugClient && debugClient.connected();
 }
 
+static bool serialOutputEnabled() {
+  return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
+}
+
 static void debugPrint(const String& s) {
-  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+  if (serialOutputEnabled()) {
     Serial.print(s);
   }
   if (debugClientConnected()) {
@@ -154,7 +160,7 @@ static void debugPrint(const String& s) {
 }
 
 static void debugPrintln(const String& s) {
-  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+  if (serialOutputEnabled()) {
     Serial.println(s);
   }
   if (debugClientConnected()) {
@@ -438,6 +444,7 @@ static void maze_debug_s() {
 }
 
 static void enterIdleMode(const String& reason) {
+  serialOutputTemporarilyMuted = false;
   robotState.mode = ROBOT_MODE_IDLE;
   robotState.motionStatus = MOTION_IDLE;
   robotState.activePrimitive = MOTION_NONE;
@@ -453,6 +460,7 @@ static void enterIdleMode(const String& reason) {
 }
 
 static void enterFaultMode(const String& reason) {
+  serialOutputTemporarilyMuted = false;
   robotState.mode = ROBOT_MODE_FAULT;
   robotState.lastFault = reason;
   robotState.faultCount++;
@@ -506,6 +514,7 @@ static void onExplorerWebCommand(const String& cmd) {
 }
 
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
+  serialOutputTemporarilyMuted = false;
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
@@ -532,6 +541,7 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
 static void beginSpeedRun(uint8_t phase) {
   if (phase < 1 || phase > 4) phase = 1;
   robotState.speedRunPhase = phase;
+  serialOutputTemporarilyMuted = (phase == 1);
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -729,6 +739,9 @@ static void handleMotionCompletion() {
     }
 
     if (reachedGoal) {
+      if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1) {
+        serialOutputTemporarilyMuted = false;
+      }
       robotState.goalReached = true;
       updateRobotLed();
       debugPrintln("[GOAL] Goal reached");
@@ -910,6 +923,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   dbg.setLedCommandHandler(onWebLedCommand);
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   dbg.setHealthJsonProvider(onWebHealthJson);
+  dbg.setSerialOutputAllowedHandler(serialOutputEnabled);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
   debugServer.begin();

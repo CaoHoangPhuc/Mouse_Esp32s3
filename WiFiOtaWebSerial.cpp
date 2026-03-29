@@ -375,7 +375,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
           wifiStatus == WL_NO_SSID_AVAIL;
         if (shouldReconnect && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
           lastReconnectMs = now;
-          if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println("[WiFi] reconnecting...");
+          const bool serialOutputAllowed =
+            serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+          if (serialOutputAllowed) Serial.println("[WiFi] reconnecting...");
           WiFi.reconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -432,7 +434,9 @@ void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {
     atLineStart_ = false;
   }
 
-  if (mirrorToSerial && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.print(s);
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+  if (mirrorToSerial && serialOutputAllowed) Serial.print(s);
 }
 
 void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
@@ -444,7 +448,9 @@ void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
   }
   atLineStart_ = true;
 
-  if (mirrorToSerial && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println(s);
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+  if (mirrorToSerial && serialOutputAllowed) Serial.println(s);
 }
 
 void WiFiOtaWebSerial::clear() {
@@ -468,14 +474,16 @@ void WiFiOtaWebSerial::setupWiFi_() {
 }
 bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
   const uint32_t start = millis();
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
   while (WiFi.status() != WL_CONNECTED) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (timeoutMs > 0 && millis() - start >= timeoutMs) {
-      if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) Serial.println("[WiFi] connect timeout");
+      if (serialOutputAllowed) Serial.println("[WiFi] connect timeout");
       return false;
     }
   }
-  if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+  if (serialOutputAllowed) {
     Serial.println("[WiFi] Connected");
     Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
   }

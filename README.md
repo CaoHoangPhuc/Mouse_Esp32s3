@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.53`
+Current project version: `0.2.54`
 
 ## Current Status
 
@@ -32,6 +32,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
 - `speedrun [1-4]` is now phase-aware, and phase 1 runs the known shortest path directly without wall updates, ACK handshakes, or snap-center recovery motions
+- `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
