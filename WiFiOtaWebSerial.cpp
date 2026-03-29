@@ -53,7 +53,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <b>Hostname</b><span>%HOSTNAME%</span>
       <b>IP</b><span id="robotIp">%IP%</span>
       <b>Telnet</b><span id="telnetTarget">%IP%:%TELNET_PORT%</span>
-      <b>Battery</b><span id="batteryNow">loading...</span>
+      <b>Battery</b><span id="batteryNow">%BATTERY_TEXT%</span>
     </div>
     <div class="row">
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
@@ -124,21 +124,6 @@ static const char* kIndexHtml PROGMEM = R"HTML(
 let busy = false;
 function setStatus(s){ document.getElementById('status').textContent = s; }
 
-async function refreshHealth(){
-  try {
-    const res = await fetch('/health', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const info = await res.json();
-    document.getElementById('robotIp').textContent = info.ip;
-    document.getElementById('telnetTarget').textContent = info.ip + ':' + info.port;
-    if (info.batteryText) {
-      document.getElementById('batteryNow').textContent = info.batteryText;
-    }
-  } catch (e) {
-    document.getElementById('batteryNow').textContent = 'unavailable';
-  }
-}
-
 async function cycleLed(){
   if (busy) return;
   busy = true;
@@ -178,9 +163,6 @@ async function reconnectTelnet(){
     busy = false;
   }
 }
-
-refreshHealth();
-setInterval(refreshHealth, 2000);
 </script>
 </body>
 </html>
@@ -539,6 +521,7 @@ void WiFiOtaWebSerial::setupWeb_() {
     html.replace("%HOSTNAME%", String(cfg_.hostname ? cfg_.hostname : "esp32"));
     html.replace("%IP%", ip());
     html.replace("%TELNET_PORT%", String(cfg_.debugTcpPort));
+    html.replace("%BATTERY_TEXT%", healthJsonProvider_ ? extractBatteryText_(healthJsonProvider_()) : String("unavailable"));
     web_->server.send(200, "text/html; charset=utf-8", html);
   });
 
@@ -580,21 +563,21 @@ void WiFiOtaWebSerial::setupWeb_() {
     web_->server.send(ok ? 200 : 500, "application/json", body);
   });
 
-  srv.on("/health", HTTP_GET, [this]() {
-    const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
-    const String extra = healthJsonProvider_ ? (String(",") + healthJsonProvider_()) : String("");
-    web_->server.send(200, "application/json",
-                      String("{\"ip\":\"") + ip() +
-                      "\",\"hostname\":\"" + host +
-                      "\",\"port\":" + String(cfg_.debugTcpPort) +
-                      extra + "}");
-  });
-
   srv.onNotFound([this]() {
     web_->server.send(404, "text/plain", "Not found");
   });
 
   srv.begin();
+}
+
+String WiFiOtaWebSerial::extractBatteryText_(const String& json) const {
+  const String key = "\"batteryText\":\"";
+  const int start = json.indexOf(key);
+  if (start < 0) return "unavailable";
+  const int valueStart = start + key.length();
+  const int valueEnd = json.indexOf('"', valueStart);
+  if (valueEnd < 0) return "unavailable";
+  return json.substring(valueStart, valueEnd);
 }
 
 void WiFiOtaWebSerial::setupUploadWeb_() {

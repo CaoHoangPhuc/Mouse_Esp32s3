@@ -90,6 +90,7 @@ private:
   void setupUploadWeb_();
   void setLedState_(const String& cmd);
   void serviceUpdateLed_();
+  String extractBatteryText_(const String& json) const;
 
   void appendLog_(const String& s);
 
