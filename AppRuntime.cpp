@@ -109,6 +109,7 @@ static uint16_t lastStableBestCost = 0xFFFF;
 static uint8_t stableRoundTripCount = 0;
 static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
+static int32_t exploreStepBudget = -1;
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
 static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
@@ -448,12 +449,13 @@ static void updateOtaSafeMode() {
   }
 }
 
-static void beginExplore(bool clearMaze) {
+static void beginExplore(bool clearMaze, int32_t stepBudget = -1) {
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
   robotState.lastFault = "";
   resetExploreLoopTracking();
+  exploreStepBudget = stepBudget;
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
@@ -466,6 +468,9 @@ static void beginExplore(bool clearMaze) {
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   updateRobotLed();
   debugPrintln("[MODE] EXPLORE");
+  if (exploreStepBudget >= 0) {
+    debugPrintln("[EXPLORE] step budget=" + String(exploreStepBudget));
+  }
   startRunSnapSequence("run-start snapcenter");
 }
 
@@ -489,6 +494,7 @@ static void resetMazeToConfiguredStart() {
   robotState.speedRunReady = false;
   robotState.lastFault = "";
   resetExploreLoopTracking();
+  exploreStepBudget = -1;
 
   explorer.setHardwareMode(true);
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
@@ -572,6 +578,7 @@ static void handleMotionCompletion() {
     primitive == MOTION_TURN_180;
   const bool isSnapCenterPrimitive = primitive == MOTION_SNAP_CENTER;
   bool skipPostMotionHold = false;
+  bool stepBudgetReached = false;
 
   if (status == MOTION_COMPLETED) {
     advancePoseForFinishedPrimitive(primitive);
@@ -628,6 +635,16 @@ static void handleMotionCompletion() {
       maze_debug_s();
     }
 
+    if (primitive == MOTION_MOVE_ONE_CELL &&
+        robotState.mode == ROBOT_MODE_EXPLORE &&
+        exploreStepBudget > 0) {
+      exploreStepBudget--;
+      debugPrintln("[EXPLORE] steps remaining=" + String(exploreStepBudget));
+      if (exploreStepBudget == 0) {
+        stepBudgetReached = true;
+      }
+    }
+
     if (reachedGoal) {
       robotState.goalReached = true;
       updateRobotLed();
@@ -671,6 +688,11 @@ static void handleMotionCompletion() {
         updateRobotLed();
         debugPrintln("[EXPLORE] target toggled, continue exploring");
       }
+    }
+
+    if (stepBudgetReached) {
+      enterIdleMode("explore step budget reached");
+      return;
     }
 
     if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
@@ -1043,7 +1065,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[CMD] help | explore [n] | speedrun | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -1145,7 +1167,16 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
   if (line == "explore") {
-    beginExplore(true);
+    beginExplore(true, -1);
+    return;
+  }
+  if (line.startsWith("explore ")) {
+    int steps = 0;
+    if (sscanf(line.c_str(), "explore %d", &steps) == 1 && steps > 0) {
+      beginExplore(true, steps);
+    } else {
+      debugPrintln("[CMD] usage: explore [n>0]");
+    }
     return;
   }
   if (line == "clearmaze" || line == "mazereset" || line == "resetstart") {

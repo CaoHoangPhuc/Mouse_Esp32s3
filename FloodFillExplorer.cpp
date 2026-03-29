@@ -44,7 +44,7 @@ static const char* kHtml PROGMEM = R"HTML(
 
       <span class="pill warn">
         AutoACK(sim)
-        <input id="autoAck" type="checkbox" checked style="transform:scale(1.2);margin-left:6px"/>
+        <input id="autoAck" type="checkbox" style="transform:scale(1.2);margin-left:6px"/>
       </span>
     </div>
   </div>
