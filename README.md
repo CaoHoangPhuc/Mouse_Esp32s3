@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.2.62`
+Current project version: `0.2.63`
 
 ## Current Status
 
@@ -142,6 +142,31 @@ Key sections:
 - target platform is an ESP32-S3 board using the Arduino ESP32 core
 - external libraries used by the code include `PCF8574`, `VL53L0X`, and `Adafruit_NeoPixel`
 - compile/build verification is still pending in this repository, so the first build should be treated as a bring-up check rather than a guaranteed known-good baseline
+
+## Arduino IDE Build / Upload
+
+If the project is not already under your Arduino sketch folder, place or copy the whole folder here so the sketch keeps its Arduino layout:
+
+- `C:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3`
+
+Then build and upload like this:
+
+1. Open [Mouse_esp32s3.ino](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Mouse_esp32s3.ino) in Arduino IDE.
+2. Select your ESP32-S3 board target in `Tools`.
+3. Set the ESP32-S3 board options to match this project:
+   - `USB CDC On Boot`: `Enabled`
+   - `Partition Scheme`: `Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)` or the closest current ESP32-core label that gives about `1.9MB code`, `1.9MB OTA`, and `128KB/190KB SPIFFS`
+   - `Arduino Runs On`: `Core 1`
+4. Select the correct serial `COM` port in `Tools -> Port`.
+5. Click `Verify` first.
+6. Click `Upload`.
+
+Bring-up notes:
+
+- if the board does not enumerate correctly, re-check that `USB CDC On Boot` is enabled
+- if the partition scheme is wrong, OTA or SPIFFS features may fail later even if the sketch compiles
+- after upload, open Serial Monitor or telnet and use `help` / `status` for first validation
+- Wi-Fi OTA and browser upload on port `82` are convenient later, but first bring-up should still start from a normal USB upload
 
 ## Robot Modes
 

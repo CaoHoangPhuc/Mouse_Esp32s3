@@ -43,6 +43,12 @@ Documentation rule:
 ## Common Workflows
 
 ### 1. Hardware bring-up
+- Open [Mouse_esp32s3.ino](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Mouse_esp32s3.ino) from the Arduino sketch folder, not as an arbitrary loose file.
+- Use the intended ESP32-S3 Arduino settings during bring-up:
+  - `USB CDC On Boot`: `Enabled`
+  - `Partition Scheme`: the minimal SPIFFS/OTA layout used by this project
+  - `Arduino Runs On`: `Core 1`
+- Select the correct `COM` port before upload and prefer a normal USB upload first before relying on OTA.
 - Start in `status`, `test battery`, `test sensors`, `test encoders`.
 - Verify motor direction with `test motorl` and `test motorr` before trying `move`.
 - Use `maze` to inspect the robot's known wall map after sensor and motion tests.
