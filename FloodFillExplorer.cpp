@@ -89,6 +89,13 @@ function sendWs(msg){
   return true;
 }
 
+function cmd(a){
+  if(busy || !wsReady()) return;
+  busy = true;
+  const autoAck = document.getElementById('autoAck').checked;
+  sendWs((autoAck ? 'cmd|' : 'hwcmd|') + a);
+}
+
 function cellGeom(){
   const W=c.width, H=c.height;
   const pad=20;
@@ -1354,6 +1361,16 @@ void FloodFillExplorer::processWsMessage_(const String& msg) {
       sendWsReply_("reply", "OK");
       return;
     }
+  }
+  if (msg.startsWith("hwcmd|")) {
+    const String a = msg.substring(6);
+    if (!hardwareMode_ || !webCommandFn_) {
+      sendWsReply_("error", "hardware control unavailable");
+      return;
+    }
+    webCommandFn_(a);
+    sendWsReply_("reply", "hardware " + a + " requested");
+    return;
   }
   sendWsReply_("error", "unknown");
 }

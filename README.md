@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.32`
+Current project version: `0.0.2.33`
 
 ## Current Status
 
@@ -202,9 +202,10 @@ Expected use:
 - confirm planner action sequence
 - the floodfill page now pushes state over WebSocket, so the browser no longer polls the maze state over HTTP while the mouse is running
 - the floodfill page now loads with `AutoACK(sim)` turned off by default, so browser control waits for the real robot ACK unless you explicitly enable simulation
+- with `AutoACK(sim)` off, the port `81` `Step` and `Run` buttons now hand control to the real app runtime: `Step` starts `explore 1`, `Run` starts real explore without clearing the current maze, and `Pause` / `Reset` map to the runtime pause/reset flow
 - the floodfill web page no longer exposes a web `Set Start` editor; start is now treated as a configured/runtime app concern instead of a browser-side control
 - the floodfill web page now prints planner status in a wrapped status bar so long state text does not stretch or resize the whole page while the mouse is running
-- the floodfill web `Step` button now advances one full cell move, consuming any required turn actions first, while `Run` continues auto-running like the explore loop
+- when `AutoACK(sim)` is enabled, the floodfill web `Step` button advances one full simulated cell move, consuming any required turn actions first, while `Run` continues auto-running in simulated mode
 
 ## Wireless Upload
 

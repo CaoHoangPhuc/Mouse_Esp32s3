@@ -51,6 +51,7 @@ public:
   };
 
   using LogFn = void(*)(const String&);
+  using WebCommandFn = void(*)(const String&);
 
   FloodFillExplorer();
   ~FloodFillExplorer();
@@ -59,6 +60,7 @@ public:
   void loop();
 
   void setLog(LogFn fn) { logFn_ = fn; }
+  void setWebCommandHandler(WebCommandFn fn) { webCommandFn_ = fn; }
   void setHardwareMode(bool en);
 
   void setStart(uint8_t x, uint8_t y, Dir h);
@@ -194,5 +196,6 @@ private:
   uint32_t pendingSinceMs_ = 0;
 
   LogFn logFn_ = nullptr;
+  WebCommandFn webCommandFn_ = nullptr;
 };
 

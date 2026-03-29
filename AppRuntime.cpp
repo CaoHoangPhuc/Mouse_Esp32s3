@@ -89,7 +89,9 @@ static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
 static bool onWebTelnetReconnect();
 static String onWebHealthJson();
+static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
+static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void resetMazeToConfiguredStart();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
@@ -446,6 +448,24 @@ static void updateOtaSafeMode() {
     debugPrintln("[OTA] App safe mode");
   } else {
     debugPrintln("[OTA] App resumed");
+  }
+}
+
+static void onExplorerWebCommand(const String& cmd) {
+  if (cmd == "run") {
+    beginExplore(false, -1);
+    return;
+  }
+  if (cmd == "step") {
+    beginExplore(false, 1);
+    return;
+  }
+  if (cmd == "pause") {
+    enterIdleMode("web explorer pause");
+    return;
+  }
+  if (cmd == "reset") {
+    resetMazeToConfiguredStart();
   }
 }
 
@@ -861,6 +881,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   motionController.setConfig(AppConfig::makeMotionConfig());
 
   explorer.setLog(logToDbg);
+  explorer.setWebCommandHandler(onExplorerWebCommand);
   explorer.begin(AppConfig::makeExplorerConfig());
   explorer.setHardwareMode(true);
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
