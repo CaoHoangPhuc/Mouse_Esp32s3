@@ -97,6 +97,12 @@ bool DcMotor::begin(const Pins& pins,
 }
 
 void DcMotor::applyDuty(int32_t duty) {
+  if (duty == -1) {
+    digitalWrite(_p.in1, HIGH);
+    digitalWrite(_p.in2, HIGH);
+    pwmWriteDuty(0);
+    return;
+  }
   // 🔹 Handle inversion
   if (_p.invertDir) duty = -duty;
 
@@ -160,9 +166,7 @@ void DcMotor::coastStop() {
 }
 
 void DcMotor::brakeStop() {
-  digitalWrite(_p.in1, HIGH);
-  digitalWrite(_p.in2, HIGH);
-  pwmWriteDuty(_pwmMax);
+  applyDuty(-1);
 }
 
 void DcMotor::hardStop() {
