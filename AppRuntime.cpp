@@ -950,7 +950,7 @@ static void updateRobotState() {
   robotState.walls.rightMm = sensed.rightMm;
 
   robotState.sensorHealthy = sensed.leftValid || sensed.frontValid || sensed.rightValid;
-  robotState.readyForMotion = motorsOk && tofOk && batteryOk && mouseBattery.state() != Battery::BATTERY_CRITICAL;
+  robotState.readyForMotion = motorsOk && tofOk && batteryOk;
 }
 
 static void applyWallsToExplorer() {

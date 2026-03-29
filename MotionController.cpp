@@ -145,11 +145,6 @@ void MotionController::update(RobotState& state) {
 
   if (status_ != MOTION_RUNNING_PRIMITIVE) return;
 
-  if (battery_ && battery_->state() == Battery::BATTERY_CRITICAL) {
-    markDone_(MOTION_ABORTED, "battery critical");
-    return;
-  }
-
   const uint32_t now = millis();
   if ((uint32_t)(now - startedMs_) > cfg_.primitiveTimeoutMs) {
     markDone_(MOTION_FAILED, "primitive timeout");
