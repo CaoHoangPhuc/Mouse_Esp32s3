@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.37`
+Current project version: `0.0.2.38`
 
 ## Current Status
 
@@ -18,6 +18,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - centralized configuration for hardware and tuning values
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
 - SPIFFS persistence for pose, goal, and saved maze memory when the shortest path is known
+- build fixes for the SPIFFS persistence integration and WebSocket accept path on the current ESP32 core
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

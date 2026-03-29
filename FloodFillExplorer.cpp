@@ -1418,7 +1418,7 @@ void FloodFillExplorer::serviceWs_() {
 
   if ((!ws_->client || !ws_->client.connected()) && ws_->server.hasClient()) {
     if (ws_->client) ws_->client.stop();
-    ws_->client = ws_->server.available();
+    ws_->client = ws_->server.accept();
     ws_->handshaken = false;
     ws_->lastStateVerSent = 0xFFFFFFFFu;
   }

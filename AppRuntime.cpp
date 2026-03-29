@@ -108,6 +108,7 @@ static bool loadPersistentMaze();
 static bool savePersistentPoseGoal();
 static bool savePersistentMaze();
 static bool clearPersistentMaze();
+static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
