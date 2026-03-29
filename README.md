@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.0.2.28`
+Current project version: `0.0.2.29`
 
 ## Current Status
 
@@ -13,7 +13,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - primitive motion executor for `move`, `back`, `turn 90 deg`, and `turn 180 deg`
 - floodfill maze state and web visualizer
 - task-based planner / executor / telemetry flow
-- Wi-Fi OTA and web serial logging
+- Wi-Fi OTA, port `80` control page, and telnet/debug tools
 - centralized configuration for hardware and tuning values
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
@@ -187,6 +187,7 @@ Console note:
 - the port `80` control page now also includes a grouped quick-reference for the main CLI commands, so users can see the accepted commands and their purpose before opening telnet
 - the port `80` control page now renders the current battery voltage/state directly into the page when it loads, without background polling
 - the port `80` telnet reconnect action forcibly disconnects the current TCP debug client before launching a fresh telnet connection to the robot IP and configured debug port
+- `setgoal x y w h` now updates the active runtime goal rectangle used by `explore`, so starting explore no longer snaps the target back to the compiled default goal until the robot reboots
 
 ## Web Debugging
 

@@ -109,6 +109,10 @@ static uint16_t lastStableBestCost = 0xFFFF;
 static uint8_t stableRoundTripCount = 0;
 static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
+static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
+static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
+static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
+static uint8_t runtimeGoalH = AppConfig::Maze::GOAL_H;
 static const char* primitiveName(MotionPrimitiveType primitive);
 static const char* headingName(FloodFillExplorer::Dir dir);
 static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
@@ -364,6 +368,10 @@ static void resetExploreLoopTracking() {
   exploreGoalSeen = false;
 }
 
+static void applyRuntimeGoalRect() {
+  explorer.setGoalRect(runtimeGoalX0, runtimeGoalY0, runtimeGoalW, runtimeGoalH);
+}
+
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h) {
   robotState.pose.cellX = x;
   robotState.pose.cellY = y;
@@ -453,8 +461,7 @@ static void beginExplore(bool clearMaze) {
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
                        AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
-  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
-                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
+  applyRuntimeGoalRect();
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   updateRobotLed();
@@ -486,8 +493,7 @@ static void resetMazeToConfiguredStart() {
   explorer.setHardwareMode(true);
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
                        AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
-  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
-                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
+  applyRuntimeGoalRect();
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.clearKnownMaze();
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
@@ -837,8 +843,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   explorer.setHardwareMode(true);
   explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
                        AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
-  explorer.setGoalRect(AppConfig::Maze::GOAL_X0, AppConfig::Maze::GOAL_Y0,
-                       AppConfig::Maze::GOAL_W, AppConfig::Maze::GOAL_H);
+  applyRuntimeGoalRect();
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.clearKnownMaze();
   explorer.syncPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y,
@@ -1234,12 +1239,17 @@ static void handleSerialCommand(const String& rawLine) {
       y = constrain(y, 0, 15);
       w = constrain(w, 1, 16 - x);
       h = constrain(h, 1, 16 - y);
-      explorer.setGoalRect((uint8_t)x, (uint8_t)y, (uint8_t)w, (uint8_t)h);
+      runtimeGoalX0 = (uint8_t)x;
+      runtimeGoalY0 = (uint8_t)y;
+      runtimeGoalW = (uint8_t)w;
+      runtimeGoalH = (uint8_t)h;
+      applyRuntimeGoalRect();
       robotState.goalReached = false;
       robotState.speedRunReady = false;
       resetExploreLoopTracking();
       debugPrintln("[CMD] goal rect set to (" + String(x) + "," + String(y) +
-                   ") size " + String(w) + "x" + String(h));
+                   ") size " + String(w) + "x" + String(h) +
+                   " for current runtime");
     } else {
       debugPrintln("[CMD] usage: setgoal x y w h");
     }
