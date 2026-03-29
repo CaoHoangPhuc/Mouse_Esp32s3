@@ -469,7 +469,7 @@ static void onExplorerWebCommand(const String& cmd) {
   }
 }
 
-static void beginExplore(bool clearMaze, int32_t stepBudget = -1) {
+static void beginExplore(bool clearMaze, int32_t stepBudget) {
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
