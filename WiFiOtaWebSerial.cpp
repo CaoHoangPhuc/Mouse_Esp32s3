@@ -19,148 +19,80 @@ static const char* kIndexHtml PROGMEM = R"HTML(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ESP32 Web Serial</title>
+  <title>%HOSTNAME% Control</title>
   <style>
-    body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; margin: 0; }
-    header { padding: 10px 12px; background: #111; color: #eee; position: sticky; top: 0; }
-    header small { opacity: 0.8; }
-    #log { white-space: pre-wrap; word-break: break-word; padding: 12px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    button { padding: 6px 10px; cursor:pointer; }
-    input { width: 90px; }
+    :root { color-scheme: light; }
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #eef3ea; color: #102017; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
+    .card { background: #fbfdf9; border-radius: 18px; box-shadow: 0 10px 28px rgba(0,0,0,0.08); padding: 22px; }
+    h1 { margin: 0 0 8px; font-size: 1.5rem; }
+    .sub { color: #4f5f55; margin-bottom: 20px; }
+    .meta { display: grid; grid-template-columns: 110px 1fr; gap: 8px 14px; margin-bottom: 20px; }
+    .meta b { color: #355040; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    button { padding: 11px 14px; cursor: pointer; border: 0; border-radius: 12px; font-weight: 600; }
+    .primary { background: #1d6b45; color: white; }
+    .secondary { background: #1d4f6b; color: white; }
+    #status { margin-top: 16px; min-height: 1.3em; color: #44584a; }
   </style>
 </head>
 <body>
-<header>
-  <div class="row">
-    <div><b>ESP32 Web Serial</b> <small id="status">connecting…</small></div>
-    <div style="margin-left:auto" class="row">
-      <label>Poll(ms)</label>
-      <input id="poll" type="number" value="200" min="100" step="100"/>
-      <button onclick="clearLog()">Clear</button>
-      <button onclick="togglePause()" id="pauseBtn">Pause</button>
-      <button onclick="cycleLed()">Cycle LED</button>
-      <button onclick="ledOff()">LED OFF</button>
+<div class="wrap">
+  <div class="card">
+    <h1>%HOSTNAME%</h1>
+    <div class="sub">Simple robot control page on port 80.</div>
+    <div class="meta">
+      <b>Hostname</b><span>%HOSTNAME%</span>
+      <b>IP</b><span id="robotIp">%IP%</span>
+      <b>Telnet</b><span id="telnetTarget">%IP%:%TELNET_PORT%</span>
     </div>
+    <div class="row">
+      <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
+      <button class="secondary" onclick="cycleLed()">Cycle LED</button>
+    </div>
+    <div id="status">Ready.</div>
   </div>
-</header>
-<pre id="log"></pre>
+</div>
 <script>
-let paused = false;
-let logOffset = 0;        // bytes already received
-const MAX_UI = 200000;    // cap UI text to avoid browser lag
-
-let busy = false;         // lock when sending POST commands
-let stopPoll = false;
-let pollMs = 200;
-
+let busy = false;
 function setStatus(s){ document.getElementById('status').textContent = s; }
 
-function getPollMs(){
-  const p = parseInt(document.getElementById('poll').value || '200', 10);
-  pollMs = Math.max(100, p|0);
-  return pollMs;
-}
-
-async function fetchLog(fromCmd=false){
-  if(paused) return;
-  // không poll trong lúc đang gửi command (tránh đè offset)
-  if(busy && !fromCmd) return;
-
+async function cycleLed(){
+  if (busy) return;
+  busy = true;
   try {
-    const res = await fetch('/log?from=' + logOffset + '&t=' + Date.now(), { cache: 'no-store' });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-
-    const chunk = await res.text();
-    if(chunk && chunk.length){
-      const el = document.getElementById('log');
-
-      if(chunk.startsWith("RESET\n")){
-        el.textContent = "";
-        logOffset = 0;
-
-        const rest = chunk.slice("RESET\n".length);
-        if(rest.length){
-          el.textContent += rest;
-          logOffset += rest.length;
-        }
-      }else{
-        el.textContent += chunk;
-        logOffset += chunk.length;
-      }
-
-      // cap UI buffer
-      if(el.textContent.length > MAX_UI){
-        el.textContent = el.textContent.slice(el.textContent.length - MAX_UI);
-      }
-
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-
-    setStatus('online');
-  } catch(e){
-    setStatus('offline: ' + e);
-  }
-}
-
-async function clearLog(){
-  if(busy) return;
-  busy = true;
-  try{
-    const r = await fetch('/clear', { method: 'POST', cache:'no-store' });
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-
-    // reset client state
-    document.getElementById('log').textContent = "";
-    logOffset = 0;
-
-    await fetchLog(true);
-  }catch(e){
-    setStatus('offline: ' + e);
-  }finally{
-    busy = false;
-  }
-}
-
-function togglePause(){
-  paused = !paused;
-  document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
-}
-
-async function postLed(cmd){
-  if(busy) return;
-  busy = true;
-  try{
     const res = await fetch('/led', {
       method: 'POST',
       headers: { 'Content-Type':'application/x-www-form-urlencoded' },
-      body: 'cmd=' + encodeURIComponent(cmd),
-      cache:'no-store'
+      body: 'cmd=' + encodeURIComponent('cycle'),
+      cache: 'no-store'
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    await fetchLog(true); // refresh sau command
-  }catch(e){
-    setStatus('offline: ' + e);
-  }finally{
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setStatus('LED cycle command sent.');
+  } catch (e) {
+    setStatus('LED command failed: ' + e);
+  } finally {
     busy = false;
   }
 }
 
-function cycleLed(){ postLed('cycle'); }
-function ledOff(){ postLed('off'); }
-
-// Polling tuần tự: fetch xong mới sleep rồi fetch tiếp (không overlap)
-async function pollLoop(){
-  while(!stopPoll){
-    await fetchLog(false);
-    await new Promise(res => setTimeout(res, getPollMs()));
+async function reconnectTelnet(){
+  if (busy) return;
+  busy = true;
+  try {
+    const res = await fetch('/telnet/reconnect', { method: 'POST', cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const info = await res.json();
+    document.getElementById('robotIp').textContent = info.ip;
+    document.getElementById('telnetTarget').textContent = info.ip + ':' + info.port;
+    setStatus('Reconnecting telnet to ' + info.ip + ':' + info.port + ' ...');
+    window.location.href = 'telnet://' + info.ip + ':' + info.port;
+  } catch (e) {
+    setStatus('Telnet reconnect failed: ' + e);
+  } finally {
+    busy = false;
   }
 }
-
-document.getElementById('poll').addEventListener('change', () => { getPollMs(); });
-
-pollLoop();
-fetchLog(true);
 </script>
 </body>
 </html>
@@ -515,43 +447,15 @@ void WiFiOtaWebSerial::setupWeb_() {
   auto& srv = web_->server;
 
   srv.on("/", HTTP_GET, [this]() {
-    web_->server.send(200, "text/html; charset=utf-8", FPSTR(kIndexHtml));
+    String html = FPSTR(kIndexHtml);
+    html.replace("%HOSTNAME%", String(cfg_.hostname ? cfg_.hostname : "esp32"));
+    html.replace("%IP%", ip());
+    html.replace("%TELNET_PORT%", String(cfg_.debugTcpPort));
+    web_->server.send(200, "text/html; charset=utf-8", html);
   });
 
-  // ===== incremental log endpoint =====
-  // GET /log?from=<offset>
-  // returns:
-  //  - "" (empty) if no new bytes
-  //  - "RESET\n" + full_log if offset is beyond current buffer (rotated)
-  //  - otherwise substring(log, from)
-  srv.on("/log", HTTP_GET, [this]() {
-    size_t from = 0;
-    if (web_->server.hasArg("from")) {
-      from = (size_t)web_->server.arg("from").toInt();
-    }
-
-    String copy;
-    if (logMutex_) xSemaphoreTake(logMutex_, portMAX_DELAY);
-    copy = log_;
-    if (logMutex_) xSemaphoreGive(logMutex_);
-
-    if (from > copy.length()) {
-      web_->server.send(200, "text/plain; charset=utf-8", String("RESET\n") + copy);
-      return;
-    }
-
-    String chunk = copy.substring(from);
-    web_->server.send(200, "text/plain; charset=utf-8", chunk);
-  });
-
-  srv.on("/clear", HTTP_POST, [this]() {
-    clear();
-    web_->server.send(200, "text/plain; charset=utf-8", "OK");
-  });
-
-  // ===== LED control endpoint =====
   srv.on("/led", HTTP_POST, [this]() {
-    String cmd = web_->server.arg("cmd"); // cmd=cycle/off/red/green/blue...
+    String cmd = web_->server.arg("cmd");
     cmd.toLowerCase();
 
     if (!ledCommandHandler_) {
@@ -571,8 +475,27 @@ void WiFiOtaWebSerial::setupWeb_() {
     web_->server.send(200, "text/plain", "OK");
   });
 
+  srv.on("/telnet/reconnect", HTTP_POST, [this]() {
+    if (!telnetReconnectHandler_) {
+      web_->server.send(503, "application/json", "{\"ok\":false,\"error\":\"telnet unavailable\"}");
+      return;
+    }
+
+    const bool ok = telnetReconnectHandler_();
+    const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
+    String body = String("{\"ok\":") + (ok ? "true" : "false") +
+                  ",\"ip\":\"" + ip() + "\"" +
+                  ",\"hostname\":\"" + host + "\"" +
+                  ",\"port\":" + String(cfg_.debugTcpPort) + "}";
+    web_->server.send(ok ? 200 : 500, "application/json", body);
+  });
+
   srv.on("/health", HTTP_GET, [this]() {
-    web_->server.send(200, "application/json", String("{\"ip\":\"") + ip() + "\"}");
+    const String host = cfg_.hostname ? String(cfg_.hostname) : String("esp32");
+    web_->server.send(200, "application/json",
+                      String("{\"ip\":\"") + ip() +
+                      "\",\"hostname\":\"" + host +
+                      "\",\"port\":" + String(cfg_.debugTcpPort) + "}");
   });
 
   srv.onNotFound([this]() {
@@ -689,3 +612,4 @@ void WiFiOtaWebSerial::serviceUpdateLed_() {
   ledBlinkOn_ = !ledBlinkOn_;
   setLedState_(ledBlinkOn_ ? "blue" : "off");
 }
+

@@ -87,6 +87,7 @@ static void debugPrompt();
 static bool debugClientConnected();
 static void updateOtaSafeMode();
 static bool handleLedCommand(const String& cmd);
+static bool onWebTelnetReconnect();
 static void updateRobotLed();
 static void resetMazeToConfiguredStart();
 static FloodFillExplorer::Dir headingDir();
@@ -300,6 +301,11 @@ static void i2cRecover(int sda, int scl) {
 
 static bool onWebLedCommand(const String& cmd, String& response) {
   return ledController.handleCommand(cmd, &response);
+}
+
+static bool onWebTelnetReconnect() {
+  closeDebugConsole("[NET] disconnected for web telnet reconnect");
+  return true;
 }
 
 static bool handleLedCommand(const String& cmd) {
@@ -749,6 +755,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.pass = AppConfig::Wifi::PASS;
   wifiCfg.hostname = AppConfig::Wifi::HOSTNAME;
   wifiCfg.enableWeb = AppConfig::Wifi::ENABLE_WEB_LOG;
+  wifiCfg.debugTcpPort = AppConfig::Wifi::DEBUG_TCP_PORT;
   wifiCfg.enableUploadWeb = AppConfig::Wifi::ENABLE_UPLOAD_WEB;
   wifiCfg.uploadPort = AppConfig::Wifi::UPLOAD_WEB_PORT;
   wifiCfg.wifiCore = AppConfig::Wifi::CORE;
@@ -758,6 +765,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.wifiConnectTimeoutMs = AppConfig::Wifi::CONNECT_TIMEOUT_MS;
   wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
   dbg.setLedCommandHandler(onWebLedCommand);
+  dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
   debugServer.begin();
