@@ -54,7 +54,7 @@ Documentation rule:
 - Use `maze` to inspect the robot's known wall map after sensor and motion tests.
 - Use `test loop maze` when you want a live ASCII map stream during exploration tests.
 - If Arduino OTA is flaky, use the browser upload page on port `82` as a simpler fallback.
-- During OTA/web upload, expect the onboard LED to turn blue immediately, then blink blue, then turn green on success or red on error/abort.
+- During OTA/web upload, expect the onboard LED to turn solid blue while receiving, turn off on success, and turn red on error/abort.
 - When `ENABLE_WEB_LOG` is off, `dbg.print/println` are effectively Serial-only and should not add load to the web log path.
 - OTA and the browser upload page are currently configured without a password gate.
 - Only enable `explore` after one-cell moves and 90-degree turns are reliable.

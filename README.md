@@ -34,13 +34,13 @@ This repository now includes the first integrated hardware-oriented control stac
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
 - the serial `explore` and `explore n` commands now also keep the known maze, matching the BOOT-button and web explore entry paths; `clearmaze` is the explicit wall-memory reset command
 - the browser uploader on port `82` now uses a WebSocket transfer path for OTA testing, with the page on port `82` and a dedicated upload socket on port `84`
-- the WebSocket uploader now sends one `32 KB` binary chunk at a time, waits up to `2s` for a firmware ACK, then pauses `20 ms` before sending the next chunk
+- the WebSocket uploader now sends one `32 KB` binary chunk at a time, waits up to `2s` for a firmware ACK, then pauses `200 ms` before sending the next chunk
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
 - interrupted WebSocket uploads now abort cleanly and force the LED `red` on disconnect/close errors
 - stalled WebSocket uploads now abort after `5s` without progress, force LED `red`, and close the upload socket
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
 - the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
-- the Wi-Fi service loop now runs with a tighter `1 ms` cadence during normal service to keep OTA/web handling more responsive
+- the Wi-Fi service loop now runs with a `5 ms` cadence during normal service to balance OTA/web responsiveness and system stability
 - Wi-Fi reconnect recovery now escalates from normal `WiFi.reconnect()` attempts to a full STA restart and fresh `WiFi.begin(...)` after a longer disconnect, so the robot can recover from wedged network states without a power cycle
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
