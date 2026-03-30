@@ -1117,6 +1117,18 @@ void WiFiOtaWebSerial::sendUploadWsText_(const String& text) {
 void WiFiOtaWebSerial::serviceUploadWs_() {
   if (!uploadWs_) return;
 
+  if (uploadWs_->client && !uploadWs_->client.connected()) {
+    if (chunkUploadActive_ || webUploadInProgress_) {
+      Update.abort();
+      chunkUploadActive_ = false;
+      webUploadInProgress_ = false;
+      setLedState_("red");
+      println("[WEB OTA] WebSocket disconnected");
+    }
+    uploadWs_->client.stop();
+    uploadWs_->handshaken = false;
+  }
+
   if ((!uploadWs_->client || !uploadWs_->client.connected()) && uploadWs_->server.hasClient()) {
     if (uploadWs_->client) uploadWs_->client.stop();
     uploadWs_->client = uploadWs_->server.accept();
@@ -1137,6 +1149,13 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
     if (!readUploadWsFrameHeader_(opcode, len, masked, mask)) break;
 
     if (opcode == 0x8) {
+      if (chunkUploadActive_ || webUploadInProgress_) {
+        Update.abort();
+        chunkUploadActive_ = false;
+        webUploadInProgress_ = false;
+        setLedState_("red");
+        println("[WEB OTA] WebSocket closed by client");
+      }
       uploadWs_->client.stop();
       uploadWs_->handshaken = false;
       return;
