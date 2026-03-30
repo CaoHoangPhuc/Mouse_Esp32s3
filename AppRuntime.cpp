@@ -100,6 +100,8 @@ static void debugPrompt();
 static bool debugClientConnected();
 static bool serialOutputEnabled();
 static void updateOtaSafeMode();
+static void suspendTaskIfRunning(TaskHandle_t handle);
+static void resumeTaskIfSuspended(TaskHandle_t handle);
 static bool handleLedCommand(const String& cmd);
 static bool onWebTelnetReconnect();
 static String onWebHealthJson();
@@ -715,9 +717,33 @@ static void updateOtaSafeMode() {
     robotState.motionStatus = MOTION_IDLE;
     robotState.activePrimitive = MOTION_NONE;
     testLoopMode = TEST_LOOP_NONE;
+    suspendTaskIfRunning(motorTaskHandle);
+    suspendTaskIfRunning(tofTaskHandle);
+    suspendTaskIfRunning(explorerTaskHandle);
+    suspendTaskIfRunning(plannerTaskHandle);
+    suspendTaskIfRunning(telemetryTaskHandle);
     debugPrintln("[OTA] App safe mode");
   } else {
+    resumeTaskIfSuspended(telemetryTaskHandle);
+    resumeTaskIfSuspended(plannerTaskHandle);
+    resumeTaskIfSuspended(explorerTaskHandle);
+    resumeTaskIfSuspended(tofTaskHandle);
+    resumeTaskIfSuspended(motorTaskHandle);
     debugPrintln("[OTA] App resumed");
+  }
+}
+
+static void suspendTaskIfRunning(TaskHandle_t handle) {
+  if (!handle) return;
+  if (eTaskGetState(handle) != eSuspended) {
+    vTaskSuspend(handle);
+  }
+}
+
+static void resumeTaskIfSuspended(TaskHandle_t handle) {
+  if (!handle) return;
+  if (eTaskGetState(handle) == eSuspended) {
+    vTaskResume(handle);
   }
 }
 

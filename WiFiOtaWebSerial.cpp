@@ -646,7 +646,7 @@ void WiFiOtaWebSerial::setupOta_() {
 
     .onEnd([this]() {
       println("[OTA] End");
-      setLedState_("green");
+      setLedState_("off");
 
       // Exit OTA mode
       otaInProgress = false;
@@ -876,7 +876,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
     webUploadInProgress_ = false;
     if (ok) {
       println(String("[WEB OTA] Chunked success: ") + chunkTotalSize_ + " bytes");
-      setLedState_("green");
+      setLedState_("off");
       rebootPending_ = true;
       rebootAtMs_ = millis() + 1500;
       uploadWeb_->server.send(200, "application/json", "{\"ok\":true}");
@@ -894,6 +894,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
       if (ok) {
         uploadWeb_->server.send(200, "text/plain", "OK");
         println("[WEB OTA] Update complete, reboot scheduled...");
+        setLedState_("off");
         rebootPending_ = true;
         rebootAtMs_ = millis() + 1500;
       } else {
@@ -933,7 +934,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
       } else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) {
           println(String("[WEB OTA] Success: ") + upload.totalSize + " bytes");
-          setLedState_("green");
+          setLedState_("off");
         } else {
           Update.printError(Serial);
           setLedState_("red");
@@ -1212,7 +1213,7 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
         webUploadInProgress_ = false;
         if (ok) {
           println(String("[WEB OTA] WebSocket success: ") + chunkTotalSize_ + " bytes");
-          setLedState_("green");
+          setLedState_("off");
           rebootPending_ = true;
           rebootAtMs_ = millis() + 1500;
           sendUploadWsText_("done");
@@ -1261,20 +1262,10 @@ void WiFiOtaWebSerial::setLedState_(const String& cmd) {
 
 void WiFiOtaWebSerial::serviceUpdateLed_() {
   if (!(otaInProgress || webUploadInProgress_)) return;
-
-  const uint32_t now = millis();
-  if (ledBlinkMs_ == 0) {
-    ledBlinkMs_ = now;
-    return;
+  if (!ledBlinkOn_) {
+    ledBlinkOn_ = true;
+    setLedState_("blue");
   }
-
-  if ((now - ledBlinkMs_) < 250) {
-    return;
-  }
-
-  ledBlinkMs_ = now;
-  ledBlinkOn_ = !ledBlinkOn_;
-  setLedState_(ledBlinkOn_ ? "blue" : "off");
 }
 
 

@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.20`
+Current project version: `0.3.23`
 
 ## Current Status
 
@@ -33,7 +33,9 @@ This repository now includes the first integrated hardware-oriented control stac
 - the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
 - the browser uploader on port `82` now uses a WebSocket transfer path for OTA testing, with the page on port `82` and a dedicated upload socket on port `84`
-- the WebSocket uploader now sends one `32 KB` binary chunk at a time, waits up to `5s` for a firmware ACK, then pauses `200 ms` before sending the next chunk
+- the WebSocket uploader now sends one `128 KB` binary chunk at a time, waits up to `5s` for a firmware ACK, then pauses `200 ms` before sending the next chunk
+- OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
+- OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
 - the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
