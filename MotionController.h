@@ -42,6 +42,8 @@ public:
   void stop();
   void abort(const String& reason);
   void update(RobotState& state);
+  void setStopOnCompletion(bool en) { stopOnCompletion_ = en; }
+  void clearCompletionState();
 
   bool isBusy() const { return status_ == MOTION_RUNNING_PRIMITIVE; }
   MotionStatus status() const { return status_; }
@@ -74,4 +76,5 @@ private:
   uint32_t snapCenterHoldUntilMs_ = 0;
   float lastProgressMm_ = 0.0f;
   uint8_t snapCenterPhase_ = 0;
+  bool stopOnCompletion_ = true;
 };

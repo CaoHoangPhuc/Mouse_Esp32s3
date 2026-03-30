@@ -72,6 +72,7 @@ struct RobotState {
   bool readyForMotion = false;
   bool goalReached = false;
   bool speedRunReady = false;
+  uint8_t speedRunPhase = 1;
   uint32_t faultCount = 0;
   String lastFault;
 };

@@ -56,7 +56,7 @@ When changing this code, prefer reliability and observability over aggressive op
 ## Validation Expectations
 
 Before calling a change done, try to validate these in order:
-- build compiles for the target ESP32 board
+- build compiles for the target ESP32-S3 board using the documented Arduino IDE settings
 - battery telemetry still reads sensible values
 - sensor telemetry still reports stable left/front/right walls
 - motor direction and encoder signs remain correct

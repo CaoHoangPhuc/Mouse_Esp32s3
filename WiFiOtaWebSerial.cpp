@@ -1,4 +1,5 @@
 #include "WiFiOtaWebSerial.h"
+#include "Config.h"
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -59,7 +60,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
       <button class="secondary" onclick="openFloodfill()">Open Floodfill</button>
-    </div>
+    </div> 
     <div id="status">Ready.</div>
     <h2>How To Use</h2>
     <p class="hint">Use <b>Reconnect Telnet</b> to open the live CLI in your telnet app. The commands below are the main ones the robot accepts, grouped by purpose so you can quickly find the right action.</p>
@@ -71,7 +72,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>status</code> - show mode, pose, battery, motion, and wall state.</li>
           <li><code>explore</code> - start floodfill exploration using the current map.</li>
           <li><code>explore n</code> - explore for <code>n</code> forward cell moves, then stop cleanly.</li>
-          <li><code>speedrun</code> - start the speed-run mode when ready.</li>
+          <li><code>speedrun [1-4]</code> - start the speed-run mode when ready; <code>speedrun</code> means phase 1, and each later phase inherits the previous phase until tuned.</li>
           <li><code>idle</code> - switch the robot back to idle mode.</li>
           <li><code>restart</code> - reboot the robot after closing the debug client.</li>
         </ul>
@@ -116,6 +117,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>test sensorsraw</code> - print raw TOF sensor readings.</li>
           <li><code>test encoders</code> - print encoder diagnostics.</li>
           <li><code>test motorl</code>, <code>test motorr</code> - spin a single motor for bench checks.</li>
+          <li><code>test motor both</code> - flip both motors between +100% and -100% every second for bench testing.</li>
           <li><code>test loop status|battery|sensors|sensorsraw|encoders|maze|off</code> - start or stop periodic debug printing.</li>
         </ul>
       </div>
@@ -374,7 +376,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
           wifiStatus == WL_NO_SSID_AVAIL;
         if (shouldReconnect && now - lastReconnectMs >= cfg_.wifiReconnectIntervalMs) {
           lastReconnectMs = now;
-          Serial.println("[WiFi] reconnecting...");
+          const bool serialOutputAllowed =
+            serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+          if (serialOutputAllowed) Serial.println("[WiFi] reconnecting...");
           WiFi.reconnect();
         }
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -431,7 +435,9 @@ void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {
     atLineStart_ = false;
   }
 
-  if (mirrorToSerial) Serial.print(s);
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+  if (mirrorToSerial && serialOutputAllowed) Serial.print(s);
 }
 
 void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
@@ -443,7 +449,9 @@ void WiFiOtaWebSerial::println(const String& s, bool mirrorToSerial) {
   }
   atLineStart_ = true;
 
-  if (mirrorToSerial) Serial.println(s);
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+  if (mirrorToSerial && serialOutputAllowed) Serial.println(s);
 }
 
 void WiFiOtaWebSerial::clear() {
@@ -467,15 +475,19 @@ void WiFiOtaWebSerial::setupWiFi_() {
 }
 bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
   const uint32_t start = millis();
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
   while (WiFi.status() != WL_CONNECTED) {
     vTaskDelay(pdMS_TO_TICKS(250));
     if (timeoutMs > 0 && millis() - start >= timeoutMs) {
-      Serial.println("[WiFi] connect timeout");
+      if (serialOutputAllowed) Serial.println("[WiFi] connect timeout");
       return false;
     }
   }
-  Serial.println("[WiFi] Connected");
-  Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
+  if (serialOutputAllowed) {
+    Serial.println("[WiFi] Connected");
+    Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
+  }
   if (MDNS.begin(cfg_.hostname)) {
     if (cfg_.enableWeb) {
       MDNS.addService("http", "tcp", cfg_.port);
