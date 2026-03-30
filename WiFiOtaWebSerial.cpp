@@ -90,7 +90,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <div class="group">
         <h3>Motion</h3>
         <ul>
-          <li><code>move</code> - move forward one cell.</li>
+          <li><code>move [n]</code> - move forward 1 cell by default, or move exactly <code>n</code> cells in a straight corridor.</li>
           <li><code>back</code> - move backward using the configured short reverse distance.</li>
           <li><code>left</code> - turn left 90 degrees.</li>
           <li><code>right</code> - turn right 90 degrees.</li>

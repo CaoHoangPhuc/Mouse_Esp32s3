@@ -41,6 +41,7 @@ public:
     uint16_t wsPort = 83;
     bool enableWeb = true;
     bool autoRun = false;
+    uint8_t maxForwardCells = 1;
 
     // ACK timeout handling (ms). 0 = disable
     uint32_t ackTimeoutMs = 2000;
@@ -78,6 +79,7 @@ public:
   Action requestNextAction();
   Action requestNextActionNoAck();
   bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
+  void truncatePendingForwardAction();
 
   // SIM truth walls (optional). If you don't call this, truthWalls_ default 0 (no walls),
   // robot mode should override senseCell_ later by real sensors.
@@ -90,6 +92,9 @@ public:
   bool isWaitAck() const { return waitAck_; }
   uint32_t pendingSeq() const { return pendingSeq_; }
   Action pendingAction() const { return pendingAction_; }
+  uint8_t pendingForwardCells() const { return pendingForwardCells_; }
+  uint8_t lastActionForwardCells() const { return lastActionForwardCells_; }
+  bool lastActionEndsAtKnownWall() const { return lastActionEndsAtKnownWall_; }
   bool atGoal() const { return atActiveTarget_(); }
   void advanceTargetAfterReach();
   bool getKnownWall(uint8_t x, uint8_t y, Dir d, bool& known, bool& wall) const;
@@ -123,11 +128,13 @@ private:
   void buildStateJson_();
   void markDirty_();
   const char* actionName_(Action a) const;
+  String actionLabel_(Action a, uint8_t forwardCells) const;
 
   // --- floodfill core ---
   bool inBounds_(int x,int y) const;
   bool isGoal_(int x,int y) const;
   bool atActiveTarget_() const;
+  bool isKnownOpen_(int x, int y, Dir d) const;
   uint16_t computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
                                  uint8_t startW, uint8_t startH,
                                  uint8_t goalX0, uint8_t goalY0,
@@ -151,8 +158,9 @@ private:
 
   // --- ack-driven action ---
   Action chooseNextAction_();
+  uint8_t chooseForwardCells_() const;
   void dispatchAction_(Action a);
-  void commitPendingAction_();
+  bool commitPendingAction_();
   bool performStepMove_(String& reply);
   void onGoalReached_();
 
@@ -201,7 +209,10 @@ private:
   bool waitAck_ = false;
   uint32_t pendingSeq_ = 0;
   Action pendingAction_ = ACT_NONE;
+  uint8_t pendingForwardCells_ = 0;
   uint32_t pendingSinceMs_ = 0;
+  uint8_t lastActionForwardCells_ = 0;
+  bool lastActionEndsAtKnownWall_ = false;
 
   LogFn logFn_ = nullptr;
   WebCommandFn webCommandFn_ = nullptr;

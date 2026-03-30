@@ -127,6 +127,14 @@ static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
 // Affects: left/front/right wall booleans used by motion + planner.
 static constexpr uint16_t WALL_THRESHOLD_MM = 130;
 
+// Sensor distance validity window and sentinel values.
+// DIST_FAR represents a valid "clear / far" reading beyond the usable range.
+// DIST_ERROR represents an invalid/error sentinel for internal fusion paths.
+static constexpr uint16_t DIST_MIN_VALID_MM = 1;
+static constexpr uint16_t DIST_MAX_VALID_MM = 200;
+static constexpr uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
+static constexpr uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
+
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
 static constexpr uint8_t XSHUT_PINS[SENSOR_COUNT] = {0, 1, 2, 3, 4};
@@ -172,9 +180,9 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0050f;
-static constexpr float PID_KI = 0.0040f;
-static constexpr float PID_KD = 0.0005f;
+static constexpr float PID_KP = 0.0040f;
+static constexpr float PID_KI = 0.0030f;
+static constexpr float PID_KD = 0.0004f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
@@ -193,43 +201,48 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 static constexpr int32_t TURN_TICKS_90 = 210;
 // Encoder differential ticks needed for a 180-degree turn.
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr int32_t TURN_TICKS_180 = 440;
+static constexpr int32_t TURN_TICKS_180 = 430;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
 static constexpr float MOVE_SPEED_TPS = 400.0f;
+static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
-static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
+static constexpr float SHORT_FORWARD_SPEED_TPS = 400.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 150.0f;
-static constexpr float REVERSE_SPEED_TPS = 350.0f;
+static constexpr float REVERSE_DISTANCE_MM = 100.0f;
+static constexpr float REVERSE_SPEED_TPS = 400.0f;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
 static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
-static constexpr float TURN_SPEED_TPS = 350.0f;
+static constexpr float TURN_SPEED_TPS = 400.0f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
 static constexpr float CENTERING_GAIN = 1.0f;
+static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
 static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
 static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
-static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 1.0f;
-static constexpr float CENTER_PID_KP = 1.5f;
-static constexpr float CENTER_PID_KI = 0.05f;
-static constexpr float CENTER_PID_KD = 0.5f;
+static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 0.0f;
+static constexpr float CENTER_PID_KP = 2.0f;
+static constexpr float CENTER_PID_KI = 0.01f;
+static constexpr float CENTER_PID_KD = 1.0f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
 static constexpr float FRONT_STOP_MM = 100.0f;
+static constexpr float CORRIDOR_FRONT_STOP_MM = 120.0f;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
 static constexpr uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
+static constexpr uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
 static constexpr uint32_t STALL_TIMEOUT_MS = 700;
+static constexpr uint8_t CORRIDOR_MAX_CELLS = 4;
 
 // Primitive completion thresholds.
 // STOP_TPS: considered stopped when wheel speed falls below this.
@@ -296,6 +309,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.turnTicks90 = Motion::TURN_TICKS_90;
   cfg.turnTicks180 = Motion::TURN_TICKS_180;
   cfg.moveSpeedTps = Motion::MOVE_SPEED_TPS;
+  cfg.corridorMoveSpeedTps = Motion::CORRIDOR_MOVE_SPEED_TPS;
   cfg.shortForwardDistanceMm = Motion::SHORT_FORWARD_DISTANCE_MM;
   cfg.shortForwardSpeedTps = Motion::SHORT_FORWARD_SPEED_TPS;
   cfg.reverseDistanceMm = Motion::REVERSE_DISTANCE_MM;
@@ -303,12 +317,16 @@ inline MotionController::Config makeMotionConfig() {
   cfg.snapCenterStopHoldMs = Motion::SNAP_CENTER_STOP_HOLD_MS;
   cfg.turnSpeedTps = Motion::TURN_SPEED_TPS;
   cfg.centeringGain = Motion::CENTERING_GAIN;
+  cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
+  cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
   cfg.primitiveTimeoutMs = Motion::PRIMITIVE_TIMEOUT_MS;
+  cfg.corridorTimeoutPerCellMs = Motion::CORRIDOR_TIMEOUT_PER_CELL_MS;
   cfg.stallTimeoutMs = Motion::STALL_TIMEOUT_MS;
   cfg.stopTps = Motion::STOP_TPS;
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
   cfg.mmPerTick = Motion::MM_PER_TICK;
+  cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
   return cfg;
 }
 
@@ -319,6 +337,7 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
   cfg.port = Explorer::PORT;
   cfg.wsPort = Explorer::WS_PORT;
   cfg.autoRun = Explorer::AUTO_RUN;
+  cfg.maxForwardCells = Motion::CORRIDOR_MAX_CELLS;
   cfg.ackTimeoutMs = Explorer::ACK_TIMEOUT_MS;
   cfg.pauseOnAckTimeout = Explorer::PAUSE_ON_ACK_TIMEOUT;
   return cfg;

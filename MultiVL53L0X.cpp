@@ -23,7 +23,7 @@ uint16_t MultiVL53L0X::effectiveDistance_(uint8_t index) const {
     if (_version == SENSOR_V2 && index == 3) {
         uint8_t s0State = _timeoutFlag[0];
 
-        if (s0State == 2) return DIST_FAR;  // Match S0 "far" state.
+        if (s0State == 2) return AppConfig::Tof::DIST_FAR_MM;  // Match S0 "far" state.
         if (s0State == 3) return 0;         // Match S0 invalid state.
     }
 
@@ -50,6 +50,7 @@ void MultiVL53L0X::resetCenterPid() {
     _lastDualWallError = 0.0f;
     _dualWallBlend = 0.0f;
     _captureCenterTargetsOnFirstSample = true;
+    _straightTrackMode = TRACK_NONE;
     _centerPrevMs = 0;
     _centerPidPrimed = false;
     error = 0.0f;
@@ -197,18 +198,18 @@ void MultiVL53L0X::update() {
 
         float corrected = dist * _scale[_cSensor] + _offset[_cSensor];
 
-        if (corrected < DIST_MIN_VALID) {
-            _lastDistance[_cSensor] = DIST_MIN_VALID;
+        if (corrected < AppConfig::Tof::DIST_MIN_VALID_MM) {
+            _lastDistance[_cSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;
             _timeoutFlag[_cSensor]  = 1;
         }
-        else if (corrected > DIST_MAX_VALID) {
-            _lastDistance[_cSensor] = DIST_FAR;
+        else if (corrected > AppConfig::Tof::DIST_MAX_VALID_MM) {
+            _lastDistance[_cSensor] = AppConfig::Tof::DIST_FAR_MM;
             _timeoutFlag[_cSensor]  = 2;
         }
         else {
             uint16_t val = (uint16_t)corrected;
 
-            if ((_lastDistance[_cSensor] == 0) || (_lastDistance[_cSensor] > DIST_MAX_VALID)) {
+            if ((_lastDistance[_cSensor] == 0) || (_lastDistance[_cSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
                 _lastDistance[_cSensor] = val;
             } else {
                 _lastDistance[_cSensor] = 0.8f * _lastDistance[_cSensor] + 0.2f * val;
@@ -288,7 +289,7 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
         if (flValid && frValid) s.frontMm = min(fl, fr);
         else if (flValid) s.frontMm = fl;
         else if (frValid) s.frontMm = fr;
-        else if (flFar && frFar) s.frontMm = DIST_FAR;
+        else if (flFar && frFar) s.frontMm = AppConfig::Tof::DIST_FAR_MM;
 
         s.leftWall  = s.leftValid && (l < _wallThreshold);
         s.rightWall = s.rightValid && (r < _wallThreshold);
@@ -340,8 +341,8 @@ float MultiVL53L0X::computeError(float headingError) {
         return state == 0 || state == 1;  // valid or clipped-min
     };
 
-    uint16_t left = DIST_ERROR;
-    uint16_t right = DIST_ERROR;
+    uint16_t left = AppConfig::Tof::DIST_ERROR_MM;
+    uint16_t right = AppConfig::Tof::DIST_ERROR_MM;
 
     uint8_t leftState = 3;
     uint8_t rightState = 3;
@@ -362,6 +363,10 @@ float MultiVL53L0X::computeError(float headingError) {
     const bool leftValid  = isGood(leftState);
     const bool rightValid = isGood(rightState);
     const bool dualWallValid = leftValid && rightValid;
+    const bool forceLeft = _straightTrackMode == TRACK_LEFT;
+    const bool forceRight = _straightTrackMode == TRACK_RIGHT;
+    const bool forceDual = _straightTrackMode == TRACK_DUAL;
+    const bool forceNone = _straightTrackMode == TRACK_NONE;
     const bool shouldCaptureTargets = _captureCenterTargetsOnFirstSample;
     _captureCenterTargetsOnFirstSample = false;
 
@@ -394,12 +399,23 @@ float MultiVL53L0X::computeError(float headingError) {
     if (!_centerPidPrimed) {
         _centerIntegral = 0.0f;
         _centerPrevError = 0.0f;
-        _centerRawFiltered = dualWallValid ? dualErr : singleErr;
-        _dualWallBlend = dualWallValid ? 1.0f : 0.0f;
+        if (forceDual) {
+            _centerRawFiltered = dualWallValid ? dualErr : headingError;
+            _dualWallBlend = dualWallValid ? 1.0f : 0.0f;
+        } else if (forceLeft) {
+            _centerRawFiltered = leftValid ? (_centerTargetLeft - (float)left) : headingError;
+            _dualWallBlend = 0.0f;
+        } else if (forceRight) {
+            _centerRawFiltered = rightValid ? ((float)right - _centerTargetRight) : headingError;
+            _dualWallBlend = 0.0f;
+        } else {
+            _centerRawFiltered = headingError;
+            _dualWallBlend = 0.0f;
+        }
         _centerPidPrimed = true;
     }
 
-    const float blendTarget = dualWallValid ? 1.0f : 0.0f;
+    const float blendTarget = (forceDual && dualWallValid) ? 1.0f : 0.0f;
     const float blendTauSec = 0.18f;
     const float blendAlpha = dt / (blendTauSec + dt);
     _dualWallBlend += (blendTarget - _dualWallBlend) * blendAlpha;
@@ -407,11 +423,19 @@ float MultiVL53L0X::computeError(float headingError) {
     if (_dualWallBlend > 1.0f) _dualWallBlend = 1.0f;
 
     float targetRawErr = headingError;
-    if (dualWallValid) {
-        targetRawErr = dualErr;
-    } else if (leftValid || rightValid) {
-        targetRawErr = (_dualWallBlend * _lastDualWallError) +
-                       ((1.0f - _dualWallBlend) * singleErr);
+    if (forceDual) {
+        targetRawErr = dualWallValid ? dualErr : _lastDualWallError;
+    } else if (forceLeft) {
+        targetRawErr = leftValid ? (_centerTargetLeft - (float)left) : headingError;
+    } else if (forceRight) {
+        targetRawErr = rightValid ? ((float)right - _centerTargetRight) : headingError;
+    } else if (!forceNone) {
+        if (dualWallValid) {
+            targetRawErr = dualErr;
+        } else if (leftValid || rightValid) {
+            targetRawErr = (_dualWallBlend * _lastDualWallError) +
+                           ((1.0f - _dualWallBlend) * singleErr);
+        }
     }
 
     const float rawTauSec = 0.10f;

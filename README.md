@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.34`
+Current project version: `0.3.36`
 
 ## Current Status
 
@@ -27,8 +27,9 @@ This repository now includes the first integrated hardware-oriented control stac
 - SPIFFS persistence now lives in a dedicated module for easier control and future changes
 - wall-centering now blends smoothly when transitioning between both-wall centering and single-wall following
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
-- wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within a tight `2 mm` balance window
-- motion speed targets in `Config.h` are now tuned `+50 TPS` higher for move, short-forward, reverse, and turn primitives
+- wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within the configured `5 mm` balance window
+- wall-centering correction is now tuned through the center-wall `KP` term and correction output limit, while leaving `CORRIDOR_CENTERING_GAIN` unchanged
+- motion speed targets in `Config.h` are now standardized to `400 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `500 TPS`
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
 - the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
@@ -38,6 +39,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
 - interrupted WebSocket uploads now abort cleanly and force the LED `red` on disconnect/close errors
 - stalled WebSocket uploads now abort after `5s` without progress, force LED `red`, and close the upload socket
+- long straight `move N` actions that are known to end at a wall now finish on the front-wall stop distance instead of stopping only on encoder distance
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
 - the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
 - the Wi-Fi service loop now runs with a `5 ms` cadence during normal service to balance OTA/web responsiveness and system stability
@@ -58,10 +60,12 @@ This repository now includes the first integrated hardware-oriented control stac
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
 - `speedrun 1` now restores the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
+- every speedrun phase now performs an untimed pre-run centering sequence before the lap starts: turn 90 degrees toward a known side wall when available, snap there, turn back to the original heading, then do the final snap in the original heading
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
 - the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
+- floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -108,7 +112,7 @@ Release note:
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
 8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
-10. After a 90-degree or 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist and both side walls are currently unavailable in the refreshed live sensor state for the new heading, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
+10. After a 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
 12. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
 13. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
@@ -219,6 +223,7 @@ Defined in [RobotTypes.h](RobotTypes.h):
 
 Implemented in [MotionController.cpp](MotionController.cpp):
 - `moveOneCell()`
+- `moveCells(n)`
 - `moveForwardShort()`
 - `moveBackwardShort()`
 - `snapCenter()`
@@ -259,6 +264,7 @@ Available from the main sketch:
 - `brake`
 - `restart`
 - `move`
+- `move n`
 - `back`
 - `testsnap`
 - `left`
@@ -326,7 +332,7 @@ Browser upload flow:
 1. compile the firmware so you have the `.bin`
 2. open `http://<mouse-ip>:82/`
 3. choose the firmware `.bin`
-4. upload; the page now sends ordered HTTP chunks and retries chunk failures automatically
+4. upload; the page now transfers the firmware over WebSocket in ordered chunks with ACK pacing and retry handling in the browser
 5. wait for the board to reboot
 
 During browser upload:
@@ -336,8 +342,8 @@ During browser upload:
 - while an update is active, the firmware no longer forces a Wi-Fi reconnect cycle; this avoids killing the upload socket during brief link wobble
 - if an upload aborts mid-transfer, the firmware now avoids stacking extra reconnect requests while the STA is already reconnecting
 - LED status during upload:
-  - immediate blue, then blinking blue: upload/OTA in progress
-  - green: upload finished successfully
+  - blue: upload/OTA in progress
+  - off: upload finished successfully
   - red: upload/OTA error or abort
 - Robot-state LED status:
   - green: explore active before first reached target
