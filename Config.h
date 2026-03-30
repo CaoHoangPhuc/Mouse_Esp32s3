@@ -81,7 +81,7 @@ static constexpr uint16_t DEBUG_TCP_PORT = 2323;
 static constexpr BaseType_t CORE = 1;
 static constexpr UBaseType_t TASK_PRIORITY = 3;
 static constexpr uint32_t TASK_STACK = 10 * 1024;
-static constexpr uint32_t SERVICE_DELAY_MS = 5;
+static constexpr uint32_t SERVICE_DELAY_MS = 1;
 // OTA reliability knobs. Increase connect timeout if Wi-Fi takes longer to join.
 static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 // Retry interval when Wi-Fi drops after boot.

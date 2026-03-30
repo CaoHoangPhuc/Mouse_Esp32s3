@@ -232,8 +232,8 @@ const msg = document.getElementById('msg');
 const WS_PORT = %UPLOAD_WS_PORT%;
 const CHUNK_SIZE = 32768;
 const MAX_RETRIES = 5;
-const ACK_TIMEOUT_MS = 5000;
-const CHUNK_SUCCESS_PAUSE_MS = 200;
+const ACK_TIMEOUT_MS = 2000;
+const CHUNK_SUCCESS_PAUSE_MS = 20;
 
 function openUploadSocket(){
   const proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
