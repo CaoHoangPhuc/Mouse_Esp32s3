@@ -195,6 +195,7 @@ static void resetLoopWatchdogState(LoopWatchdogState& state) {
 
 static void serviceLoopWatchdog(LoopWatchdogState& state, uint32_t expectedMs) {
   if (!AppConfig::Debug::ENABLE_LOOP_WATCHDOG) return;
+  if (xPortGetCoreID() != 0) return;
 
   const TickType_t now = xTaskGetTickCount();
   if (state.lastTick == 0) {

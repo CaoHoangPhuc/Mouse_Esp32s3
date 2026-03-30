@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.28`
+Current project version: `0.3.29`
 
 ## Current Status
 
@@ -59,6 +59,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
 - `speedrun 1` now restores the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
+- the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
 
