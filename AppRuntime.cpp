@@ -910,20 +910,23 @@ static void handleMotionCompletion() {
         stopLapTimer(true);
       }
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-          if (robotState.speedRunPhase == 1 &&
-              atOriginalGoal &&
-              !atOriginalStart) {
-            startLapTimer("GH");
-            explorer.advanceTargetAfterReach();
-            explorer.setRunning(true);
-            robotState.goalReached = false;
-            robotState.speedRunReady = true;
-            skipPostMotionHold = true;
-            updateRobotLed();
-            debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
-            motionController.clearCompletionState();
-            return;
-          }
+        if (robotState.speedRunPhase == 1 &&
+            atOriginalGoal &&
+            !atOriginalStart) {
+          startLapTimer("GH");
+          explorer.advanceTargetAfterReach();
+          explorer.setRunning(true);
+          robotState.goalReached = false;
+          robotState.speedRunReady = true;
+          skipPostMotionHold = true;
+          updateRobotLed();
+          debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
+          motionController.clearCompletionState();
+          return;
+        }
+        if (robotState.speedRunPhase == 1 && atOriginalStart) {
+          explorer.advanceTargetAfterReach();
+        }
         if (robotState.speedRunPhase == 1) {
           serialOutputTemporarilyMuted = false;
         }
