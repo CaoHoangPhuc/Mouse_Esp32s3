@@ -79,9 +79,9 @@ static constexpr uint16_t DEBUG_TCP_PORT = 2323;
 // FreeRTOS task placement/settings for Wi-Fi service loop.
 // Usually only change these if Wi-Fi/OTA becomes unstable.
 static constexpr BaseType_t CORE = 1;
-static constexpr UBaseType_t TASK_PRIORITY = 3;
+static constexpr UBaseType_t TASK_PRIORITY = 0;
 static constexpr uint32_t TASK_STACK = 10 * 1024;
-static constexpr uint32_t SERVICE_DELAY_MS = 1;
+static constexpr uint32_t SERVICE_DELAY_MS = 5;
 // OTA reliability knobs. Increase connect timeout if Wi-Fi takes longer to join.
 static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 // Retry interval when Wi-Fi drops after boot.
@@ -172,9 +172,9 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.004f;
-static constexpr float PID_KI = 0.0050f;
-static constexpr float PID_KD = 0.00005f;
+static constexpr float PID_KP = 0.0050f;
+static constexpr float PID_KI = 0.0040f;
+static constexpr float PID_KD = 0.0005f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
@@ -216,9 +216,9 @@ static constexpr float CENTERING_GAIN = 1.0f;
 static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
 static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
 static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 1.0f;
-static constexpr float CENTER_PID_KP = 1.6f;
-static constexpr float CENTER_PID_KI = 0.01f;
-static constexpr float CENTER_PID_KD = 0.6f;
+static constexpr float CENTER_PID_KP = 1.5f;
+static constexpr float CENTER_PID_KI = 0.05f;
+static constexpr float CENTER_PID_KD = 0.5f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 
