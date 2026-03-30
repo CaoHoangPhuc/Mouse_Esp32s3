@@ -219,8 +219,9 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 8192;
+const CHUNK_SIZE = 2048;
 const MAX_RETRIES = 5;
+const CHUNK_SUCCESS_PAUSE_MS = 20;
 
 async function postStart(totalSize){
   const res = await fetch('/upload/start?size=' + totalSize, {
@@ -282,6 +283,7 @@ form.addEventListener('submit', async (ev) => {
           offset = Number(info.nextOffset || 0);
           prog.value = Math.round((offset / file.size) * 100);
           msg.textContent = 'Uploading... ' + prog.value + '%';
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_SUCCESS_PAUSE_MS));
           done = true;
           break;
         } catch (err) {
