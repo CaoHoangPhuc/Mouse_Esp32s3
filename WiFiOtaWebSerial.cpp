@@ -558,6 +558,7 @@ void WiFiOtaWebSerial::setupWeb_() {
     html.replace("%HOSTNAME%", String(cfg_.hostname ? cfg_.hostname : "esp32"));
     html.replace("%IP%", ip());
     html.replace("%TELNET_PORT%", String(cfg_.debugTcpPort));
+    html.replace("%UPLOAD_PORT%", String(cfg_.uploadPort));
     html.replace("%BATTERY_TEXT%", healthJsonProvider_ ? extractBatteryText_(healthJsonProvider_()) : String("unavailable"));
     web_->server.send(200, "text/html; charset=utf-8", html);
   });

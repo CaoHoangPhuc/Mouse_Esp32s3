@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.11`
+Current project version: `0.3.12`
 
 ## Current Status
 
@@ -30,7 +30,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within a tight `2 mm` balance window
 - motion speed targets in `Config.h` are now tuned `+50 TPS` higher for move, short-forward, reverse, and turn primitives
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
-- the ESP32-S3 BOOT button now supports a 2-second multi-press launcher from idle with LED-cycle feedback on each accepted press
+- the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
 - the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
@@ -129,7 +129,7 @@ Explore loop note:
 - The runtime tracks the best-known cost from the original home region to the original goal region.
 - After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
 - When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
-- From idle, the ESP32-S3 BOOT button can launch runs after a `2s` multi-press timeout:
+- From idle, the ESP32-S3 BOOT button can launch runs after a `5s` multi-press timeout:
   - `1` press: `explore`
   - `2` presses: `speedrun 1`
   - `3` presses: `speedrun 2`

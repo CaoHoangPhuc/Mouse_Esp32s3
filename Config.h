@@ -273,7 +273,7 @@ static constexpr bool ENABLE_BOOT_BUTTON_LAUNCH = true;
 static constexpr uint8_t BOOT_BUTTON_PIN = 0;
 static constexpr bool BOOT_BUTTON_ACTIVE_LOW = true;
 static constexpr uint32_t BOOT_BUTTON_DEBOUNCE_MS = 30;
-static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 2000;
+static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
 }
 
 namespace Debug {

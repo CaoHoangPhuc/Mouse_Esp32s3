@@ -1483,7 +1483,7 @@ static void printStartupSummary() {
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
   if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
-    debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (2s timeout)");
+    debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (5s timeout)");
   }
 }
 
