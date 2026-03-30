@@ -48,36 +48,36 @@ This repository now includes the first integrated hardware-oriented control stac
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
 Release note:
-- see [RELEASE_0.3.0.md](Documents/Arduino/Mouse_esp32s3/RELEASE_0.3.0.md) for the packaged solver milestone summary and the next target after this release
+- see [RELEASE_0.3.0.md](RELEASE_0.3.0.md) for the packaged solver milestone summary and the next target after this release
 
 ## Architecture
 
 ### Entry and application split
-- [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino): thin Arduino entrypoint with `setup()`, `loop()`, `userTask()`, and `plannerTask()` wrappers only
-- [AppRuntime.h](Documents/Arduino/Mouse_esp32s3\AppRuntime.h): app interface exposed to the `.ino` wrapper
-- [AppRuntime.cpp](Documents/Arduino/Mouse_esp32s3\AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
-- [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
-- [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h): shared enums and `RobotState`
+- [Mouse_esp32s3.ino](Mouse_esp32s3.ino): thin Arduino entrypoint with `setup()`, `loop()`, `userTask()`, and `plannerTask()` wrappers only
+- [AppRuntime.h](AppRuntime.h): app interface exposed to the `.ino` wrapper
+- [AppRuntime.cpp](AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
+- [Config.h](Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
+- [RobotTypes.h](RobotTypes.h): shared enums and `RobotState`
 
 ### Motion and hardware
-- [DcMotor.h](Documents/Arduino/Mouse_esp32s3\DcMotor.h): low-level motor + encoder + speed PID
-- [DcMotor.cpp](Documents/Arduino/Mouse_esp32s3\DcMotor.cpp): PWM / ISR / TPS estimation
-- [MotionController.h](Documents/Arduino/Mouse_esp32s3\MotionController.h): primitive motion interface
-- [MotionController.cpp](Documents/Arduino/Mouse_esp32s3\MotionController.cpp): move / turn / stop execution and fault detection
-- [Battery.h](Documents/Arduino/Mouse_esp32s3\Battery.h): battery voltage API
-- [Battery.cpp](Documents/Arduino/Mouse_esp32s3\Battery.cpp): ADC sampling and battery-state classification
+- [DcMotor.h](DcMotor.h): low-level motor + encoder + speed PID
+- [DcMotor.cpp](DcMotor.cpp): PWM / ISR / TPS estimation
+- [MotionController.h](MotionController.h): primitive motion interface
+- [MotionController.cpp](MotionController.cpp): move / turn / stop execution and fault detection
+- [Battery.h](Battery.h): battery voltage API
+- [Battery.cpp](Battery.cpp): ADC sampling and battery-state classification
 
 ### Sensors and planning
-- [MultiVL53L0X.h](Documents/Arduino/Mouse_esp32s3\MultiVL53L0X.h): TOF array API and wall observation structure
-- [MultiVL53L0X.cpp](Documents/Arduino/Mouse_esp32s3\MultiVL53L0X.cpp): sensor reads, correction, thresholding, wall interpretation
-- [FloodFillExplorer.h](Documents/Arduino/Mouse_esp32s3\FloodFillExplorer.h): floodfill planner / map / web interface
-- [FloodFillExplorer.cpp](Documents/Arduino/Mouse_esp32s3\FloodFillExplorer.cpp): planner logic and live web UI
-- [PersistenceStore.h](Documents/Arduino/Mouse_esp32s3\PersistenceStore.h): SPIFFS persistence interface for saved maze memory
-- [PersistenceStore.cpp](Documents/Arduino/Mouse_esp32s3\PersistenceStore.cpp): SPIFFS file format and load/save/clear implementation
+- [MultiVL53L0X.h](MultiVL53L0X.h): TOF array API and wall observation structure
+- [MultiVL53L0X.cpp](MultiVL53L0X.cpp): sensor reads, correction, thresholding, wall interpretation
+- [FloodFillExplorer.h](FloodFillExplorer.h): floodfill planner / map / web interface
+- [FloodFillExplorer.cpp](FloodFillExplorer.cpp): planner logic and live web UI
+- [PersistenceStore.h](PersistenceStore.h): SPIFFS persistence interface for saved maze memory
+- [PersistenceStore.cpp](PersistenceStore.cpp): SPIFFS file format and load/save/clear implementation
 
 ### Connectivity
-- [WiFiOtaWebSerial.h](Documents/Arduino/Mouse_esp32s3\WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
-- [WiFiOtaWebSerial.cpp](Documents/Arduino/Mouse_esp32s3\WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
+- [WiFiOtaWebSerial.h](WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
+- [WiFiOtaWebSerial.cpp](WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
 
 ## Runtime Flow
 
@@ -129,7 +129,7 @@ Explore loop note:
 
 ## Configuration
 
-All hard configuration now lives in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h).
+All hard configuration now lives in [Config.h](Config.h).
 
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
@@ -164,7 +164,7 @@ If the project is not already under your Arduino sketch folder, place or copy th
 
 Then build and upload like this:
 
-1. Open [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino) in Arduino IDE.
+1. Open [Mouse_esp32s3.ino](Mouse_esp32s3.ino) in Arduino IDE.
 2. Select your ESP32-S3 board target in `Tools`.
 3. Set the ESP32-S3 board options to match this project:
    - `USB CDC On Boot`: `Enabled`
@@ -183,7 +183,7 @@ Bring-up notes:
 
 ## Robot Modes
 
-Defined in [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h):
+Defined in [RobotTypes.h](RobotTypes.h):
 - `ROBOT_MODE_IDLE`
 - `ROBOT_MODE_MANUAL_TEST`
 - `ROBOT_MODE_EXPLORE`
@@ -192,7 +192,7 @@ Defined in [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h):
 
 ## Motion Primitives
 
-Implemented in [MotionController.cpp](Documents/Arduino/Mouse_esp32s3\MotionController.cpp):
+Implemented in [MotionController.cpp](MotionController.cpp):
 - `moveOneCell()`
 - `moveForwardShort()`
 - `moveBackwardShort()`
@@ -327,13 +327,13 @@ Do not use these for the browser uploader:
 - `Mouse_esp32s3.ino.merged.bin`
 - bootloader or partition binaries
 
-Related config in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h):
+Related config in [Config.h](Config.h):
 - `AppConfig::Wifi::ENABLE_UPLOAD_WEB`
 - `AppConfig::Wifi::UPLOAD_WEB_PORT`
 
 ## Hardware / Tuning Notes
 
-Current values are placeholders and will need on-robot tuning in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h):
+Current values are placeholders and will need on-robot tuning in [Config.h](Config.h):
 - battery ADC pin and calibration values
 - `cellDistanceMm`
 - `turnTicks90`
