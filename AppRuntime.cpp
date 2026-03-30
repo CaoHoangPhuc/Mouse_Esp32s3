@@ -48,6 +48,11 @@ static TestLoopMode testLoopMode = TEST_LOOP_NONE;
 static bool motorBothFlipTestEnabled = false;
 static uint32_t motorFlipLastToggleMs = 0;
 static float motorFlipPower = 1.0f;
+static bool bootButtonRawPressed = false;
+static bool bootButtonStablePressed = false;
+static uint32_t bootButtonLastEdgeMs = 0;
+static uint32_t bootButtonLastAcceptedPressMs = 0;
+static uint8_t bootButtonPressCount = 0;
 
 MultiVL53L0X tofArray(
   AppConfig::Tof::PCF_ADDRESS, AppConfig::Tof::SENSOR_COUNT,
@@ -86,6 +91,9 @@ static void robot_debug_s();
 static void battery_debug_s();
 static void serviceDebugConsole();
 static void serviceMotorBothFlipTest();
+static void serviceBootButtonLauncher();
+static bool readBootButtonPressed();
+static void dispatchBootButtonAction(uint8_t pressCount);
 static void debugPrint(const String& s);
 static void debugPrintln(const String& s = "");
 static void debugPrompt();
@@ -541,6 +549,73 @@ static void serviceMotorBothFlipTest() {
   leftMotor.setPower(motorFlipPower);
   rightMotor.setPower(motorFlipPower);
   debugPrintln(String("[TEST] both motors power=") + (motorFlipPower > 0.0f ? "+100%" : "-100%"));
+}
+
+static bool readBootButtonPressed() {
+  if (!AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) return false;
+  const int level = digitalRead(AppConfig::Inputs::BOOT_BUTTON_PIN);
+  return AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? (level == LOW) : (level == HIGH);
+}
+
+static void dispatchBootButtonAction(uint8_t pressCount) {
+  if (pressCount == 0) return;
+  if (pressCount == 1) {
+    debugPrintln("[BOOT BTN] launch explore");
+    beginExplore(true, -1);
+    return;
+  }
+
+  if (pressCount >= 2 && pressCount <= 5) {
+    const uint8_t phase = pressCount - 1;
+    debugPrintln("[BOOT BTN] launch speedrun " + String(phase));
+    beginSpeedRun(phase);
+    return;
+  }
+
+  debugPrintln("[BOOT BTN] ignored press count=" + String(pressCount));
+}
+
+static void serviceBootButtonLauncher() {
+  if (!AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) return;
+
+  const bool launcherReady =
+      !dbg.isUpdateInProgress() &&
+      robotState.mode == ROBOT_MODE_IDLE &&
+      !motionController.isBusy();
+  if (!launcherReady) {
+    bootButtonPressCount = 0;
+    bootButtonRawPressed = false;
+    bootButtonStablePressed = false;
+    bootButtonLastEdgeMs = millis();
+    return;
+  }
+
+  const uint32_t now = millis();
+  const bool rawPressed = readBootButtonPressed();
+  if (rawPressed != bootButtonRawPressed) {
+    bootButtonRawPressed = rawPressed;
+    bootButtonLastEdgeMs = now;
+  }
+
+  if ((uint32_t)(now - bootButtonLastEdgeMs) >= AppConfig::Inputs::BOOT_BUTTON_DEBOUNCE_MS &&
+      bootButtonStablePressed != bootButtonRawPressed) {
+    bootButtonStablePressed = bootButtonRawPressed;
+    if (bootButtonStablePressed) {
+      if (bootButtonPressCount < 5) {
+        bootButtonPressCount++;
+      }
+      bootButtonLastAcceptedPressMs = now;
+      handleLedCommand("cycle");
+      debugPrintln("[BOOT BTN] press count=" + String(bootButtonPressCount));
+    }
+  }
+
+  if (bootButtonPressCount > 0 &&
+      (uint32_t)(now - bootButtonLastAcceptedPressMs) >= AppConfig::Inputs::BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS) {
+    const uint8_t actionPressCount = bootButtonPressCount;
+    bootButtonPressCount = 0;
+    dispatchBootButtonAction(actionPressCount);
+  }
 }
 
 static void resetExploreLoopTracking() {
@@ -1092,6 +1167,10 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   Serial.begin(921600);
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
+  if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
+    pinMode(AppConfig::Inputs::BOOT_BUTTON_PIN,
+            AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
+  }
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   ledController.begin();
 
@@ -1215,6 +1294,7 @@ void userTaskBody(void* arg) {
     updateRobotState();
     motionController.update(robotState);
     serviceMotorBothFlipTest();
+    serviceBootButtonLauncher();
     serviceDebugConsole();
 
     while (Serial.available() > 0) {
@@ -1402,6 +1482,9 @@ static void printStartupSummary() {
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
+  if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
+    debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (2s timeout)");
+  }
 }
 
 static void handleSerialCommand(const String& rawLine) {

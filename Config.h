@@ -264,7 +264,16 @@ static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
 static constexpr bool CONTINUE_AFTER_GOAL = true;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
-static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 2;
+static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
+}
+
+namespace Inputs {
+// Built-in BOOT button multi-press launcher on ESP32-S3 GPIO0.
+static constexpr bool ENABLE_BOOT_BUTTON_LAUNCH = true;
+static constexpr uint8_t BOOT_BUTTON_PIN = 0;
+static constexpr bool BOOT_BUTTON_ACTIVE_LOW = true;
+static constexpr uint32_t BOOT_BUTTON_DEBOUNCE_MS = 30;
+static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 2000;
 }
 
 namespace Debug {

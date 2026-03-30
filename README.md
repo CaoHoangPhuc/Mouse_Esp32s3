@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.7`
+Current project version: `0.3.8`
 
 ## Current Status
 
@@ -29,6 +29,8 @@ This repository now includes the first integrated hardware-oriented control stac
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
 - wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within a tight `2 mm` balance window
 - motion speed targets in `Config.h` are now tuned `+50 TPS` higher for move, short-forward, reverse, and turn primitives
+- the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
+- the ESP32-S3 BOOT button now supports a 2-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
@@ -125,6 +127,13 @@ Explore loop note:
 - The runtime tracks the best-known cost from the original home region to the original goal region.
 - After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
 - When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
+- From idle, the ESP32-S3 BOOT button can launch runs after a `2s` multi-press timeout:
+  - `1` press: `explore`
+  - `2` presses: `speedrun 1`
+  - `3` presses: `speedrun 2`
+  - `4` presses: `speedrun 3`
+  - `5` presses: `speedrun 4`
+  - each accepted press cycles the LED so the user gets immediate feedback
 - Reaching a target no longer rewrites the explorer's configured start marker; the original start remains fixed while only the active target toggles between goal and home.
 - The original home/goal references used for toggling are now taken from `setHomeRect()` and `setGoalRect()`, so the loop uses the configured maze values instead of the class default placeholders.
 
