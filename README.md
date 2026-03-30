@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.9`
+Current project version: `0.3.10`
 
 ## Current Status
 
@@ -32,6 +32,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
 - the ESP32-S3 BOOT button now supports a 2-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
+- the port `80` command guide now describes `explore` as learning walls until the shortest path is known
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
