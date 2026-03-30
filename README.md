@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.0`
+Current project version: `0.3.2`
 
 ## Current Status
 
@@ -40,6 +40,9 @@ This repository now includes the first integrated hardware-oriented control stac
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
 - `speedrun 1` now keeps successful primitive transitions smooth by skipping the normal completion brake/hold between moves and turns, while still stopping normally on finish or fault
+- periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
+- `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
+- global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -89,7 +92,7 @@ Release note:
 10. After a 90-degree or 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
 12. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
-13. `explorerTask` serves the web maze view.
+13. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
 14. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
 15. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
 16. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
@@ -102,6 +105,11 @@ Release note:
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
 - This prevents a race where `robotState.motionStatus` could still be stale while the controller had already left `RUNNING`, which could otherwise cause repeated `move1` starts before wall sensing and ACK completed.
+
+Loop watchdog note:
+- steady-state RTOS loops now log `[LOOP WARN]` when the actual loop interval exceeds the expected period plus a configurable tolerance
+- the warning includes the task name, expected period, actual interval, lateness, and current core id
+- setup delays, one-shot waits, and OTA special pause branches still use plain `vTaskDelay(...)` and are not treated as periodic watchdog loops
 
 Turn behavior note:
 - Floodfill explore uses a real `ACT_TURN_180` again for dead-end reversals.
@@ -127,6 +135,7 @@ Key sections:
 - `AppConfig::Maze`: start pose and goal rectangle
   Default config starts at `(0,0)`, heading south, with a home rectangle at `(0,0)` size `1x1` and a goal rectangle defined in `Config.h`.
 - `AppConfig::Wifi`: Wi-Fi / OTA / control-page settings
+- `AppConfig::Debug`: serial-output switches, runtime debug flags, and loop-watchdog timing thresholds
 - `AppConfig::I2C`: SDA/SCL and bus speed
 - `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings

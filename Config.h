@@ -89,10 +89,10 @@ static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
   }
 
 namespace Debug {
-// Global serial output switch.
-// Set false to mute Serial.print/println output across the app while still
-// allowing the serial port to be opened for input if needed.
-static constexpr bool ENABLE_SERIAL_OUTPUT = false;
+  // Global serial output switch.
+  // Set false to mute Serial.print/println output across the app while still
+  // allowing the serial port to be opened for input if needed.
+  static constexpr bool ENABLE_SERIAL_OUTPUT = true;
 
 // Compact status line option.
 // Set false to keep status prints but hide motor TPS values.
@@ -268,10 +268,15 @@ static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 2;
 }
 
 namespace Debug {
-// Additional runtime flow logging for motion, snap, and wall application.
-// Affects: extra serial/TCP debug output only; no behavior changes.
-static constexpr bool DEBUG_MOTION_FLOW = true;
-static constexpr bool DEBUG_WALL_APPLY = true;
+  // Additional runtime flow logging for motion, snap, and wall application.
+  // Affects: extra serial/TCP debug output only; no behavior changes.
+  static constexpr bool DEBUG_MOTION_FLOW = true;
+  static constexpr bool DEBUG_WALL_APPLY = true;
+  // Lightweight periodic-task timing watchdog.
+  // Warns when a watched loop runs later than its expected cadence.
+  static constexpr bool ENABLE_LOOP_WATCHDOG = true;
+  static constexpr uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
+  static constexpr uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
 }
 
 // Helper that converts config constants into the runtime motion controller config.
