@@ -230,9 +230,9 @@ const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
 const WS_PORT = %UPLOAD_WS_PORT%;
-const CHUNK_SIZE = 4096;
+const CHUNK_SIZE = 32768;
 const MAX_RETRIES = 5;
-const ACK_TIMEOUT_MS = 8000;
+const ACK_TIMEOUT_MS = 5000;
 
 function openUploadSocket(){
   const proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
