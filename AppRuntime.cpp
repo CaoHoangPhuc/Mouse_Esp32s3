@@ -1161,7 +1161,10 @@ static bool shouldSnapCenterFromKnownBackWall() {
   bool known = false;
   bool wall = false;
   explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY, backDir, known, wall);
-  return known && wall;
+  const bool noSideWallsAvailable =
+      !robotState.walls.leftValid &&
+      !robotState.walls.rightValid;
+  return known && wall && noSideWallsAvailable;
 }
 
 static bool shouldSnapCenterAfterTurn() {
@@ -1172,7 +1175,7 @@ static bool startRunSnapSequence(const char* label) {
   explorer.setRunning(false);
   if (!shouldSnapCenterFromKnownBackWall()) {
     explorer.setRunning(robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN);
-    debugPrintln(String("[SNAP] skip ") + label + " (no known back wall)");
+    debugPrintln(String("[SNAP] skip ") + label + " (need known back wall and no side walls)");
     return true;
   }
   if (!motionController.snapCenter()) {
