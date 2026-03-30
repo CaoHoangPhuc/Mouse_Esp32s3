@@ -89,10 +89,10 @@ static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
   }
 
 namespace Debug {
-// Global serial output switch.
-// Set false to mute Serial.print/println output across the app while still
-// allowing the serial port to be opened for input if needed.
-static constexpr bool ENABLE_SERIAL_OUTPUT = false;
+  // Global serial output switch.
+  // Set false to mute Serial.print/println output across the app while still
+  // allowing the serial port to be opened for input if needed.
+  static constexpr bool ENABLE_SERIAL_OUTPUT = true;
 
 // Compact status line option.
 // Set false to keep status prints but hide motor TPS values.
