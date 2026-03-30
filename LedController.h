@@ -12,6 +12,8 @@ public:
   void setRed();
   void setGreen();
   void setBlue();
+  void setYellow();
+  void setMagenta();
 
 private:
   void setColor_(uint8_t r, uint8_t g, uint8_t b);

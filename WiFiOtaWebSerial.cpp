@@ -104,7 +104,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
         <ul>
           <li><code>led cycle</code> - step through LED states to identify the robot.</li>
           <li><code>led rotate</code> - rotate LED colors.</li>
-          <li><code>led off</code>, <code>led red</code>, <code>led green</code>, <code>led blue</code>, <code>led cyan</code>, <code>led white</code> - force a specific LED state.</li>
+          <li><code>led off</code>, <code>led red</code>, <code>led green</code>, <code>led blue</code>, <code>led yellow</code>, <code>led cyan</code>, <code>led magenta</code>, <code>led white</code> - force a specific LED state.</li>
         </ul>
       </div>
       <div class="group">
@@ -204,9 +204,9 @@ static const char* kUploadHtml PROGMEM = R"HTML(
   </style>
 </head>
 <body>
-  <div class="card">
+    <div class="card">
     <h1>Wireless Firmware Upload</h1>
-    <div class="muted">Upload a compiled firmware binary (`.bin`). The mouse will reboot after a successful update.</div>
+    <div class="muted">Chunked HTTP upload with retry. Upload a compiled firmware binary (`.bin`). The mouse will reboot after a successful update.</div>
     <form id="fwForm">
       <input id="fwFile" name="firmware" type="file" accept=".bin,application/octet-stream" required />
       <button type="submit">Upload Firmware</button>
@@ -219,8 +219,45 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
+const CHUNK_SIZE = 32768;
+const MAX_RETRIES = 5;
 
-form.addEventListener('submit', (ev) => {
+async function postStart(totalSize){
+  const res = await fetch('/upload/start?size=' + totalSize, {
+    method: 'POST',
+    cache: 'no-store'
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+  return JSON.parse(text);
+}
+
+async function postChunk(file, offset){
+  const end = Math.min(offset + CHUNK_SIZE, file.size);
+  const chunk = file.slice(offset, end);
+  const form = new FormData();
+  form.append('chunk', chunk, file.name + '.part');
+  const res = await fetch('/upload/chunk?offset=' + offset, {
+    method: 'POST',
+    body: form,
+    cache: 'no-store'
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+  return JSON.parse(text);
+}
+
+async function postFinish(){
+  const res = await fetch('/upload/finish', {
+    method: 'POST',
+    cache: 'no-store'
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+  return JSON.parse(text);
+}
+
+form.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const file = fileInput.files[0];
   if (!file) {
@@ -230,25 +267,40 @@ form.addEventListener('submit', (ev) => {
 
   prog.hidden = false;
   prog.value = 0;
-  msg.textContent = 'Uploading...';
+  msg.textContent = 'Starting chunked upload...';
 
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/update');
-  xhr.upload.onprogress = (e) => {
-    if (!e.lengthComputable) return;
-    prog.value = Math.round((e.loaded / e.total) * 100);
-  };
-  xhr.onload = () => {
-    msg.textContent = xhr.status === 200
-      ? 'Upload complete. Device will reboot.'
-      : 'Upload failed: HTTP ' + xhr.status + '\n' + xhr.responseText;
-  };
-  xhr.onerror = () => {
-    msg.textContent = 'Upload failed: network error';
-  };
-  const data = new FormData();
-  data.append('firmware', file, file.name);
-  xhr.send(data);
+  try {
+    let info = await postStart(file.size);
+    let offset = Number(info.nextOffset || 0);
+
+    while (offset < file.size) {
+      let done = false;
+      let lastErr = '';
+      for (let attempt = 1; attempt <= MAX_RETRIES; ++attempt) {
+        try {
+          info = await postChunk(file, offset);
+          offset = Number(info.nextOffset || 0);
+          prog.value = Math.round((offset / file.size) * 100);
+          msg.textContent = 'Uploading... ' + prog.value + '%';
+          done = true;
+          break;
+        } catch (err) {
+          lastErr = String(err);
+          msg.textContent = 'Chunk retry ' + attempt + '/' + MAX_RETRIES + ' at offset ' + offset + ' failed: ' + lastErr;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+      if (!done) {
+        throw new Error('Chunk upload failed at offset ' + offset + ': ' + lastErr);
+      }
+    }
+
+    await postFinish();
+    prog.value = 100;
+    msg.textContent = 'Upload complete. Device will reboot.';
+  } catch (err) {
+    msg.textContent = 'Upload failed: ' + err;
+  }
 });
 </script>
 </body>
@@ -623,6 +675,144 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
 
   srv.on("/", HTTP_GET, [this]() {
     uploadWeb_->server.send(200, "text/html; charset=utf-8", FPSTR(kUploadHtml));
+  });
+
+  srv.on("/upload/start", HTTP_POST, [this]() {
+    const size_t totalSize = (size_t)uploadWeb_->server.arg("size").toInt();
+    if (totalSize == 0) {
+      uploadWeb_->server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid size\"}");
+      return;
+    }
+
+    if (chunkUploadActive_) {
+      Update.abort();
+    }
+
+    webUploadInProgress_ = true;
+    chunkUploadActive_ = false;
+    chunkExpectedOffset_ = 0;
+    chunkTotalSize_ = totalSize;
+    chunkRequestOffset_ = 0;
+    chunkRequestBytes_ = 0;
+    chunkRequestOk_ = false;
+    chunkRequestSkip_ = false;
+    chunkRequestError_ = "";
+    rebootPending_ = false;
+    rebootAtMs_ = 0;
+    ledBlinkMs_ = 0;
+    ledBlinkOn_ = true;
+    setLedState_("blue");
+    println(String("[WEB OTA] Chunked start total=") + totalSize);
+
+    if (!Update.begin(totalSize)) {
+      Update.printError(Serial);
+      setLedState_("red");
+      webUploadInProgress_ = false;
+      uploadWeb_->server.send(500, "application/json", "{\"ok\":false,\"error\":\"update begin failed\"}");
+      return;
+    }
+
+    chunkUploadActive_ = true;
+    uploadWeb_->server.send(200, "application/json", "{\"ok\":true,\"nextOffset\":0}");
+  });
+
+  srv.on("/upload/chunk", HTTP_POST,
+    [this]() {
+      if (!chunkUploadActive_) {
+        uploadWeb_->server.send(409, "application/json", "{\"ok\":false,\"error\":\"no active upload session\"}");
+        return;
+      }
+      if (!chunkRequestOk_) {
+        const String err = chunkRequestError_.length() > 0 ? chunkRequestError_ : String("chunk failed");
+        uploadWeb_->server.send(409, "application/json",
+                                String("{\"ok\":false,\"error\":\"") + err + "\"}");
+        return;
+      }
+      uploadWeb_->server.send(200, "application/json",
+                              String("{\"ok\":true,\"nextOffset\":") + chunkExpectedOffset_ + "}");
+    },
+    [this]() {
+      HTTPUpload& upload = uploadWeb_->server.upload();
+
+      if (upload.status == UPLOAD_FILE_START) {
+        chunkRequestOffset_ = (size_t)uploadWeb_->server.arg("offset").toInt();
+        chunkRequestBytes_ = 0;
+        chunkRequestOk_ = false;
+        chunkRequestSkip_ = false;
+        chunkRequestError_ = "";
+        if (!chunkUploadActive_) {
+          chunkRequestError_ = "no active upload session";
+          return;
+        }
+        if (chunkRequestOffset_ < chunkExpectedOffset_) {
+          chunkRequestOk_ = true;
+          chunkRequestSkip_ = true;
+          return;
+        }
+        if (chunkRequestOffset_ != chunkExpectedOffset_) {
+          chunkRequestError_ = String("offset mismatch expected ") + chunkExpectedOffset_ +
+                               " got " + chunkRequestOffset_;
+          return;
+        }
+        chunkRequestOk_ = true;
+      } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!chunkRequestOk_) return;
+        if (chunkRequestSkip_) return;
+        if (upload.buf == nullptr || upload.currentSize == 0) return;
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+          Update.printError(Serial);
+          chunkRequestOk_ = false;
+          chunkRequestError_ = "flash write failed";
+          setLedState_("red");
+          return;
+        }
+        chunkRequestBytes_ += upload.currentSize;
+      } else if (upload.status == UPLOAD_FILE_END) {
+        if (!chunkRequestOk_) return;
+        if (chunkRequestSkip_) return;
+        chunkExpectedOffset_ += chunkRequestBytes_;
+        if (chunkExpectedOffset_ > chunkTotalSize_) {
+          chunkRequestOk_ = false;
+          chunkRequestError_ = "size overflow";
+          setLedState_("red");
+          return;
+        }
+        if ((chunkExpectedOffset_ % (128 * 1024)) < chunkRequestBytes_) {
+          println(String("[WEB OTA] Chunked received ") + chunkExpectedOffset_ + " bytes");
+        }
+      } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        chunkRequestOk_ = false;
+        chunkRequestError_ = "chunk aborted";
+      }
+    }
+  );
+
+  srv.on("/upload/finish", HTTP_POST, [this]() {
+    if (!chunkUploadActive_) {
+      uploadWeb_->server.send(409, "application/json", "{\"ok\":false,\"error\":\"no active upload session\"}");
+      return;
+    }
+    if (chunkExpectedOffset_ != chunkTotalSize_) {
+      uploadWeb_->server.send(409, "application/json",
+                              String("{\"ok\":false,\"error\":\"incomplete upload at ") +
+                              chunkExpectedOffset_ + "/" + chunkTotalSize_ + "\"}");
+      return;
+    }
+    const bool ok = Update.end(true);
+    chunkUploadActive_ = false;
+    webUploadInProgress_ = false;
+    if (ok) {
+      println(String("[WEB OTA] Chunked success: ") + chunkTotalSize_ + " bytes");
+      setLedState_("green");
+      rebootPending_ = true;
+      rebootAtMs_ = millis() + 1500;
+      uploadWeb_->server.send(200, "application/json", "{\"ok\":true}");
+    } else {
+      Update.printError(Serial);
+      setLedState_("red");
+      println("[WEB OTA] Chunked finish failed");
+      uploadWeb_->server.send(500, "application/json", "{\"ok\":false,\"error\":\"update end failed\"}");
+    }
   });
 
   srv.on("/update", HTTP_POST,

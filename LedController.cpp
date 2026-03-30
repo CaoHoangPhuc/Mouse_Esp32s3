@@ -50,6 +50,14 @@ void LedController::setBlue() {
   setColor_(0, 0, 255);
 }
 
+void LedController::setYellow() {
+  setColor_(255, 255, 0);
+}
+
+void LedController::setMagenta() {
+  setColor_(255, 0, 255);
+}
+
 void LedController::setCyan() {
   setColor_(0, 255, 255);
 }
@@ -95,6 +103,18 @@ bool LedController::handleCommand(const String& rawCmd, String* response) {
   if (cmd == "blue") {
     setBlue();
     if (response) *response = "[LED] blue";
+    return true;
+  }
+
+  if (cmd == "yellow") {
+    setYellow();
+    if (response) *response = "[LED] yellow";
+    return true;
+  }
+
+  if (cmd == "magenta") {
+    setMagenta();
+    if (response) *response = "[LED] magenta";
     return true;
   }
 

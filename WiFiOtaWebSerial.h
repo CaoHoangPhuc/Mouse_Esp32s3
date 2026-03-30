@@ -99,4 +99,12 @@ private:
 
   uint32_t ledBlinkMs_ = 0;
   bool ledBlinkOn_ = false;
+  bool chunkUploadActive_ = false;
+  size_t chunkExpectedOffset_ = 0;
+  size_t chunkTotalSize_ = 0;
+  size_t chunkRequestOffset_ = 0;
+  size_t chunkRequestBytes_ = 0;
+  bool chunkRequestOk_ = false;
+  bool chunkRequestSkip_ = false;
+  String chunkRequestError_;
 };

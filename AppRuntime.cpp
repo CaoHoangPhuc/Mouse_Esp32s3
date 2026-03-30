@@ -1478,7 +1478,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
   debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
-  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
+  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
@@ -1541,8 +1541,20 @@ static void handleSerialCommand(const String& rawLine) {
     }
     return;
   }
+  if (line == "led yellow") {
+    if (!handleLedCommand("yellow")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
   if (line == "led cyan" || line == "led bluegreen") {
     if (!handleLedCommand("cyan")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led magenta") {
+    if (!handleLedCommand("magenta")) {
       debugPrintln("[CMD] led command failed");
     }
     return;
