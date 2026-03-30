@@ -696,7 +696,7 @@ static void beginSpeedRun(uint8_t phase) {
   robotState.speedRunPhase = phase;
   serialOutputTemporarilyMuted = (phase == 1);
   startLapTimer("HG");
-  motionController.setStopOnCompletion(phase != 1);
+  motionController.setStopOnCompletion(true);
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -835,11 +835,8 @@ static void handleMotionCompletion() {
       debugMotionEvent("[MOTION END]", primitive, status,
                        beforeX, beforeY, beforeH,
                        robotState.pose.cellX, robotState.pose.cellY, headingDir());
-      const bool smoothSpeedRun = (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1);
-      if (!smoothSpeedRun) {
-        leftMotor.hardStop();
-        rightMotor.hardStop();
-      }
+      leftMotor.hardStop();
+      rightMotor.hardStop();
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
@@ -985,7 +982,6 @@ static void handleMotionCompletion() {
     }
 
       if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
-          !smoothSpeedRun &&
           !skipPostMotionHold &&
           motionController.status() == MOTION_COMPLETED &&
           robotState.mode != ROBOT_MODE_IDLE &&
@@ -1010,11 +1006,7 @@ static void handleMotionCompletion() {
     enterFaultMode(motionController.lastError());
     }
 
-    if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1 && status == MOTION_COMPLETED) {
-      motionController.clearCompletionState();
-    } else {
-      motionController.stop();
-    }
+    motionController.stop();
   }
 
 static void updateRobotState() {

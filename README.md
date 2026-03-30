@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.3`
+Current project version: `0.3.4`
 
 ## Current Status
 
@@ -40,7 +40,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
-- `speedrun 1` now keeps successful primitive transitions smooth by skipping the normal completion brake/hold between moves and turns, while still stopping normally on finish or fault
+- `speedrun 1` now restores the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
