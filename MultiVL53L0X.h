@@ -119,6 +119,7 @@ private:
     float _dualWallBlend = 0.0f;
     float _centerTargetLeft = 100.0f;
     float _centerTargetRight = 100.0f;
+    bool _captureCenterTargetsOnFirstSample = true;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
 
