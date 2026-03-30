@@ -233,6 +233,7 @@ const WS_PORT = %UPLOAD_WS_PORT%;
 const CHUNK_SIZE = 32768;
 const MAX_RETRIES = 5;
 const ACK_TIMEOUT_MS = 5000;
+const CHUNK_SUCCESS_PAUSE_MS = 200;
 
 function openUploadSocket(){
   const proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
@@ -320,6 +321,7 @@ form.addEventListener('submit', async (ev) => {
           offset = Number(reply.substring(4) || 0);
           prog.value = Math.round((offset / file.size) * 100);
           msg.textContent = 'Uploading... ' + prog.value + '%';
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_SUCCESS_PAUSE_MS));
           done = true;
           break;
         } catch (err) {
