@@ -943,7 +943,7 @@ static void handleMotionCompletion() {
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
         robotState.mode == ROBOT_MODE_EXPLORE &&
-        shouldSnapCenterAfterTurn()) {
+        (updateRobotState(), shouldSnapCenterAfterTurn())) {
       if (!motionController.snapCenter()) {
         enterFaultMode("failed to start post-turn snapcenter");
         return;
