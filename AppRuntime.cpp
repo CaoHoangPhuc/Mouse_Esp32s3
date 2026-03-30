@@ -1161,14 +1161,13 @@ static bool shouldSnapCenterFromKnownBackWall() {
   bool known = false;
   bool wall = false;
   explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY, backDir, known, wall);
-  const bool noSideWallsAvailable =
-      !robotState.walls.leftValid &&
-      !robotState.walls.rightValid;
-  return known && wall && noSideWallsAvailable;
+  return known && wall;
 }
 
 static bool shouldSnapCenterAfterTurn() {
-  return shouldSnapCenterFromKnownBackWall();
+  return shouldSnapCenterFromKnownBackWall() &&
+         !robotState.walls.leftValid &&
+         !robotState.walls.rightValid;
 }
 
 static bool startRunSnapSequence(const char* label) {
