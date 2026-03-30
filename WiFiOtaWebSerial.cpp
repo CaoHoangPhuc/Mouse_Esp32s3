@@ -219,7 +219,7 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 32768;
+const CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
 
 async function postStart(totalSize){
@@ -766,6 +766,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
           setLedState_("red");
           return;
         }
+        delay(0);
         chunkRequestBytes_ += upload.currentSize;
       } else if (upload.status == UPLOAD_FILE_END) {
         if (!chunkRequestOk_) return;
@@ -851,8 +852,11 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
           Update.printError(Serial);
           setLedState_("red");
-        } else if ((upload.totalSize % (128 * 1024)) < upload.currentSize) {
+        } else {
+          delay(0);
+          if ((upload.totalSize % (128 * 1024)) < upload.currentSize) {
           println(String("[WEB OTA] Received ") + upload.totalSize + " bytes");
+          }
         }
       } else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) {
