@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.27`
+Current project version: `0.3.28`
 
 ## Current Status
 
@@ -41,6 +41,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
 - the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
 - the Wi-Fi service loop now runs with a tighter `1 ms` cadence during normal service to keep OTA/web handling more responsive
+- Wi-Fi reconnect recovery now escalates from normal `WiFi.reconnect()` attempts to a full STA restart and fresh `WiFi.begin(...)` after a longer disconnect, so the robot can recover from wedged network states without a power cycle
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
 - the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves

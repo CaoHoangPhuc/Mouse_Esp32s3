@@ -485,12 +485,14 @@ void WiFiOtaWebSerial::wifiTaskThunk_(void* arg) {
 
 void WiFiOtaWebSerial::wifiTaskLoop_() {
   uint32_t lastReconnectMs = 0;
+  uint32_t disconnectSinceMs = 0;
   bool urlsAnnounced = false;
   for (;;) {
     if (started_) {
       serviceUpdateLed_();
       const wl_status_t wifiStatus = WiFi.status();
       if (wifiStatus != WL_CONNECTED) {
+        if (disconnectSinceMs == 0) disconnectSinceMs = millis();
         urlsAnnounced = false;
         if (otaInProgress || webUploadInProgress_ || rebootPending_) {
           vTaskDelay(pdMS_TO_TICKS(50));
@@ -509,8 +511,16 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
           if (serialOutputAllowed) Serial.println("[WiFi] reconnecting...");
           WiFi.reconnect();
         }
+        if ((uint32_t)(now - disconnectSinceMs) >= cfg_.wifiConnectTimeoutMs) {
+          disconnectSinceMs = now;
+          restartSta_();
+        }
         vTaskDelay(pdMS_TO_TICKS(250));
         continue;
+      }
+      if (disconnectSinceMs != 0) {
+        disconnectSinceMs = 0;
+        onWiFiConnected_();
       }
       if (!urlsAnnounced) {
         const String currentIp = WiFi.localIP().toString();
@@ -596,14 +606,43 @@ String WiFiOtaWebSerial::ip() const {
 }
 
 void WiFiOtaWebSerial::setupWiFi_() {
+  configureSta_();
+  WiFi.begin(cfg_.ssid, cfg_.pass);
+  ensureWiFiConnected_(cfg_.wifiConnectTimeoutMs);
+}
+
+void WiFiOtaWebSerial::configureSta_() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
-  WiFi.begin(cfg_.ssid, cfg_.pass);
-  ensureWiFiConnected_(cfg_.wifiConnectTimeoutMs);
 }
+
+void WiFiOtaWebSerial::restartSta_() {
+  const bool serialOutputAllowed =
+    serialOutputAllowedFn_ ? serialOutputAllowedFn_() : AppConfig::Debug::ENABLE_SERIAL_OUTPUT;
+  if (serialOutputAllowed) Serial.println("[WiFi] restarting STA...");
+  MDNS.end();
+  WiFi.disconnect(false, true);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  configureSta_();
+  WiFi.begin(cfg_.ssid, cfg_.pass);
+}
+
+void WiFiOtaWebSerial::onWiFiConnected_() {
+  MDNS.end();
+  if (MDNS.begin(cfg_.hostname)) {
+    if (cfg_.enableWeb) {
+      MDNS.addService("http", "tcp", cfg_.port);
+    }
+    if (cfg_.enableUploadWeb) {
+      MDNS.addService("http", "tcp", cfg_.uploadPort);
+    }
+    MDNS.addService("arduino", "tcp", 3232);
+  }
+}
+
 bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
   const uint32_t start = millis();
   const bool serialOutputAllowed =
@@ -619,15 +658,7 @@ bool WiFiOtaWebSerial::ensureWiFiConnected_(uint32_t timeoutMs) {
     Serial.println("[WiFi] Connected");
     Serial.println(String("[WiFi] IP: ") + WiFi.localIP().toString());
   }
-  if (MDNS.begin(cfg_.hostname)) {
-    if (cfg_.enableWeb) {
-      MDNS.addService("http", "tcp", cfg_.port);
-    }
-    if (cfg_.enableUploadWeb) {
-      MDNS.addService("http", "tcp", cfg_.uploadPort);
-    }
-    MDNS.addService("arduino", "tcp", 3232);
-  }
+  onWiFiConnected_();
   return true;
 }
 

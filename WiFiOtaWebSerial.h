@@ -89,6 +89,9 @@ private:
   void wifiTaskLoop_();
 
   void setupWiFi_();
+  void configureSta_();
+  void restartSta_();
+  void onWiFiConnected_();
   bool ensureWiFiConnected_(uint32_t timeoutMs);
   void setupOta_();
   void setupWeb_();
