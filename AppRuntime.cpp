@@ -561,7 +561,7 @@ static void dispatchBootButtonAction(uint8_t pressCount) {
   if (pressCount == 0) return;
   if (pressCount == 1) {
     debugPrintln("[BOOT BTN] launch explore");
-    beginExplore(true, -1);
+    beginExplore(false, -1);
     return;
   }
 
