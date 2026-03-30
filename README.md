@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.25`
+Current project version: `0.3.26`
 
 ## Current Status
 
@@ -36,6 +36,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - the WebSocket uploader now sends one `32 KB` binary chunk at a time, waits up to `2s` for a firmware ACK, then pauses `20 ms` before sending the next chunk
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
 - interrupted WebSocket uploads now abort cleanly and force the LED `red` on disconnect/close errors
+- stalled WebSocket uploads now abort after `5s` without progress, force LED `red`, and close the upload socket
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
 - the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
 - the Wi-Fi service loop now runs with a tighter `1 ms` cadence during normal service to keep OTA/web handling more responsive

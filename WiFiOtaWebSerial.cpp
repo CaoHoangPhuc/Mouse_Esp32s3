@@ -234,6 +234,7 @@ const CHUNK_SIZE = 32768;
 const MAX_RETRIES = 5;
 const ACK_TIMEOUT_MS = 2000;
 const CHUNK_SUCCESS_PAUSE_MS = 20;
+const UPLOAD_STALL_TIMEOUT_MS = 5000;
 
 function openUploadSocket(){
   const proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
@@ -1090,6 +1091,7 @@ bool WiFiOtaWebSerial::handleUploadWsBinaryFrame_(uint64_t len, bool masked, con
   if ((chunkExpectedOffset_ % (128 * 1024)) < len) {
     println(String("[WEB OTA] WS received ") + chunkExpectedOffset_ + " bytes");
   }
+  uploadWsLastActivityMs_ = millis();
   sendUploadWsText_("ack|" + String(chunkExpectedOffset_));
   return true;
 }
@@ -1117,11 +1119,28 @@ void WiFiOtaWebSerial::sendUploadWsText_(const String& text) {
 void WiFiOtaWebSerial::serviceUploadWs_() {
   if (!uploadWs_) return;
 
+  if ((chunkUploadActive_ || webUploadInProgress_) &&
+      uploadWsLastActivityMs_ != 0 &&
+      (uint32_t)(millis() - uploadWsLastActivityMs_) >= UPLOAD_STALL_TIMEOUT_MS) {
+    Update.abort();
+    chunkUploadActive_ = false;
+    webUploadInProgress_ = false;
+    uploadWsLastActivityMs_ = 0;
+    setLedState_("red");
+    println("[WEB OTA] WebSocket stalled");
+    if (uploadWs_->client) {
+      uploadWs_->client.stop();
+    }
+    uploadWs_->handshaken = false;
+    return;
+  }
+
   if (uploadWs_->client && !uploadWs_->client.connected()) {
     if (chunkUploadActive_ || webUploadInProgress_) {
       Update.abort();
       chunkUploadActive_ = false;
       webUploadInProgress_ = false;
+      uploadWsLastActivityMs_ = 0;
       setLedState_("red");
       println("[WEB OTA] WebSocket disconnected");
     }
@@ -1182,13 +1201,14 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
         }
 
         if (chunkUploadActive_) {
-          if (chunkTotalSize_ != totalSize) {
-            Update.abort();
-            chunkUploadActive_ = false;
-            webUploadInProgress_ = false;
-            chunkExpectedOffset_ = 0;
-            chunkTotalSize_ = 0;
-          } else {
+        if (chunkTotalSize_ != totalSize) {
+          Update.abort();
+          chunkUploadActive_ = false;
+          webUploadInProgress_ = false;
+          uploadWsLastActivityMs_ = 0;
+          chunkExpectedOffset_ = 0;
+          chunkTotalSize_ = 0;
+        } else {
             sendUploadWsText_("ready|" + String(chunkExpectedOffset_));
             continue;
           }
@@ -1198,6 +1218,7 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
         chunkUploadActive_ = false;
         chunkExpectedOffset_ = 0;
         chunkTotalSize_ = totalSize;
+        uploadWsLastActivityMs_ = millis();
         rebootPending_ = false;
         rebootAtMs_ = 0;
         ledBlinkMs_ = 0;
@@ -1230,6 +1251,7 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
         const bool ok = Update.end(true);
         chunkUploadActive_ = false;
         webUploadInProgress_ = false;
+        uploadWsLastActivityMs_ = 0;
         if (ok) {
           println(String("[WEB OTA] WebSocket success: ") + chunkTotalSize_ + " bytes");
           setLedState_("off");
@@ -1252,6 +1274,7 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
       if (!handleUploadWsBinaryFrame_(len, masked, mask)) {
         chunkUploadActive_ = false;
         webUploadInProgress_ = false;
+        uploadWsLastActivityMs_ = 0;
         Update.abort();
       }
       continue;

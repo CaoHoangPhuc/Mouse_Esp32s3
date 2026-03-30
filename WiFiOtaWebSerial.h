@@ -117,4 +117,5 @@ private:
   bool chunkRequestOk_ = false;
   bool chunkRequestSkip_ = false;
   String chunkRequestError_;
+  uint32_t uploadWsLastActivityMs_ = 0;
 };
