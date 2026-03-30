@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.15`
+Current project version: `0.3.16`
 
 ## Current Status
 
@@ -34,6 +34,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
 - the browser uploader on port `82` now has a chunked HTTP retry test path so chunk failures can retry without restarting the whole upload flow
 - the chunked upload test path now uses smaller `8 KB` browser chunks and yields during flash writes to reduce Wi-Fi-task watchdog pressure
+- the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
 - the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves

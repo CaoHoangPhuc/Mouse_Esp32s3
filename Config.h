@@ -78,7 +78,7 @@ static constexpr uint16_t DEBUG_TCP_PORT = 2323;
 
 // FreeRTOS task placement/settings for Wi-Fi service loop.
 // Usually only change these if Wi-Fi/OTA becomes unstable.
-static constexpr BaseType_t CORE = 0;
+static constexpr BaseType_t CORE = 1;
 static constexpr UBaseType_t TASK_PRIORITY = 3;
 static constexpr uint32_t TASK_STACK = 10 * 1024;
 static constexpr uint32_t SERVICE_DELAY_MS = 5;
