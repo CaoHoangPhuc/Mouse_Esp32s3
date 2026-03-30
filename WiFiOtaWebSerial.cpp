@@ -60,6 +60,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
       <button class="primary" onclick="reconnectTelnet()">Reconnect Telnet</button>
       <button class="secondary" onclick="cycleLed()">Cycle LED</button>
       <button class="secondary" onclick="openFloodfill()">Open Floodfill</button>
+      <button class="secondary" onclick="openUpload()">Open Upload</button>
     </div> 
     <div id="status">Ready.</div>
     <h2>How To Use</h2>
@@ -172,6 +173,12 @@ function openFloodfill(){
   const ip = document.getElementById('robotIp').textContent || location.hostname;
   setStatus('Opening floodfill viewer on ' + ip + ':81 ...');
   window.location.href = 'http://' + ip + ':81/';
+}
+
+function openUpload(){
+  const ip = document.getElementById('robotIp').textContent || location.hostname;
+  setStatus('Opening upload page on ' + ip + ':%UPLOAD_PORT% ...');
+  window.location.href = 'http://' + ip + ':%UPLOAD_PORT%/';
 }
 </script>
 </body>
