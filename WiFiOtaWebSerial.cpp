@@ -375,6 +375,8 @@ static inline String TS() {
   return "[" + s + "] ";
 }
 
+static constexpr uint32_t kUploadWsStallTimeoutMs = 5000;
+
 WiFiOtaWebSerial::WiFiOtaWebSerial() {}
 
 WiFiOtaWebSerial::~WiFiOtaWebSerial() {
@@ -1121,7 +1123,7 @@ void WiFiOtaWebSerial::serviceUploadWs_() {
 
   if ((chunkUploadActive_ || webUploadInProgress_) &&
       uploadWsLastActivityMs_ != 0 &&
-      (uint32_t)(millis() - uploadWsLastActivityMs_) >= UPLOAD_STALL_TIMEOUT_MS) {
+      (uint32_t)(millis() - uploadWsLastActivityMs_) >= kUploadWsStallTimeoutMs) {
     Update.abort();
     chunkUploadActive_ = false;
     webUploadInProgress_ = false;
