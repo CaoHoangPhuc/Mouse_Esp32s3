@@ -71,8 +71,7 @@ static const char* kIndexHtml PROGMEM = R"HTML(
         <ul>
           <li><code>help</code> - print the command list in the robot console.</li>
           <li><code>status</code> - show mode, pose, battery, motion, and wall state.</li>
-          <li><code>explore</code> - explore the maze, learn walls, and stop when the shortest path is known.</li>
-          <li><code>explore n</code> - explore for <code>n</code> forward cell moves, then stop cleanly.</li>
+          <li><code>explore [n]</code> - explore the maze and learn walls until the shortest path is known, or stop after <code>n</code> forward cell moves.</li>
           <li><code>speedrun [1-4]</code> - start the speed-run mode when ready; <code>speedrun</code> means phase 1, and each later phase inherits the previous phase until tuned.</li>
           <li><code>idle</code> - switch the robot back to idle mode.</li>
           <li><code>restart</code> - reboot the robot after closing the debug client.</li>
