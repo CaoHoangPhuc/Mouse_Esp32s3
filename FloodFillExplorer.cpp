@@ -1213,8 +1213,8 @@ void FloodFillExplorer::onGoalReached_(){
   pendingAction_ = ACT_NONE;
 
   // --- Toggle target ---
-  // Nếu vừa tới GOAL gốc (2x2) => đổi mục tiêu về HOME (start gốc 1 ô)
-  // Nếu vừa tới HOME => đổi mục tiêu về GOAL gốc (2x2)
+  // If we just reached the original GOAL (2x2), switch the target back to HOME (the original 1-cell start).
+  // If we just reached HOME, switch the target back to the original GOAL (2x2).
   targetHome_ = !targetHome_;
 
   if(targetHome_){
@@ -1727,7 +1727,7 @@ void FloodFillExplorer::handleState_() {
 
 void FloodFillExplorer::buildStateJson_(){
   String out;
-  out.reserve(12000); // giảm một chút để bớt pressure heap
+  out.reserve(12000); // Reduce slightly to lower heap pressure.
 
   out += "{";
   out += "\"ver\":" + String(stateVer_) + ",";

@@ -371,7 +371,7 @@ form.addEventListener('submit', async (ev) => {
 static inline String TS() {
   uint32_t t = millis();
   String s = String(t);
-  while(s.length() < 10) s = " " + s;   // pad space trái đến 10
+  while(s.length() < 10) s = " " + s;   // Left-pad with spaces up to width 10
   return "[" + s + "] ";
 }
 

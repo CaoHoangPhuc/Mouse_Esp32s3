@@ -137,7 +137,7 @@ bool MultiVL53L0X::begin() {
     xshutAllHigh();
     i2cUnlock();
 
-    detectLayout();  // 🔥 AUTO DETECT HERE
+    detectLayout();  // Auto-detect sensor layout here
 
     return true;
 }
@@ -226,7 +226,7 @@ void MultiVL53L0X::update() {
     i2cUnlock();
 }
 
-// 🔥 Detect layout
+// Detect layout
 void MultiVL53L0X::detectLayout() {
     uint8_t active = 0;
 
@@ -241,7 +241,7 @@ void MultiVL53L0X::detectLayout() {
     }
 }
 
-// 🔥 Unified sensor read
+// Unified sensor read
 MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
     SensorState s = {false, false, false, false, false, false, 0, 0, 0};
     auto isObservable = [&](uint8_t index) {

@@ -4,7 +4,7 @@
 #if defined(ESP32)
   #include <WebServer.h>
 #else
-  #include <WebServer.h> // tuỳ core, bạn có thể đổi sang ESP8266WebServer nếu cần
+  #include <WebServer.h> // Depending on the core, you can switch to ESP8266WebServer if needed.
 #endif
 
 class FloodFillExplorer {
@@ -163,7 +163,7 @@ private:
   uint8_t origHx0_ = 0, origHy0_ = 15, origHw_ = 1, origHh_ = 1;
   uint8_t origGx0_ = 7, origGy0_ = 7, origGw_ = 2, origGh_ = 2;
 
-  // true: đang nhắm về HOME (start gốc), false: đang nhắm về GOAL gốc (2x2)
+  // true: currently targeting HOME (the original start), false: currently targeting the original GOAL (2x2)
   bool    targetHome_ = false;
 
 

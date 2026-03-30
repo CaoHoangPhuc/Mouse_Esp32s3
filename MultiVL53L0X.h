@@ -94,8 +94,8 @@ private:
 
     SensorVersion _version = SENSOR_UNKNOWN;
 
-    // S1 range: 62 → 150 -> range 150 - 62 = 88 -> scale 97/88; center = 97
-    // S2 range: 30 → 127 -> range 127 - 30 = 97 -> abs min = (62 - 30) /2 = 16
+    // S1 range: 62 -> 150, so range = 88, scale = 97/88, center = 97
+    // S2 range: 30 -> 127, so range = 97, absolute minimum = (62 - 30) / 2 = 16
 
     //37 183; 129 94
 
