@@ -14,7 +14,7 @@ When changing this code, prefer reliability and observability over aggressive op
 ## Coding Priorities
 
 - Do not break hardware safety for convenience.
-- Keep motion gating tied to battery health and fault handling.
+- Keep motion gating tied to fault handling; battery is telemetry-only in the current code unless deliberately changed again.
 - Preserve the planner/executor split:
   - planner chooses actions
   - motion controller executes physical movement

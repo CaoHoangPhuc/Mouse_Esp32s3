@@ -81,7 +81,7 @@ Documentation rule:
 
 ## Design Rules
 
-- Battery critical should always stop motion.
+- Battery state is telemetry-only in the current codebase; do not assume `critical` will stop motion unless that behavior is intentionally reintroduced.
 - Planner should issue one action at a time.
 - Motion executor should be the only layer deciding primitive success/failure.
 - Pose should only advance when the primitive really completes.
