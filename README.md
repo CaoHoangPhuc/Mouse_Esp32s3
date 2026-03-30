@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.26`
+Current project version: `0.3.27`
 
 ## Current Status
 
@@ -32,6 +32,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
 - the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
+- the serial `explore` and `explore n` commands now also keep the known maze, matching the BOOT-button and web explore entry paths; `clearmaze` is the explicit wall-memory reset command
 - the browser uploader on port `82` now uses a WebSocket transfer path for OTA testing, with the page on port `82` and a dedicated upload socket on port `84`
 - the WebSocket uploader now sends one `32 KB` binary chunk at a time, waits up to `2s` for a firmware ACK, then pauses `20 ms` before sending the next chunk
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success

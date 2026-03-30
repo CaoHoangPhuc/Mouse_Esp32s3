@@ -1620,13 +1620,13 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
   if (line == "explore") {
-    beginExplore(true, -1);
+    beginExplore(false, -1);
     return;
   }
   if (line.startsWith("explore ")) {
     int steps = 0;
     if (sscanf(line.c_str(), "explore %d", &steps) == 1 && steps > 0) {
-      beginExplore(true, steps);
+      beginExplore(false, steps);
     } else {
       debugPrintln("[CMD] usage: explore [n>0]");
     }
