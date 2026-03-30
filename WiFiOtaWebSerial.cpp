@@ -6,12 +6,22 @@
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <Update.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha1.h>
 
 // Wrapper to keep WebServer out of header
 class WiFiOtaWebSerial::WebServerWrapper {
 public:
   WebServerWrapper(uint16_t port) : server(port) {}
   WebServer server;
+};
+
+class WiFiOtaWebSerial::UploadWsWrapper {
+public:
+  explicit UploadWsWrapper(uint16_t port) : server(port) {}
+  WiFiServer server;
+  WiFiClient client;
+  bool handshaken = false;
 };
 
 static const char* kIndexHtml PROGMEM = R"HTML(
@@ -206,7 +216,7 @@ static const char* kUploadHtml PROGMEM = R"HTML(
 <body>
     <div class="card">
     <h1>Wireless Firmware Upload</h1>
-    <div class="muted">Chunked HTTP upload with retry. Upload a compiled firmware binary (`.bin`). The mouse will reboot after a successful update.</div>
+    <div class="muted">WebSocket firmware upload. Upload a compiled firmware binary (`.bin`). The mouse will reboot after a successful update.</div>
     <form id="fwForm">
       <input id="fwFile" name="firmware" type="file" accept=".bin,application/octet-stream" required />
       <button type="submit">Upload Firmware</button>
@@ -219,43 +229,57 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 2048;
+const WS_PORT = %UPLOAD_WS_PORT%;
+const CHUNK_SIZE = 4096;
 const MAX_RETRIES = 5;
-const CHUNK_SUCCESS_PAUSE_MS = 20;
+const ACK_TIMEOUT_MS = 8000;
 
-async function postStart(totalSize){
-  const res = await fetch('/upload/start?size=' + totalSize, {
-    method: 'POST',
-    cache: 'no-store'
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
-  return JSON.parse(text);
+function openUploadSocket(){
+  const proto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+  return new WebSocket(proto + location.hostname + ':' + WS_PORT + '/ota');
 }
 
-async function postChunk(file, offset){
-  const end = Math.min(offset + CHUNK_SIZE, file.size);
-  const chunk = file.slice(offset, end);
-  const form = new FormData();
-  form.append('chunk', chunk, file.name + '.part');
-  const res = await fetch('/upload/chunk?offset=' + offset, {
-    method: 'POST',
-    body: form,
-    cache: 'no-store'
+function waitForOpen(ws){
+  return new Promise((resolve, reject) => {
+    const onOpen = () => { cleanup(); resolve(); };
+    const onError = () => { cleanup(); reject(new Error('websocket open failed')); };
+    const cleanup = () => {
+      ws.removeEventListener('open', onOpen);
+      ws.removeEventListener('error', onError);
+    };
+    ws.addEventListener('open', onOpen, { once: true });
+    ws.addEventListener('error', onError, { once: true });
   });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
-  return JSON.parse(text);
 }
 
-async function postFinish(){
-  const res = await fetch('/upload/finish', {
-    method: 'POST',
-    cache: 'no-store'
+function waitForMessage(ws, timeoutMs){
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('timeout waiting for upload ack'));
+    }, timeoutMs);
+    const onMessage = (ev) => {
+      cleanup();
+      resolve(String(ev.data || ''));
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error('websocket closed'));
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('websocket error'));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.removeEventListener('message', onMessage);
+      ws.removeEventListener('close', onClose);
+      ws.removeEventListener('error', onError);
+    };
+    ws.addEventListener('message', onMessage, { once: true });
+    ws.addEventListener('close', onClose, { once: true });
+    ws.addEventListener('error', onError, { once: true });
   });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
-  return JSON.parse(text);
 }
 
 form.addEventListener('submit', async (ev) => {
@@ -268,36 +292,68 @@ form.addEventListener('submit', async (ev) => {
 
   prog.hidden = false;
   prog.value = 0;
-  msg.textContent = 'Starting chunked upload...';
+  msg.textContent = 'Starting WebSocket upload...';
 
   try {
-    let info = await postStart(file.size);
-    let offset = Number(info.nextOffset || 0);
+    let ws = openUploadSocket();
+    ws.binaryType = 'arraybuffer';
+    await waitForOpen(ws);
+    ws.send('start|' + file.size);
+    let reply = await waitForMessage(ws, ACK_TIMEOUT_MS);
+    if (!reply.startsWith('ready|')) {
+      throw new Error(reply || 'upload start failed');
+    }
+    let offset = Number(reply.substring(6) || 0);
 
     while (offset < file.size) {
       let done = false;
       let lastErr = '';
       for (let attempt = 1; attempt <= MAX_RETRIES; ++attempt) {
         try {
-          info = await postChunk(file, offset);
-          offset = Number(info.nextOffset || 0);
+          const end = Math.min(offset + CHUNK_SIZE, file.size);
+          const chunk = await file.slice(offset, end).arrayBuffer();
+          ws.send(chunk);
+          reply = await waitForMessage(ws, ACK_TIMEOUT_MS);
+          if (!reply.startsWith('ack|')) {
+            throw new Error(reply || 'bad chunk reply');
+          }
+          offset = Number(reply.substring(4) || 0);
           prog.value = Math.round((offset / file.size) * 100);
           msg.textContent = 'Uploading... ' + prog.value + '%';
-          await new Promise((resolve) => setTimeout(resolve, CHUNK_SUCCESS_PAUSE_MS));
           done = true;
           break;
         } catch (err) {
           lastErr = String(err);
           msg.textContent = 'Chunk retry ' + attempt + '/' + MAX_RETRIES + ' at offset ' + offset + ' failed: ' + lastErr;
+          if (ws.readyState !== WebSocket.OPEN) {
+            ws = openUploadSocket();
+            ws.binaryType = 'arraybuffer';
+            await waitForOpen(ws);
+            ws.send('start|' + file.size);
+            reply = await waitForMessage(ws, ACK_TIMEOUT_MS);
+            if (!reply.startsWith('ready|')) {
+              throw new Error(reply || 'resume failed');
+            }
+            const resumedOffset = Number(reply.substring(6) || 0);
+            if (resumedOffset !== offset) {
+              throw new Error('resume offset mismatch ' + resumedOffset + ' vs ' + offset);
+            }
+          }
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
       if (!done) {
+        ws.close();
         throw new Error('Chunk upload failed at offset ' + offset + ': ' + lastErr);
       }
     }
 
-    await postFinish();
+    ws.send('finish');
+    reply = await waitForMessage(ws, ACK_TIMEOUT_MS);
+    ws.close();
+    if (reply !== 'done') {
+      throw new Error(reply || 'upload finish failed');
+    }
     prog.value = 100;
     msg.textContent = 'Upload complete. Device will reboot.';
   } catch (err) {
@@ -334,11 +390,13 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
   // server
   if (web_) { delete web_; web_ = nullptr; }
   if (uploadWeb_) { delete uploadWeb_; uploadWeb_ = nullptr; }
+  if (uploadWs_) { delete uploadWs_; uploadWs_ = nullptr; }
   if (cfg_.enableWeb) {
     web_ = new WebServerWrapper(cfg_.port);
   }
   if (cfg_.enableUploadWeb) {
     uploadWeb_ = new WebServerWrapper(cfg_.uploadPort);
+    uploadWs_ = new UploadWsWrapper(uploadWsPort_());
   }
 
   // reserve log
@@ -351,6 +409,7 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
   }
   if (cfg_.enableUploadWeb && uploadWeb_) {
     setupUploadWeb_();
+    setupUploadWs_();
   }
 
   started_ = true;
@@ -395,6 +454,10 @@ void WiFiOtaWebSerial::end() {
   if (uploadWeb_) {
     delete uploadWeb_;
     uploadWeb_ = nullptr;
+  }
+  if (uploadWs_) {
+    delete uploadWs_;
+    uploadWs_ = nullptr;
   }
 
   if (logMutex_) {
@@ -458,6 +521,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
         // OTA priority mode
         ArduinoOTA.handle();
         if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        serviceUploadWs_();
         // Optional: skip web server to reduce load
         // if (web_) web_->server.handleClient();
         vTaskDelay(1);
@@ -465,6 +529,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       }
       if (webUploadInProgress_) {
         if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        serviceUploadWs_();
         vTaskDelay(1);
         continue;
       }
@@ -472,6 +537,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       ArduinoOTA.handle();
       if (cfg_.enableWeb && web_) web_->server.handleClient();
       if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+      serviceUploadWs_();
       if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
         println("[WEB OTA] Rebooting now...");
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -676,7 +742,9 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
   auto& srv = uploadWeb_->server;
 
   srv.on("/", HTTP_GET, [this]() {
-    uploadWeb_->server.send(200, "text/html; charset=utf-8", FPSTR(kUploadHtml));
+    String html = FPSTR(kUploadHtml);
+    html.replace("%UPLOAD_WS_PORT%", String(uploadWsPort_()));
+    uploadWeb_->server.send(200, "text/html; charset=utf-8", html);
   });
 
   srv.on("/upload/start", HTTP_POST, [this]() {
@@ -882,6 +950,291 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
   });
 
   srv.begin();
+}
+
+void WiFiOtaWebSerial::setupUploadWs_() {
+  if (!uploadWs_) return;
+  uploadWs_->server.begin();
+  uploadWs_->handshaken = false;
+}
+
+bool WiFiOtaWebSerial::handleUploadWsHandshake_() {
+  if (!uploadWs_ || !uploadWs_->client || !uploadWs_->client.connected()) return false;
+
+  uploadWs_->client.setTimeout(50);
+  String key;
+  while (uploadWs_->client.connected()) {
+    String line = uploadWs_->client.readStringUntil('\n');
+    if (line.length() == 0) break;
+    line.trim();
+    if (line.startsWith("Sec-WebSocket-Key:")) {
+      key = line.substring(strlen("Sec-WebSocket-Key:"));
+      key.trim();
+    }
+    if (line.length() == 0) break;
+  }
+
+  if (key.length() == 0) {
+    uploadWs_->client.stop();
+    return false;
+  }
+
+  const String acceptSrc = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  unsigned char sha1[20];
+  mbedtls_sha1((const unsigned char*)acceptSrc.c_str(), acceptSrc.length(), sha1);
+
+  unsigned char base64Out[64];
+  size_t outLen = 0;
+  mbedtls_base64_encode(base64Out, sizeof(base64Out), &outLen, sha1, sizeof(sha1));
+  const String acceptKey = String((const char*)base64Out).substring(0, outLen);
+
+  uploadWs_->client.print(
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n");
+
+  uploadWs_->handshaken = true;
+  return true;
+}
+
+bool WiFiOtaWebSerial::readUploadWsFrameHeader_(uint8_t& opcode, uint64_t& len, bool& masked, uint8_t mask[4]) {
+  if (!uploadWs_ || !uploadWs_->client || !uploadWs_->client.connected() || uploadWs_->client.available() < 2) {
+    return false;
+  }
+
+  const uint8_t b0 = uploadWs_->client.read();
+  const uint8_t b1 = uploadWs_->client.read();
+  opcode = b0 & 0x0F;
+  len = b1 & 0x7F;
+
+  if (len == 126) {
+    while (uploadWs_->client.available() < 2) yield();
+    len = ((uint16_t)uploadWs_->client.read() << 8) | (uint16_t)uploadWs_->client.read();
+  } else if (len == 127) {
+    while (uploadWs_->client.available() < 8) yield();
+    len = 0;
+    for (int i = 0; i < 8; ++i) {
+      len = (len << 8) | (uint64_t)uploadWs_->client.read();
+    }
+  }
+
+  masked = (b1 & 0x80) != 0;
+  for (int i = 0; i < 4; ++i) mask[i] = 0;
+  if (masked) {
+    while (uploadWs_->client.available() < 4) yield();
+    for (int i = 0; i < 4; ++i) mask[i] = uploadWs_->client.read();
+  }
+  return true;
+}
+
+bool WiFiOtaWebSerial::readUploadWsTextFrame_(String& payload, uint8_t opcode, uint64_t len, bool masked, const uint8_t mask[4]) {
+  if (opcode != 0x1) return false;
+  payload = "";
+  payload.reserve((size_t)len);
+  for (uint64_t i = 0; i < len; ++i) {
+    while (uploadWs_->client.available() < 1) yield();
+    char ch = (char)uploadWs_->client.read();
+    if (masked) ch = (char)(ch ^ mask[i & 3]);
+    payload += ch;
+  }
+  return true;
+}
+
+bool WiFiOtaWebSerial::handleUploadWsBinaryFrame_(uint64_t len, bool masked, const uint8_t mask[4]) {
+  if (!chunkUploadActive_) {
+    sendUploadWsText_("error|no active upload session");
+    return false;
+  }
+
+  static uint8_t buf[256];
+  size_t bufUsed = 0;
+  for (uint64_t i = 0; i < len; ++i) {
+    while (uploadWs_->client.available() < 1) yield();
+    uint8_t ch = (uint8_t)uploadWs_->client.read();
+    if (masked) ch ^= mask[i & 3];
+    buf[bufUsed++] = ch;
+    if (bufUsed == sizeof(buf)) {
+      if (Update.write(buf, bufUsed) != bufUsed) {
+        Update.printError(Serial);
+        setLedState_("red");
+        sendUploadWsText_("error|flash write failed");
+        return false;
+      }
+      delay(0);
+      chunkExpectedOffset_ += bufUsed;
+      bufUsed = 0;
+    }
+  }
+
+  if (bufUsed > 0) {
+    if (Update.write(buf, bufUsed) != bufUsed) {
+      Update.printError(Serial);
+      setLedState_("red");
+      sendUploadWsText_("error|flash write failed");
+      return false;
+    }
+    delay(0);
+    chunkExpectedOffset_ += bufUsed;
+  }
+
+  if (chunkExpectedOffset_ > chunkTotalSize_) {
+    setLedState_("red");
+    sendUploadWsText_("error|size overflow");
+    return false;
+  }
+
+  if ((chunkExpectedOffset_ % (128 * 1024)) < len) {
+    println(String("[WEB OTA] WS received ") + chunkExpectedOffset_ + " bytes");
+  }
+  sendUploadWsText_("ack|" + String(chunkExpectedOffset_));
+  return true;
+}
+
+void WiFiOtaWebSerial::sendUploadWsText_(const String& text) {
+  if (!uploadWs_ || !uploadWs_->client || !uploadWs_->client.connected() || !uploadWs_->handshaken) return;
+
+  const size_t len = text.length();
+  uploadWs_->client.write((uint8_t)0x81);
+  if (len < 126) {
+    uploadWs_->client.write((uint8_t)len);
+  } else if (len < 65536) {
+    uploadWs_->client.write((uint8_t)126);
+    uploadWs_->client.write((uint8_t)((len >> 8) & 0xFF));
+    uploadWs_->client.write((uint8_t)(len & 0xFF));
+  } else {
+    uploadWs_->client.write((uint8_t)127);
+    for (int i = 7; i >= 0; --i) {
+      uploadWs_->client.write((uint8_t)((((uint64_t)len) >> (i * 8)) & 0xFF));
+    }
+  }
+  uploadWs_->client.write((const uint8_t*)text.c_str(), len);
+}
+
+void WiFiOtaWebSerial::serviceUploadWs_() {
+  if (!uploadWs_) return;
+
+  if ((!uploadWs_->client || !uploadWs_->client.connected()) && uploadWs_->server.hasClient()) {
+    if (uploadWs_->client) uploadWs_->client.stop();
+    uploadWs_->client = uploadWs_->server.accept();
+    uploadWs_->handshaken = false;
+  }
+
+  if (!uploadWs_->client || !uploadWs_->client.connected()) return;
+
+  if (!uploadWs_->handshaken) {
+    if (!handleUploadWsHandshake_()) return;
+  }
+
+  while (uploadWs_->client.available() > 1) {
+    uint8_t opcode = 0;
+    uint64_t len = 0;
+    bool masked = false;
+    uint8_t mask[4] = {0, 0, 0, 0};
+    if (!readUploadWsFrameHeader_(opcode, len, masked, mask)) break;
+
+    if (opcode == 0x8) {
+      uploadWs_->client.stop();
+      uploadWs_->handshaken = false;
+      return;
+    }
+
+    if (opcode == 0x9) {
+      uploadWs_->client.write((uint8_t)0x8A);
+      uploadWs_->client.write((uint8_t)0x00);
+      continue;
+    }
+
+    if (opcode == 0x1) {
+      String payload;
+      if (!readUploadWsTextFrame_(payload, opcode, len, masked, mask)) {
+        sendUploadWsText_("error|bad text frame");
+        continue;
+      }
+
+      if (payload.startsWith("start|")) {
+        const size_t totalSize = (size_t)payload.substring(6).toInt();
+        if (totalSize == 0) {
+          sendUploadWsText_("error|invalid size");
+          continue;
+        }
+
+        if (chunkUploadActive_) {
+          if (chunkTotalSize_ != totalSize) {
+            Update.abort();
+            chunkUploadActive_ = false;
+            webUploadInProgress_ = false;
+            chunkExpectedOffset_ = 0;
+            chunkTotalSize_ = 0;
+          } else {
+            sendUploadWsText_("ready|" + String(chunkExpectedOffset_));
+            continue;
+          }
+        }
+
+        webUploadInProgress_ = true;
+        chunkUploadActive_ = false;
+        chunkExpectedOffset_ = 0;
+        chunkTotalSize_ = totalSize;
+        rebootPending_ = false;
+        rebootAtMs_ = 0;
+        ledBlinkMs_ = 0;
+        ledBlinkOn_ = true;
+        setLedState_("blue");
+        println(String("[WEB OTA] WebSocket start total=") + totalSize);
+
+        if (!Update.begin(totalSize)) {
+          Update.printError(Serial);
+          webUploadInProgress_ = false;
+          setLedState_("red");
+          sendUploadWsText_("error|update begin failed");
+          continue;
+        }
+
+        chunkUploadActive_ = true;
+        sendUploadWsText_("ready|0");
+        continue;
+      }
+
+      if (payload == "finish") {
+        if (!chunkUploadActive_) {
+          sendUploadWsText_("error|no active upload session");
+          continue;
+        }
+        if (chunkExpectedOffset_ != chunkTotalSize_) {
+          sendUploadWsText_("error|incomplete upload");
+          continue;
+        }
+        const bool ok = Update.end(true);
+        chunkUploadActive_ = false;
+        webUploadInProgress_ = false;
+        if (ok) {
+          println(String("[WEB OTA] WebSocket success: ") + chunkTotalSize_ + " bytes");
+          setLedState_("green");
+          rebootPending_ = true;
+          rebootAtMs_ = millis() + 1500;
+          sendUploadWsText_("done");
+        } else {
+          Update.printError(Serial);
+          setLedState_("red");
+          sendUploadWsText_("error|update end failed");
+        }
+        continue;
+      }
+
+      sendUploadWsText_("error|unknown command");
+      continue;
+    }
+
+    if (opcode == 0x2) {
+      if (!handleUploadWsBinaryFrame_(len, masked, mask)) {
+        chunkUploadActive_ = false;
+        webUploadInProgress_ = false;
+        Update.abort();
+      }
+      continue;
+    }
+  }
 }
 
 void WiFiOtaWebSerial::appendLog_(const String& s) {

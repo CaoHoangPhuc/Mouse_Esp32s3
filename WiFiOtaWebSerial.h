@@ -58,8 +58,10 @@ public:
 
 private:
   class WebServerWrapper;   // forward declaration
+  class UploadWsWrapper;
   WebServerWrapper* web_ = nullptr;
   WebServerWrapper* uploadWeb_ = nullptr;
+  UploadWsWrapper* uploadWs_ = nullptr;
 
   Config cfg_;
   bool started_ = false;
@@ -91,6 +93,14 @@ private:
   void setupOta_();
   void setupWeb_();
   void setupUploadWeb_();
+  void setupUploadWs_();
+  void serviceUploadWs_();
+  bool handleUploadWsHandshake_();
+  bool readUploadWsFrameHeader_(uint8_t& opcode, uint64_t& len, bool& masked, uint8_t mask[4]);
+  bool readUploadWsTextFrame_(String& payload, uint8_t opcode, uint64_t len, bool masked, const uint8_t mask[4]);
+  bool handleUploadWsBinaryFrame_(uint64_t len, bool masked, const uint8_t mask[4]);
+  void sendUploadWsText_(const String& text);
+  uint16_t uploadWsPort_() const { return (uint16_t)(cfg_.uploadPort + 2); }
   void setLedState_(const String& cmd);
   void serviceUpdateLed_();
   String extractBatteryText_(const String& json) const;
