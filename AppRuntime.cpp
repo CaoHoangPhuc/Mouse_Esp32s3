@@ -821,6 +821,10 @@ static void onExplorerWebCommand(const String& cmd) {
   }
   if (cmd == "reset") {
     resetMazeToConfiguredStart();
+    return;
+  }
+  if (cmd == "clearmaze") {
+    clearMazeMemoryOnly();
   }
 }
 

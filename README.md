@@ -48,6 +48,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
 - the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves
+- floodfill web on port `81` now has a `Clear Maze` button that triggers the same robot-side `clearmaze` behavior (runtime + saved maze memory)
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input

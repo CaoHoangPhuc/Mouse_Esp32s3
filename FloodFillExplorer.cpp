@@ -46,6 +46,7 @@ static const char* kHtml PROGMEM = R"HTML(
       <button onclick="cmd('run')">Run</button>
       <button onclick="cmd('pause')">Pause</button>
       <button onclick="cmd('reset')">Reset</button>
+      <button onclick="hwcmd('clearmaze')">Clear Maze</button>
 
       <span class="pill warn">
         AutoACK(sim)
@@ -105,6 +106,12 @@ function cmd(a){
   busy = true;
   const autoAck = document.getElementById('autoAck').checked;
   sendWs((autoAck ? 'cmd|' : 'hwcmd|') + a);
+}
+
+function hwcmd(a){
+  if(busy || !wsReady()) return;
+  busy = true;
+  sendWs('hwcmd|' + a);
 }
 
 function cellGeom(){
@@ -1673,7 +1680,7 @@ void FloodFillExplorer::handleRoot_(){
 void FloodFillExplorer::handleCmd_(){
   if(!server_->hasArg("a")){
     server_->sendHeader("Connection", "close");
-    server_->send(400, "text/plain", "missing a=step|run|pause|reset|setstart");
+    server_->send(400, "text/plain", "missing a=step|run|pause|reset|clearmaze|setstart");
     return;
   }
 
@@ -1719,6 +1726,18 @@ void FloodFillExplorer::handleCmd_(){
     return;
   }
 
+  if (a == "clearmaze") {
+    if (!hardwareMode_ || !webCommandFn_) {
+      server_->sendHeader("Connection", "close");
+      server_->send(503, "text/plain", "hardware control unavailable");
+      return;
+    }
+    webCommandFn_("clearmaze");
+    server_->sendHeader("Connection", "close");
+    server_->send(200, "text/plain", "OK");
+    return;
+  }
+
   if(a == "setstart"){
     if(!server_->hasArg("x") || !server_->hasArg("y") || !server_->hasArg("h")){
       server_->sendHeader("Connection", "close");
@@ -1750,7 +1769,7 @@ void FloodFillExplorer::handleCmd_(){
   }
 
   server_->sendHeader("Connection", "close");
-  server_->send(400, "text/plain", "unknown a= (step|run|pause|reset|setstart)");
+  server_->send(400, "text/plain", "unknown a= (step|run|pause|reset|clearmaze|setstart)");
 }
 
 void FloodFillExplorer::handleNext_(){
