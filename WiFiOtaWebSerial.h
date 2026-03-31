@@ -1,7 +1,6 @@
 #pragma once
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
 
 class WiFiOtaWebSerial {
 public:
@@ -9,6 +8,7 @@ public:
   using TelnetReconnectHandler = bool (*)();
   using HealthJsonProvider = String (*)();
   using SerialOutputAllowedFn = bool (*)();
+  using ReconnectAllowedFn = bool (*)();
 
   struct Config {
     const char* ssid       = nullptr;
@@ -20,9 +20,6 @@ public:
     uint16_t    debugTcpPort = 2323;
     uint16_t    uploadPort = 82;
     bool        enableUploadWeb = true;
-
-    // Web log ring buffer size
-    size_t      logBufferBytes = 16 * 1024;
 
     // Service task
     uint32_t    serviceDelayMs = 10;
@@ -45,11 +42,11 @@ public:
   // Logging API
   void print(const String& s, bool mirrorToSerial = true);
   void println(const String& s, bool mirrorToSerial = true);
-  void clear();
   void setLedCommandHandler(LedCommandHandler handler) { ledCommandHandler_ = handler; }
   void setTelnetReconnectHandler(TelnetReconnectHandler handler) { telnetReconnectHandler_ = handler; }
   void setHealthJsonProvider(HealthJsonProvider provider) { healthJsonProvider_ = provider; }
   void setSerialOutputAllowedHandler(SerialOutputAllowedFn fn) { serialOutputAllowedFn_ = fn; }
+  void setReconnectAllowedHandler(ReconnectAllowedFn fn) { reconnectAllowedFn_ = fn; }
 
   // Info
   String ip() const;
@@ -58,22 +55,14 @@ public:
 
 private:
   class WebServerWrapper;   // forward declaration
-  class UploadWsWrapper;
   WebServerWrapper* web_ = nullptr;
   WebServerWrapper* uploadWeb_ = nullptr;
-  UploadWsWrapper* uploadWs_ = nullptr;
 
   Config cfg_;
   bool started_ = false;
 
-  // log buffer + mutex
-  String log_;
-  SemaphoreHandle_t logMutex_ = nullptr;
-
   // FreeRTOS task
   TaskHandle_t wifiTask_ = nullptr;
-
-  bool atLineStart_ = true;
   
   volatile bool otaInProgress = false;
   volatile bool webUploadInProgress_ = false;
@@ -83,6 +72,7 @@ private:
   TelnetReconnectHandler telnetReconnectHandler_ = nullptr;
   HealthJsonProvider healthJsonProvider_ = nullptr;
   SerialOutputAllowedFn serialOutputAllowedFn_ = nullptr;
+  ReconnectAllowedFn reconnectAllowedFn_ = nullptr;
 
 private:
   static void wifiTaskThunk_(void* arg);
@@ -92,25 +82,17 @@ private:
   void configureSta_();
   void restartSta_();
   void onWiFiConnected_();
-  bool ensureWiFiConnected_(uint32_t timeoutMs);
   void setupOta_();
   void setupWeb_();
   void setupUploadWeb_();
-  void setupUploadWs_();
-  void serviceUploadWs_();
-  bool handleUploadWsHandshake_();
-  bool readUploadWsFrameHeader_(uint8_t& opcode, uint64_t& len, bool& masked, uint8_t mask[4]);
-  bool readUploadWsTextFrame_(String& payload, uint8_t opcode, uint64_t len, bool masked, const uint8_t mask[4]);
-  bool handleUploadWsBinaryFrame_(uint64_t len, bool masked, const uint8_t mask[4]);
-  void sendUploadWsText_(const String& text);
-  uint16_t uploadWsPort_() const { return (uint16_t)(cfg_.uploadPort + 2); }
+  void serviceUploadSession_();
   void setLedState_(const String& cmd);
+  void setUploadLedActive_();
+  void setUploadLedSuccess_();
+  void setUploadLedError_();
   void serviceUpdateLed_();
   String extractBatteryText_(const String& json) const;
 
-  void appendLog_(const String& s);
-
-  uint32_t ledBlinkMs_ = 0;
   bool ledBlinkOn_ = false;
   bool chunkUploadActive_ = false;
   size_t chunkExpectedOffset_ = 0;
@@ -118,7 +100,10 @@ private:
   size_t chunkRequestOffset_ = 0;
   size_t chunkRequestBytes_ = 0;
   bool chunkRequestOk_ = false;
+  bool chunkRequestHadWrite_ = false;
   bool chunkRequestSkip_ = false;
   String chunkRequestError_;
-  uint32_t uploadWsLastActivityMs_ = 0;
+  uint32_t uploadLastActivityMs_ = 0;
+  bool otaHandlersReady_ = false;
+  bool otaStarted_ = false;
 };

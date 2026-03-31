@@ -67,6 +67,8 @@ private:
   float averageProgressMm_() const;
   float absoluteAverageProgressMm_() const;
   int32_t differentialTicks_() const;
+  void resetSnapState_();
+  bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
 
   DcMotor* left_ = nullptr;
   DcMotor* right_ = nullptr;

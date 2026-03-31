@@ -38,32 +38,45 @@ void LedController::begin() {
   colorIndex_ = -1;
 }
 
+void LedController::setState(State state) {
+  switch (state) {
+    case State::OFF: off(); return;
+    case State::RED: setColor_(255, 0, 0); return;
+    case State::GREEN: setColor_(0, 255, 0); return;
+    case State::BLUE: setColor_(0, 0, 255); return;
+    case State::YELLOW: setColor_(255, 255, 0); return;
+    case State::MAGENTA: setColor_(255, 0, 255); return;
+    case State::CYAN: setColor_(0, 255, 255); return;
+    case State::WHITE: setColor_(255, 255, 255); return;
+  }
+}
+
 void LedController::setRed() {
-  setColor_(255, 0, 0);
+  setState(State::RED);
 }
 
 void LedController::setGreen() {
-  setColor_(0, 255, 0);
+  setState(State::GREEN);
 }
 
 void LedController::setBlue() {
-  setColor_(0, 0, 255);
+  setState(State::BLUE);
 }
 
 void LedController::setYellow() {
-  setColor_(255, 255, 0);
+  setState(State::YELLOW);
 }
 
 void LedController::setMagenta() {
-  setColor_(255, 0, 255);
+  setState(State::MAGENTA);
 }
 
 void LedController::setCyan() {
-  setColor_(0, 255, 255);
+  setState(State::CYAN);
 }
 
 void LedController::setWhite() {
-  setColor_(255, 255, 255);
+  setState(State::WHITE);
 }
 
 bool LedController::handleCommand(const String& rawCmd, String* response) {

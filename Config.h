@@ -63,7 +63,7 @@ static constexpr uint8_t GOAL_H = 1;
 namespace Wifi {
 // Development Wi-Fi / OTA / web logging settings.
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
-static constexpr const char* SSID = "PhucWifi";
+static constexpr const char* SSID = "PhucWifi1";
 static constexpr const char* PASS = "000000001";
 static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
 // Set false to disable the HTTP web log on port 80.
@@ -280,6 +280,18 @@ static constexpr bool CONTINUE_AFTER_GOAL = true;
 static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
 }
 
+namespace SpeedRun2 {
+// Dedicated one-way shortest-path motion profile.
+// Starts with the current stable speedrun tuning so it can be tuned independently later.
+static constexpr float MOVE_SPEED_TPS = Motion::MOVE_SPEED_TPS;
+static constexpr float CORRIDOR_MOVE_SPEED_TPS = Motion::CORRIDOR_MOVE_SPEED_TPS;
+static constexpr float TURN_SPEED_TPS = Motion::TURN_SPEED_TPS;
+static constexpr float CENTERING_GAIN = Motion::CENTERING_GAIN;
+static constexpr float CORRIDOR_CENTERING_GAIN = Motion::CORRIDOR_CENTERING_GAIN;
+static constexpr float FRONT_STOP_MM = Motion::FRONT_STOP_MM;
+static constexpr float CORRIDOR_FRONT_STOP_MM = Motion::CORRIDOR_FRONT_STOP_MM;
+}
+
 namespace Inputs {
 // Built-in BOOT button multi-press launcher on ESP32-S3 GPIO0.
 static constexpr bool ENABLE_BOOT_BUTTON_LAUNCH = true;
@@ -327,6 +339,18 @@ inline MotionController::Config makeMotionConfig() {
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
   cfg.mmPerTick = Motion::MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
+  return cfg;
+}
+
+inline MotionController::Config makeSpeedRun2MotionConfig() {
+  MotionController::Config cfg = makeMotionConfig();
+  cfg.moveSpeedTps = SpeedRun2::MOVE_SPEED_TPS;
+  cfg.corridorMoveSpeedTps = SpeedRun2::CORRIDOR_MOVE_SPEED_TPS;
+  cfg.turnSpeedTps = SpeedRun2::TURN_SPEED_TPS;
+  cfg.centeringGain = SpeedRun2::CENTERING_GAIN;
+  cfg.corridorCenteringGain = SpeedRun2::CORRIDOR_CENTERING_GAIN;
+  cfg.frontStopMm = SpeedRun2::FRONT_STOP_MM;
+  cfg.corridorFrontStopMm = SpeedRun2::CORRIDOR_FRONT_STOP_MM;
   return cfg;
 }
 

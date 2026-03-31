@@ -16,6 +16,24 @@ void MotionController::begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, B
   battery_ = battery;
 }
 
+void MotionController::resetSnapState_() {
+  snapCenterHoldUntilMs_ = 0;
+  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
+}
+
+bool MotionController::updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason) {
+  if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
+    lastProgressMm_ = progressMm;
+    lastProgressMs_ = now;
+    return false;
+  }
+  if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
+    markDone_(MOTION_FAILED, stallReason);
+    return true;
+  }
+  return false;
+}
+
 bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
   if (!left_ || !right_ || !tof_) return false;
   if (isBusy()) return false;
@@ -28,9 +46,8 @@ bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
   startRightTicks_ = right_->getTicks();
   startedMs_ = millis();
   lastProgressMs_ = startedMs_;
-  snapCenterHoldUntilMs_ = 0;
+  resetSnapState_();
   lastProgressMm_ = 0.0f;
-  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
   moveCellTargetCount_ = 1;
   moveEndsAtKnownWall_ = false;
   straightTrackModeLatched_ = false;
@@ -134,8 +151,7 @@ void MotionController::abort(const String& reason) {
   lastFinishedPrimitive_ = MOTION_NONE;
   status_ = MOTION_ABORTED;
   lastError_ = reason;
-  snapCenterHoldUntilMs_ = 0;
-  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
+  resetSnapState_();
 }
 
 void MotionController::clearCompletionState() {
@@ -146,8 +162,7 @@ void MotionController::clearCompletionState() {
   primitive_ = MOTION_NONE;
   lastFinishedPrimitive_ = MOTION_NONE;
   lastError_ = "";
-  snapCenterHoldUntilMs_ = 0;
-  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
+  resetSnapState_();
 }
 
 MultiVL53L0X::StraightTrackMode MotionController::chooseStraightTrackMode_(const WallObservation& walls) const {
@@ -190,8 +205,7 @@ void MotionController::markDone_(MotionStatus status, const String& reason) {
   lastError_ = reason;
   lastFinishedPrimitive_ = primitive_;
   primitive_ = MOTION_NONE;
-  snapCenterHoldUntilMs_ = 0;
-  snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
+  resetSnapState_();
 }
 
 void MotionController::update(RobotState& state) {
@@ -237,13 +251,7 @@ void MotionController::update(RobotState& state) {
       return;
     }
 
-    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-      lastProgressMm_ = progressMm;
-      lastProgressMs_ = now;
-    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-      markDone_(MOTION_FAILED, "move stall");
-      return;
-    }
+    if (updateProgressOrFail_(progressMm, now, "move stall")) return;
   } else if (primitive_ == MOTION_MOVE_MULTI_CELL) {
     const float progressMm = averageProgressMm_();
     const float targetDistanceMm = cfg_.cellDistanceMm * (float)moveCellTargetCount_;
@@ -279,13 +287,7 @@ void MotionController::update(RobotState& state) {
       return;
     }
 
-    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-      lastProgressMm_ = progressMm;
-      lastProgressMs_ = now;
-    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-      markDone_(MOTION_FAILED, "corridor move stall");
-      return;
-    }
+    if (updateProgressOrFail_(progressMm, now, "corridor move stall")) return;
   } else if (primitive_ == MOTION_MOVE_FORWARD_SHORT) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;
@@ -298,13 +300,7 @@ void MotionController::update(RobotState& state) {
       return;
     }
 
-    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-      lastProgressMm_ = progressMm;
-      lastProgressMs_ = now;
-    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-      markDone_(MOTION_FAILED, "short forward stall");
-      return;
-    }
+    if (updateProgressOrFail_(progressMm, now, "short forward stall")) return;
   } else if (primitive_ == MOTION_MOVE_BACKWARD_SHORT) {
     const float progressMm = absoluteAverageProgressMm_();
     state.pose.forwardProgressMm = -progressMm;
@@ -317,13 +313,7 @@ void MotionController::update(RobotState& state) {
       return;
     }
 
-    if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-      lastProgressMm_ = progressMm;
-      lastProgressMs_ = now;
-    } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-      markDone_(MOTION_FAILED, "reverse stall");
-      return;
-    }
+    if (updateProgressOrFail_(progressMm, now, "reverse stall")) return;
   } else if (primitive_ == MOTION_SNAP_CENTER) {
     if (snapCenterPhase_ == SNAP_CENTER_PHASE_BACK) {
       const float progressMm = absoluteAverageProgressMm_();
@@ -344,13 +334,7 @@ void MotionController::update(RobotState& state) {
         return;
       }
 
-      if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-        lastProgressMm_ = progressMm;
-        lastProgressMs_ = now;
-      } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-        markDone_(MOTION_FAILED, "snap center reverse stall");
-        return;
-      }
+      if (updateProgressOrFail_(progressMm, now, "snap center reverse stall")) return;
     } else if (snapCenterPhase_ == SNAP_CENTER_PHASE_HOLD) {
       state.pose.forwardProgressMm = 0.0f;
       left_->hardStop();
@@ -378,13 +362,7 @@ void MotionController::update(RobotState& state) {
         return;
       }
 
-      if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
-        lastProgressMm_ = progressMm;
-        lastProgressMs_ = now;
-      } else if ((uint32_t)(now - lastProgressMs_) > cfg_.stallTimeoutMs) {
-        markDone_(MOTION_FAILED, "snap center forward stall");
-        return;
-      }
+      if (updateProgressOrFail_(progressMm, now, "snap center forward stall")) return;
     }
   } else if (primitive_ == MOTION_TURN_LEFT_90 ||
              primitive_ == MOTION_TURN_RIGHT_90 ||

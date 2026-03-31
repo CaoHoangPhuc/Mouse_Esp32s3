@@ -100,6 +100,7 @@ static void debugPrintln(const String& s = "");
 static void debugPrompt();
 static bool debugClientConnected();
 static bool serialOutputEnabled();
+static bool wifiReconnectAllowed();
 static void updateOtaSafeMode();
 static void suspendTaskIfRunning(TaskHandle_t handle);
 static void resumeTaskIfSuspended(TaskHandle_t handle);
@@ -111,12 +112,15 @@ static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void beginSpeedRun(uint8_t phase = 1);
 static uint8_t speedRunBasePhase(uint8_t phase);
+static bool usesSpeedRun2Profile(uint8_t phase);
+static bool isContinuousSpeedRunPhase(uint8_t phase);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
 static void applyCurrentPoseAsHomeRect();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
 static void maze_debug_s();
+static void resetCommonModeState();
 static void closeDebugConsole(const String& reason = "");
 static bool shouldSnapCenterFromKnownBackWall();
 static bool startRunSnapSequence(const char* label);
@@ -205,6 +209,10 @@ static bool debugClientConnected() {
 
 static bool serialOutputEnabled() {
   return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
+}
+
+static bool wifiReconnectAllowed() {
+  return robotState.mode == ROBOT_MODE_IDLE;
 }
 
 static void resetLoopWatchdogState(LoopWatchdogState& state) {
@@ -322,6 +330,14 @@ static uint8_t speedRunBasePhase(uint8_t phase) {
   if (phase <= 1) return 1;
   if (phase > 4) return 1;
   return phase - 1;
+}
+
+static bool usesSpeedRun2Profile(uint8_t phase) {
+  return phase >= 2;
+}
+
+static bool isContinuousSpeedRunPhase(uint8_t phase) {
+  return phase >= 2;
 }
 
 static void debugPrint(const String& s) {
@@ -540,24 +556,24 @@ static void updateRobotLed() {
   if (dbg.isUpdateInProgress()) return;
 
   if (robotState.goalReached) {
-    ledController.setWhite();
+    ledController.setState(LedController::State::WHITE);
     return;
   }
 
   switch (robotState.mode) {
     case ROBOT_MODE_EXPLORE:
-      if (exploreGoalSeen) ledController.setBlue();
-      else ledController.setGreen();
+      if (exploreGoalSeen) ledController.setState(LedController::State::BLUE);
+      else ledController.setState(LedController::State::GREEN);
       return;
     case ROBOT_MODE_FAULT:
-      ledController.setRed();
+      ledController.setState(LedController::State::RED);
       return;
     default:
       if (robotState.speedRunReady) {
-        ledController.setWhite();
+        ledController.setState(LedController::State::WHITE);
         return;
       }
-      ledController.off();
+      ledController.setState(LedController::State::OFF);
       return;
   }
 }
@@ -685,15 +701,13 @@ static void maze_debug_s() {
   debugPrintln("");
 }
 
-static void enterIdleMode(const String& reason) {
+static void resetCommonModeState() {
   serialOutputTemporarilyMuted = false;
   motionController.setStopOnCompletion(true);
+  motionController.setConfig(AppConfig::makeMotionConfig());
   if (lapTimerRunning) {
     stopLapTimer(false);
   }
-  robotState.mode = ROBOT_MODE_IDLE;
-  robotState.motionStatus = MOTION_IDLE;
-  robotState.activePrimitive = MOTION_NONE;
   clearForwardActionTracking();
   testLoopMode = TEST_LOOP_NONE;
   runStartSnapPending = false;
@@ -703,29 +717,24 @@ static void enterIdleMode(const String& reason) {
   speedRunPreAlignHasSideSnap = false;
   motorBothFlipTestEnabled = false;
   explorer.setRunning(false);
+}
+
+static void enterIdleMode(const String& reason) {
+  resetCommonModeState();
+  robotState.mode = ROBOT_MODE_IDLE;
+  robotState.motionStatus = MOTION_IDLE;
+  robotState.activePrimitive = MOTION_NONE;
   motionController.stop();
   updateRobotLed();
   debugPrintln("[MODE] IDLE: " + reason);
 }
 
 static void enterFaultMode(const String& reason) {
-  serialOutputTemporarilyMuted = false;
-  motionController.setStopOnCompletion(true);
-  if (lapTimerRunning) {
-    stopLapTimer(false);
-  }
+  resetCommonModeState();
   robotState.mode = ROBOT_MODE_FAULT;
   robotState.lastFault = reason;
   robotState.faultCount++;
-  clearForwardActionTracking();
-  runStartSnapPending = false;
-  deferPlannerAckUntilSnapCenter = false;
-  runStartSnapMode = ROBOT_MODE_IDLE;
-  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
-  speedRunPreAlignHasSideSnap = false;
-  motorBothFlipTestEnabled = false;
   motionController.abort(reason);
-  explorer.setRunning(false);
   updateRobotLed();
   debugPrintln("[FAULT] " + reason);
 }
@@ -796,6 +805,7 @@ static void onExplorerWebCommand(const String& cmd) {
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
   startLapTimer("HG");
+  motionController.setConfig(AppConfig::makeMotionConfig());
   motionController.setStopOnCompletion(true);
   robotState.goalReached = false;
   robotState.speedRunReady = false;
@@ -828,7 +838,10 @@ static void beginSpeedRun(uint8_t phase) {
   robotState.speedRunPhase = phase;
   serialOutputTemporarilyMuted = false;
   stopLapTimer(false);
-  motionController.setStopOnCompletion(true);
+  motionController.setConfig(usesSpeedRun2Profile(phase)
+                               ? AppConfig::makeSpeedRun2MotionConfig()
+                               : AppConfig::makeMotionConfig());
+  motionController.setStopOnCompletion(!isContinuousSpeedRunPhase(phase));
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
@@ -848,6 +861,8 @@ static void beginSpeedRun(uint8_t phase) {
   debugPrintln("[MODE] SPEED RUN " + String((int)phase));
   if (phase == 1) {
     debugPrintln("[SPEEDRUN] phase 1 is the baseline shortest-path run");
+  } else if (phase == 2) {
+    debugPrintln("[SPEEDRUN] phase 2 is the one-way shortest-path run with the dedicated motion profile");
   } else {
     debugPrintln("[SPEEDRUN] phase " + String((int)phase) +
                  " inherits phase " + String((int)speedRunBasePhase(phase)) +
@@ -896,6 +911,13 @@ static void clearMazeMemoryOnly() {
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
+  if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+      usesSpeedRun2Profile(robotState.speedRunPhase) &&
+      act == FloodFillExplorer::ACT_TURN_180) {
+    enterFaultMode("speedrun 2 unexpected uturn");
+    return false;
+  }
+
   bool ok = false;
   MotionPrimitiveType startedPrimitive = MOTION_NONE;
   uint8_t forwardCells = 1;
@@ -1005,6 +1027,8 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
     }
     if (robotState.speedRunPhase == 1) {
       serialOutputTemporarilyMuted = false;
+    } else if (usesSpeedRun2Profile(robotState.speedRunPhase)) {
+      debugPrintln("[SPEEDRUN] reached goal, finish one-way run");
     }
     robotState.goalReached = true;
     updateRobotLed();
@@ -1141,6 +1165,10 @@ static void handleMotionCompletion() {
     primitive == MOTION_TURN_180;
   const bool isSnapCenterPrimitive = primitive == MOTION_SNAP_CENTER;
   const bool isMultiCellForward = primitive == MOTION_MOVE_MULTI_CELL;
+  const bool continuousSpeedRun =
+    robotState.mode == ROBOT_MODE_SPEED_RUN &&
+    isContinuousSpeedRunPhase(robotState.speedRunPhase) &&
+    speedRunPreAlignStage == SPEEDRUN_PREALIGN_NONE;
   bool skipPostMotionHold = false;
   bool stepBudgetReached = false;
 
@@ -1175,8 +1203,10 @@ static void handleMotionCompletion() {
                        ("cells=" + String((int)activeForwardActionCellsCommitted) + "/" +
                         String((int)activeForwardActionCellsRequested)) :
                        String());
-    leftMotor.hardStop();
-    rightMotor.hardStop();
+    if (!continuousSpeedRun) {
+      leftMotor.hardStop();
+      rightMotor.hardStop();
+    }
 
     if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
         speedRunPreAlignStage != SPEEDRUN_PREALIGN_NONE) {
@@ -1338,6 +1368,7 @@ static void handleMotionCompletion() {
     }
 
     if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
+        !continuousSpeedRun &&
         !skipPostMotionHold &&
         motionController.status() == MOTION_COMPLETED &&
         robotState.mode != ROBOT_MODE_IDLE &&
@@ -1363,7 +1394,13 @@ static void handleMotionCompletion() {
   }
 
   clearForwardActionTracking();
-  motionController.stop();
+  if (continuousSpeedRun &&
+      status == MOTION_COMPLETED &&
+      robotState.mode == ROBOT_MODE_SPEED_RUN) {
+    motionController.clearCompletionState();
+  } else {
+    motionController.stop();
+  }
 }
 
 static void serviceActiveForwardAction() {
@@ -1558,6 +1595,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   dbg.setHealthJsonProvider(onWebHealthJson);
   dbg.setSerialOutputAllowedHandler(serialOutputEnabled);
+  dbg.setReconnectAllowedHandler(wifiReconnectAllowed);
   explorer.setStateExtrasJsonProvider(explorerLapStateJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
@@ -1847,6 +1885,7 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
   debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
