@@ -247,7 +247,7 @@ static constexpr float CENTER_RAW_TAU_SEC = 0.07f;
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
 static constexpr float FRONT_STOP_MM = 100.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 120.0f;
+static constexpr float CORRIDOR_FRONT_STOP_MM = 110.0f;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
