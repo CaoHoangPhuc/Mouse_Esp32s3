@@ -219,33 +219,16 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 512 * 1024; 
+const CHUNK_SIZE = 128 * 1024; 
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
-const MAX_SESSION_RESTARTS = 2;
-const CHUNK_TIMEOUT_MS = 10000;
 const CHUNK_SUCCESS_PAUSE_MS = 1000;
 
-async function fetchWithTimeout(url, options, timeoutMs){
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      throw new Error('timeout');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function postStart(totalSize){
-  const res = await fetchWithTimeout('/upload/start?size=' + totalSize, {
+  const res = await fetch('/upload/start?size=' + totalSize, {
     method: 'POST',
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
@@ -256,21 +239,21 @@ async function postChunk(file, offset, chunkSize){
   const chunk = file.slice(offset, end);
   const form = new FormData();
   form.append('chunk', chunk, file.name + '.part');
-  const res = await fetchWithTimeout('/upload/chunk?offset=' + offset, {
+  const res = await fetch('/upload/chunk?offset=' + offset, {
     method: 'POST',
     body: form,
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
 }
 
 async function postFinish(){
-  const res = await fetchWithTimeout('/upload/finish', {
+  const res = await fetch('/upload/finish', {
     method: 'POST',
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
@@ -292,7 +275,6 @@ form.addEventListener('submit', async (ev) => {
     let info = await postStart(file.size);
     let offset = Number(info.nextOffset || 0);
     let chunkSize = CHUNK_SIZE;
-    let sessionRestarts = 0;
 
     while (offset < file.size) {
       let done = false;
@@ -308,21 +290,6 @@ form.addEventListener('submit', async (ev) => {
           break;
         } catch (err) {
           lastErr = String(err);
-          const sessionLost =
-            lastErr.indexOf('no active upload session') >= 0 ||
-            lastErr.indexOf('restart upload') >= 0;
-          if (sessionLost) {
-            if (sessionRestarts >= MAX_SESSION_RESTARTS) {
-              throw new Error('upload session lost repeatedly; please retry from start');
-            }
-            sessionRestarts++;
-            msg.textContent = 'Upload session lost at offset ' + offset + '. Restarting session ' + sessionRestarts + '/' + MAX_SESSION_RESTARTS + '...';
-            info = await postStart(file.size);
-            offset = Number(info.nextOffset || 0);
-            prog.value = Math.round((offset / file.size) * 100);
-            done = true;
-            break;
-          }
           msg.textContent = 'Chunk retry ' + attempt + '/' + MAX_RETRIES + ' at offset ' + offset + ' failed: ' + lastErr + ' (chunk=' + chunkSize + ')';
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
@@ -349,7 +316,7 @@ form.addEventListener('submit', async (ev) => {
 </html>
 )HTML";
 
-static constexpr uint32_t kUploadStallTimeoutMs = 15000;
+static constexpr uint32_t kUploadStallTimeoutMs = 10000;
 
 WiFiOtaWebSerial::WiFiOtaWebSerial() {}
 
