@@ -462,6 +462,7 @@ static void serviceDebugConsole() {
     } else {
       debugClient = incoming;
       debugClient.setNoDelay(true);
+      debugClient.setTimeout(50);
       debugPrintln("[NET] debug console connected");
       debugPrintln("[NET] commands match serial commands");
       debugPrompt();

@@ -316,7 +316,7 @@ static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
 namespace Tasks {
 // Main periodic task cadences (milliseconds).
 // Affects: scheduler pacing and loop watchdog expected periods.
-static constexpr uint32_t USER_LOOP_PERIOD_MS = 20;
+static constexpr uint32_t USER_LOOP_PERIOD_MS = 100;
 static constexpr uint32_t PLANNER_LOOP_PERIOD_MS = 50;
 static constexpr uint32_t MOTOR_LOOP_PERIOD_MS = 5;
 static constexpr uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
