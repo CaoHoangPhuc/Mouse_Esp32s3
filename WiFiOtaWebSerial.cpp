@@ -6,6 +6,9 @@
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <Update.h>
+#include <esp_err.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
 // Wrapper to keep WebServer out of header
 class WiFiOtaWebSerial::WebServerWrapper {
@@ -327,6 +330,7 @@ form.addEventListener('submit', async (ev) => {
 )HTML";
 
 static constexpr uint32_t kUploadStallTimeoutMs = 10000;
+static constexpr bool kUploadPreEraseEnabled = true;
 
 WiFiOtaWebSerial::WiFiOtaWebSerial() {}
 
@@ -756,6 +760,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
   });
 
   srv.on("/upload/start", HTTP_POST, [this]() {
+    uploadWeb_->server.client().setNoDelay(true);
     const size_t totalSize = (size_t)uploadWeb_->server.arg("size").toInt();
     if (totalSize == 0) {
       uploadWeb_->server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid size\"}");
@@ -782,6 +787,33 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
     setUploadLedActive_();
     println(String("[WEB OTA] Chunked start total=") + totalSize);
 
+    if (kUploadPreEraseEnabled) {
+      const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+      if (next == nullptr) {
+        setUploadLedError_();
+        webUploadInProgress_ = false;
+        chunkUploadActive_ = false;
+        uploadWeb_->server.send(500, "application/json", "{\"ok\":false,\"error\":\"no ota partition\"}");
+        return;
+      }
+      const size_t eraseSize =
+        ((totalSize + SPI_FLASH_SEC_SIZE - 1) / SPI_FLASH_SEC_SIZE) * SPI_FLASH_SEC_SIZE;
+      println(String("[WEB OTA] Pre-erase start bytes=") + eraseSize);
+      const esp_err_t eraseErr = esp_partition_erase_range(next, 0, eraseSize);
+      if (eraseErr != ESP_OK) {
+        setUploadLedError_();
+        webUploadInProgress_ = false;
+        chunkUploadActive_ = false;
+        uploadWeb_->server.send(
+          500,
+          "application/json",
+          String("{\"ok\":false,\"error\":\"pre-erase failed:") + esp_err_to_name(eraseErr) + "\"}"
+        );
+        return;
+      }
+      println("[WEB OTA] Pre-erase done");
+    }
+
     if (!Update.begin(totalSize)) {
       Update.printError(Serial);
       setUploadLedError_();
@@ -796,6 +828,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
 
   srv.on("/upload/chunk", HTTP_POST,
     [this]() {
+      uploadWeb_->server.client().setNoDelay(true);
       if (!chunkUploadActive_) {
         uploadWeb_->server.send(409, "application/json", "{\"ok\":false,\"error\":\"no active upload session\"}");
         return;
