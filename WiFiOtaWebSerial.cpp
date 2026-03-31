@@ -219,10 +219,13 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 32 * 1024; 
+const CHUNK_SIZE = 64 * 1024; 
+const MAX_CHUNK_SIZE = 64 * 1024;
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
+const RETRY_BACKOFF_MS = 250;
 const CHUNK_SUCCESS_PAUSE_MS = 20;
+const GROW_CHUNK_AFTER_SUCCESS = 4;
 
 async function postStart(totalSize){
   const res = await fetch('/upload/start?size=' + totalSize, {
@@ -275,6 +278,7 @@ form.addEventListener('submit', async (ev) => {
     let info = await postStart(file.size);
     let offset = Number(info.nextOffset || 0);
     let chunkSize = CHUNK_SIZE;
+    let successStreak = 0;
 
     while (offset < file.size) {
       let done = false;
@@ -285,13 +289,19 @@ form.addEventListener('submit', async (ev) => {
           offset = Number(info.nextOffset || 0);
           prog.value = Math.round((offset / file.size) * 100);
           msg.textContent = 'Uploading... ' + prog.value + '%';
+          successStreak++;
+          if (successStreak >= GROW_CHUNK_AFTER_SUCCESS && chunkSize < MAX_CHUNK_SIZE) {
+            chunkSize = Math.min(MAX_CHUNK_SIZE, chunkSize * 2);
+            successStreak = 0;
+          }
           await new Promise((resolve) => setTimeout(resolve, CHUNK_SUCCESS_PAUSE_MS));
           done = true;
           break;
         } catch (err) {
           lastErr = String(err);
+          successStreak = 0;
           msg.textContent = 'Chunk retry ' + attempt + '/' + MAX_RETRIES + ' at offset ' + offset + ' failed: ' + lastErr + ' (chunk=' + chunkSize + ')';
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
         }
       }
       if (!done) {
