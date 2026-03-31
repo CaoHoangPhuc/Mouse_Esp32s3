@@ -143,6 +143,11 @@ static constexpr uint8_t XSHUT_PINS[SENSOR_COUNT] = {0, 1, 2, 3, 4};
 // Order matters and must match the physical sensor order expected by MultiVL53L0X.
 static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x34};
 
+// Low-pass smoothing for per-sensor distance updates.
+// update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
+static constexpr float DIST_LPF_PREV_WEIGHT = 0.80f;
+static constexpr float DIST_LPF_SAMPLE_WEIGHT = 0.20f;
+
 }
 
 namespace Motors {
@@ -187,6 +192,10 @@ static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
 static constexpr float PID_SLEW_RATE = 10.0f;
+
+// Low-pass smoothing for encoder speed estimate in DcMotor::update().
+// _tps += TPS_LPF_ALPHA * (instant - _tps)
+static constexpr float TPS_LPF_ALPHA = 0.20f;
 }
 
 namespace Motion {
@@ -231,6 +240,9 @@ static constexpr float CENTER_PID_KI = 0.01f;
 static constexpr float CENTER_PID_KD = 1.0f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
+// Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
+static constexpr float CENTER_BLEND_TAU_SEC = 0.18f;
+static constexpr float CENTER_RAW_TAU_SEC = 0.10f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.

@@ -1,5 +1,6 @@
 #include "esp32-hal-gpio.h"
 #include "DcMotor.h"
+#include "Config.h"
 #include "driver/gpio.h"
 
 #if defined(ESP32)
@@ -189,7 +190,7 @@ void DcMotor::update() {
   float tpsInstant = dTicks / dt;
 
   // Filter TPS (keeps it stable)
-  const float alpha = 0.2f;
+  const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
   _tps = _tps + alpha * (tpsInstant - _tps);
 
   _lastMicros = now;

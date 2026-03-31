@@ -211,7 +211,9 @@ void MultiVL53L0X::update() {
             if ((_lastDistance[_cSensor] == 0) || (_lastDistance[_cSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
                 _lastDistance[_cSensor] = val;
             } else {
-                _lastDistance[_cSensor] = 0.8f * _lastDistance[_cSensor] + 0.2f * val;
+                _lastDistance[_cSensor] =
+                    AppConfig::Tof::DIST_LPF_PREV_WEIGHT * _lastDistance[_cSensor] +
+                    AppConfig::Tof::DIST_LPF_SAMPLE_WEIGHT * val;
             }
 
             _timeoutFlag[_cSensor] = 0;
@@ -415,7 +417,7 @@ float MultiVL53L0X::computeError(float headingError) {
     }
 
     const float blendTarget = (forceDual && dualWallValid) ? 1.0f : 0.0f;
-    const float blendTauSec = 0.18f;
+    const float blendTauSec = AppConfig::Motion::CENTER_BLEND_TAU_SEC;
     const float blendAlpha = dt / (blendTauSec + dt);
     _dualWallBlend += (blendTarget - _dualWallBlend) * blendAlpha;
     if (_dualWallBlend < 0.0f) _dualWallBlend = 0.0f;
@@ -437,7 +439,7 @@ float MultiVL53L0X::computeError(float headingError) {
         }
     }
 
-    const float rawTauSec = 0.10f;
+    const float rawTauSec = AppConfig::Motion::CENTER_RAW_TAU_SEC;
     const float rawAlpha = dt / (rawTauSec + dt);
     _centerRawFiltered += (targetRawErr - _centerRawFiltered) * rawAlpha;
     const float rawErr = _centerRawFiltered;
