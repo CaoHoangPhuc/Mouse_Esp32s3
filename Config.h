@@ -240,6 +240,9 @@ static constexpr float CENTER_PID_KI = 0.01f;
 static constexpr float CENTER_PID_KD = 0.5f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
+// Clamp side-wall distance used by center PID math only.
+// Sensor data can remain valid farther than this, but PID error uses this max.
+static constexpr uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM = 150;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
 static constexpr float CENTER_BLEND_TAU_SEC = 0.14f;
 static constexpr float CENTER_RAW_TAU_SEC = 0.07f;

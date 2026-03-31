@@ -78,6 +78,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - front-stop threshold now uses `FRONT_STOP_MM` when effective move target is 1 cell, and `CORRIDOR_FRONT_STOP_MM` only for true multi-cell corridor runs
 - runtime forward-cell commit logic now matches that rule too, so `move 1` completion uses `FRONT_STOP_MM` consistently in both motion and planner-commit paths
 - added front-corner anti-stick steering assist: when front is too close (`<50 mm`, V1 front or V2 FL/FR), control injects stronger steer-away bias to avoid nose-sticking on walls
+- center PID side-distance clamp is now configurable via `CENTER_PID_EFFECTIVE_SIDE_MAX_MM`, and V2 front-right (S3) is now treated independently (no S0 dependency workaround)
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

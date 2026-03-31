@@ -4,28 +4,12 @@
 uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
     if (index >= _numSensors) return 255;
     if (!_initialized[index]) return 3;
-
-    // if (_version == SENSOR_V2 && index == 3) {
-    //     uint8_t s0State = _timeoutFlag[0];
-
-    //     if (s0State == 2) return 2;  // S0 sees "far", clamp S3 to far too.
-    //     if (s0State == 3) return 3;  // S0 invalid => S3 invalid.
-    // }
-
     return _timeoutFlag[index];
 }
 
 uint16_t MultiVL53L0X::effectiveDistance_(uint8_t index) const {
     if (index >= _numSensors) return 0;
     if (!_initialized[index]) return 0;
-
-    // if (_version == SENSOR_V2 && index == 3) {
-    //     uint8_t s0State = _timeoutFlag[0];
-
-    //     if (s0State == 2) return AppConfig::Tof::DIST_FAR_MM;  // Match S0 "far" state.
-    //     if (s0State == 3) return 0;         // Match S0 invalid state.
-    // }
-
     return _lastDistance[index];
 }
 
@@ -279,10 +263,6 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
         uint8_t frState = stateTimeout(3);
         bool flValid = isObservable(0);
         bool frValid = isObservable(3);
-        // bool frValidRaw = isObservable(3);
-        // S3 is front-right. On current hardware it is only trustworthy when
-        // S0 (front-left) is also seeing the front wall region.
-        // bool frValid = flValid && frValidRaw;
         bool flFar = flState == 2;
         bool frFar = frState == 2;
         s.leftValid  = isObservable(1);
@@ -348,21 +328,20 @@ float MultiVL53L0X::computeError(float headingError) {
     uint16_t left = AppConfig::Tof::DIST_ERROR_MM;
     uint16_t right = AppConfig::Tof::DIST_ERROR_MM;
 
-    static uint16_t effectiveLeft = 150;
-    static uint16_t effectiveRight = 150;
+    const uint16_t effectiveSideMax = AppConfig::Motion::CENTER_PID_EFFECTIVE_SIDE_MAX_MM;
 
     uint8_t leftState = 3;
     uint8_t rightState = 3;
 
     if (_version == SENSOR_V1) {
-        left  = getDistance(0) < effectiveLeft ? getDistance(0) : effectiveLeft;
-        right = getDistance(4) < effectiveRight ? getDistance(4) : effectiveRight;
+        left  = min(getDistance(0), effectiveSideMax);
+        right = min(getDistance(4), effectiveSideMax);
         leftState  = stateTimeout(0);
         rightState = stateTimeout(4);
     }
     else if (_version == SENSOR_V2) {
-        left  = getDistance(1) < effectiveLeft ? getDistance(1) : effectiveLeft;
-        right = getDistance(2) < effectiveRight ? getDistance(2) : effectiveRight;
+        left  = min(getDistance(1), effectiveSideMax);
+        right = min(getDistance(2), effectiveSideMax);
         leftState  = stateTimeout(1);
         rightState = stateTimeout(2);
     }
