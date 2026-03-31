@@ -375,7 +375,7 @@ float MultiVL53L0X::computeError(float headingError) {
     if (dualWallValid) {
         if (shouldCaptureTargets &&
             fabsf((float)left - (float)right) <= AppConfig::Motion::CENTER_TARGET_CAPTURE_WINDOW_MM) {
-            _centerTargetLeft = (float)left;
+            _centerTargetLeft = 0.8f * _centerTargetLeft + 0.2f * (float)left;
             _centerTargetRight = (float)right;
         }
         dualErr = 0.5f * ((_centerTargetLeft - (float)left) +
@@ -425,7 +425,17 @@ float MultiVL53L0X::computeError(float headingError) {
 
     float targetRawErr = headingError;
     if (forceDual) {
-        targetRawErr = dualWallValid ? dualErr : _lastDualWallError;
+        if (dualWallValid) {
+            targetRawErr = dualErr;
+        } else if (leftValid) {
+            // Corridor transition: if dual tracking loses the right wall, keep following left.
+            targetRawErr = _centerTargetLeft - (float)left;
+        } else if (rightValid) {
+            // Corridor transition: if dual tracking loses the left wall, keep following right.
+            targetRawErr = (float)right - _centerTargetRight;
+        } else {
+            targetRawErr = headingError;
+        }
     } else if (forceLeft) {
         targetRawErr = leftValid ? (_centerTargetLeft - (float)left) : headingError;
     } else if (forceRight) {
