@@ -85,6 +85,7 @@ private:
   void setupOta_();
   void setupWeb_();
   void setupUploadWeb_();
+  void startWebServersIfNeeded_();
   void serviceUploadSession_();
   void setLedState_(const String& cmd);
   void setUploadLedActive_();
@@ -106,4 +107,6 @@ private:
   uint32_t uploadLastActivityMs_ = 0;
   bool otaHandlersReady_ = false;
   bool otaStarted_ = false;
+  bool webServerStarted_ = false;
+  bool uploadWebServerStarted_ = false;
 };

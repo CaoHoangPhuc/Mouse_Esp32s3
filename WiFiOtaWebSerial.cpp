@@ -219,7 +219,7 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 128 * 1024; 
+const CHUNK_SIZE = 512 * 1024; 
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
 const MAX_SESSION_RESTARTS = 2;
@@ -361,6 +361,8 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
   cfg_ = cfg;
   if (!cfg_.ssid || cfg_.ssid[0] == '\0') return false;
   otaStarted_ = false;
+  webServerStarted_ = false;
+  uploadWebServerStarted_ = false;
 
   // server
   if (web_) { delete web_; web_ = nullptr; }
@@ -416,6 +418,8 @@ void WiFiOtaWebSerial::end() {
   }
   started_ = false;
   otaStarted_ = false;
+  webServerStarted_ = false;
+  uploadWebServerStarted_ = false;
 
   if (web_) {
     delete web_;
@@ -450,6 +454,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       const wl_status_t wifiStatus = WiFi.status();
       if (wifiStatus != WL_CONNECTED) {
         urlsAnnounced = false;
+        otaStarted_ = false;
         if (otaInProgress || webUploadInProgress_ || rebootPending_) {
           vTaskDelay(pdMS_TO_TICKS(50));
           continue;
@@ -500,7 +505,7 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       if (otaInProgress) {
         // OTA priority mode
         if (otaStarted_) ArduinoOTA.handle();
-        if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
         serviceUploadSession_();
         // Optional: skip web server to reduce load
         // if (web_) web_->server.handleClient();
@@ -508,15 +513,15 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
         continue;
       }
       if (webUploadInProgress_) {
-        if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
         serviceUploadSession_();
         vTaskDelay(1);
         continue;
       }
       // Normal mode
       if (otaStarted_) ArduinoOTA.handle();
-      if (cfg_.enableWeb && web_) web_->server.handleClient();
-      if (cfg_.enableUploadWeb && uploadWeb_) uploadWeb_->server.handleClient();
+      if (cfg_.enableWeb && web_ && webServerStarted_) web_->server.handleClient();
+      if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
       serviceUploadSession_();
       if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
         println("[WEB OTA] Rebooting now...");
@@ -583,6 +588,7 @@ void WiFiOtaWebSerial::onWiFiConnected_() {
       MDNS.addService("http", "tcp", cfg_.uploadPort);
     }
   }
+  startWebServersIfNeeded_();
   setupOta_();
 }
 
@@ -593,7 +599,6 @@ void WiFiOtaWebSerial::setupOta_() {
     ArduinoOTA
       .onStart([this]() {
         otaInProgress = true;
-        ledBlinkMs_ = 0;
         ledBlinkOn_ = true;
         setUploadLedActive_();
 
@@ -692,7 +697,6 @@ void WiFiOtaWebSerial::setupWeb_() {
     web_->server.send(404, "text/plain", "Not found");
   });
 
-  srv.begin();
 }
 
 String WiFiOtaWebSerial::extractBatteryText_(const String& json) const {
@@ -736,7 +740,6 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
     uploadLastActivityMs_ = millis();
     rebootPending_ = false;
     rebootAtMs_ = 0;
-    ledBlinkMs_ = 0;
     ledBlinkOn_ = true;
     setUploadLedActive_();
     println(String("[WEB OTA] Chunked start total=") + totalSize);
@@ -896,7 +899,6 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
         webUploadInProgress_ = true;
         rebootPending_ = false;
         rebootAtMs_ = 0;
-        ledBlinkMs_ = 0;
         ledBlinkOn_ = true;
         setUploadLedActive_();
         println(String("[WEB OTA] Start: ") + upload.filename);
@@ -938,7 +940,18 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
     uploadWeb_->server.send(404, "text/plain", "Not found");
   });
 
-  srv.begin();
+}
+
+void WiFiOtaWebSerial::startWebServersIfNeeded_() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (cfg_.enableWeb && web_ && !webServerStarted_) {
+    web_->server.begin();
+    webServerStarted_ = true;
+  }
+  if (cfg_.enableUploadWeb && uploadWeb_ && !uploadWebServerStarted_) {
+    uploadWeb_->server.begin();
+    uploadWebServerStarted_ = true;
+  }
 }
 
 void WiFiOtaWebSerial::serviceUploadSession_() {

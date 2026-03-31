@@ -75,3 +75,4 @@ Rule:
 - whenever a code change affects setup, commands, tuning, hardware behavior, or operator workflow, update the related `.md` documents in the same change instead of leaving docs as follow-up work
 - whenever a code change changes behavior or tuning, bump the documented project version, then stage and commit that versioned change together
 - whenever a command is added, removed, or its usage changes, update both the serial/web help text and the related documentation in the same change
+- whenever any repository change is completed, stage and commit that change in the same working session unless the user explicitly says not to commit

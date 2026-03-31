@@ -91,6 +91,7 @@ static void tof_raw_debug_s();
 static void robot_debug_s();
 static void battery_debug_s();
 static void serviceDebugConsole();
+static void serviceDebugServerState();
 static void serviceMotorBothFlipTest();
 static void serviceBootButtonLauncher();
 static bool readBootButtonPressed();
@@ -152,6 +153,7 @@ static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
 static int32_t exploreStepBudget = -1;
 static bool serialOutputTemporarilyMuted = false;
+static bool debugServerStarted = false;
 static uint8_t activeForwardActionCellsRequested = 0;
 static uint8_t activeForwardActionCellsCommitted = 0;
 enum SpeedRunPreAlignStage : uint8_t {
@@ -452,6 +454,7 @@ static void closeDebugConsole(const String& reason) {
 }
 
 static void serviceDebugConsole() {
+  if (!debugServerStarted) return;
   if (debugServer.hasClient()) {
     WiFiClient incoming = debugServer.accept();
     if (debugClientConnected()) {
@@ -487,6 +490,26 @@ static void serviceDebugConsole() {
     debugClient.stop();
     netLine = "";
   }
+}
+
+static void serviceDebugServerState() {
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiConnected) {
+    if (!debugServerStarted) {
+      debugServer.begin();
+      debugServer.setNoDelay(true);
+      debugServerStarted = true;
+      debugPrintln(String("[NET] TCP console ready: ") + WiFi.localIP().toString() +
+                   ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
+    }
+    return;
+  }
+
+  if (!debugServerStarted) return;
+
+  closeDebugConsole("[NET] disconnected (wifi offline)");
+  debugServer.stop();
+  debugServerStarted = false;
 }
 
 static void i2cRecover(int sda, int scl) {
@@ -1576,6 +1599,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   }
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   ledController.begin();
+  ledController.setState(LedController::State::RED);
 
   WiFiOtaWebSerial::Config wifiCfg;
   wifiCfg.ssid = AppConfig::Wifi::SSID;
@@ -1599,8 +1623,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   explorer.setStateExtrasJsonProvider(explorerLapStateJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
-  debugServer.begin();
-  debugServer.setNoDelay(true);
+  debugServerStarted = false;
 
   motorsOk = leftMotor.begin(AppConfig::Motors::LEFT_PINS,
                              AppConfig::Motors::LEFT_PWM_CHANNEL,
@@ -1674,6 +1697,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 2, &userTaskHandle,      0);
 
   enterIdleMode("ready");
+  ledController.setState(LedController::State::OFF);
 }
 
 void loopApp() {
@@ -1699,6 +1723,7 @@ void userTaskBody(void* arg) {
     motionController.update(robotState);
     serviceMotorBothFlipTest();
     serviceBootButtonLauncher();
+    serviceDebugServerState();
     serviceDebugConsole();
 
     while (Serial.available() > 0) {
@@ -1883,7 +1908,13 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] Motors=") + (motorsOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
-  debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  if (WiFi.status() == WL_CONNECTED) {
+    debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" +
+                 String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  } else {
+    debugPrintln(String("[BOOT] TCP Console: waiting for WiFi on :") +
+                 String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  }
   debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");

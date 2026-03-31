@@ -808,11 +808,10 @@ bool FloodFillExplorer::begin(const Config& cfg){
 
   if (cfg_.enableWeb && server_) {
     setupWeb_();
-    server_->begin();
-    setupWs_();
   }
 
   started_ = true;
+  webServing_ = false;
   running_ = cfg_.autoRun;
 
   waitAck_ = false;
@@ -831,11 +830,14 @@ bool FloodFillExplorer::begin(const Config& cfg){
 
 void FloodFillExplorer::loop() {
   if (!started_) return;
+  serviceWebServerState_();
 
-  if (server_) {
+  if (webServing_ && server_) {
     server_->handleClient();
   }
-  serviceWs_();
+  if (webServing_) {
+    serviceWs_();
+  }
 
   static uint32_t lastLogMs = 0;
 
@@ -1027,6 +1029,30 @@ void FloodFillExplorer::reset(){
 
   log_("[FF] reset");
   markDirty_();
+}
+
+void FloodFillExplorer::serviceWebServerState_() {
+  if (!cfg_.enableWeb || !server_) return;
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiConnected) {
+    if (!webServing_) {
+      server_->begin();
+      setupWs_();
+      webServing_ = true;
+      log_("[Explorer] Web server started (WiFi connected)");
+    }
+    return;
+  }
+
+  if (!webServing_) return;
+  if (ws_) {
+    if (ws_->client) ws_->client.stop();
+    ws_->server.stop();
+    ws_->handshaken = false;
+    ws_->lastStateVerSent = 0xFFFFFFFFu;
+  }
+  webServing_ = false;
+  log_("[Explorer] Web server paused (WiFi disconnected)");
 }
 
 void FloodFillExplorer::computeFloodFill_(){

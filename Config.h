@@ -63,7 +63,7 @@ static constexpr uint8_t GOAL_H = 1;
 namespace Wifi {
 // Development Wi-Fi / OTA / web logging settings.
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
-static constexpr const char* SSID = "PhucWifi1";
+static constexpr const char* SSID = "PhucWifi";
 static constexpr const char* PASS = "000000001";
 static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
 // Set false to disable the HTTP web log on port 80.

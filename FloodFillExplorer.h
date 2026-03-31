@@ -110,6 +110,7 @@ private:
   // --- web handlers ---
   void setupWeb_();
   void setupWs_();
+  void serviceWebServerState_();
   void handleRoot_();
   void handleState_();
   void handleCmd_();
@@ -184,6 +185,7 @@ private:
   bool started_ = false;
   bool running_ = false;
   bool hardwareMode_ = false;
+  bool webServing_ = false;
 
   uint8_t sx_ = 0, sy_ = 15, mx_ = 0, my_ = 15;
   Dir sh_ = NORTH, mh_ = NORTH;

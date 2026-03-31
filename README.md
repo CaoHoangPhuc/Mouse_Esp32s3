@@ -69,6 +69,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
 - floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
+- startup LED behavior now shows `red` during setup and forces `off` when boot completes and runtime enters ready idle
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
