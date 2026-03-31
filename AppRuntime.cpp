@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <driver/gpio.h>
 
 #include "Battery.h"
 #include "Config.h"
@@ -1590,6 +1589,8 @@ static bool startRunSnapSequence(const char* label) {
 }
 
 void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
+  ledController.begin();
+  ledController.setState(LedController::State::RED);
   Serial.begin(921600);
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
@@ -1598,8 +1599,6 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
             AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
   }
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
-  ledController.begin();
-  ledController.setState(LedController::State::RED);
 
   WiFiOtaWebSerial::Config wifiCfg;
   wifiCfg.ssid = AppConfig::Wifi::SSID;

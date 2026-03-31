@@ -1,4 +1,3 @@
-#include "common/tusb_fifo.h"
 #include "Config.h"
 #include "MultiVL53L0X.h"
 

@@ -1,11 +1,6 @@
 #pragma once
 #include <Arduino.h>
-
-#if defined(ESP32)
-  #include <WebServer.h>
-#else
-  #include <WebServer.h> // Depending on the core, you can switch to ESP8266WebServer if needed.
-#endif
+#include <WebServer.h>
 
 class FloodFillExplorer {
 public:
