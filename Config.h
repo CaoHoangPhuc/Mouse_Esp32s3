@@ -63,7 +63,7 @@ static constexpr uint8_t GOAL_H = 1;
 namespace Wifi {
 // Development Wi-Fi / OTA / web logging settings.
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
-static constexpr const char* SSID = "PhucWifi1";
+static constexpr const char* SSID = "PhucWifi";
 static constexpr const char* PASS = "000000001";
 static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
 // Set false to disable the HTTP web log on port 80.
@@ -125,13 +125,13 @@ static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
 // Smaller = more conservative wall detection.
 // Larger = walls detected earlier/farther away.
 // Affects: left/front/right wall booleans used by motion + planner.
-static constexpr uint16_t WALL_THRESHOLD_MM = 130;
+static constexpr uint16_t WALL_THRESHOLD_MM = 140;
 
 // Sensor distance validity window and sentinel values.
 // DIST_FAR represents a valid "clear / far" reading beyond the usable range.
 // DIST_ERROR represents an invalid/error sentinel for internal fusion paths.
 static constexpr uint16_t DIST_MIN_VALID_MM = 1;
-static constexpr uint16_t DIST_MAX_VALID_MM = 200;
+static constexpr uint16_t DIST_MAX_VALID_MM = 250;
 static constexpr uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
 static constexpr uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
 
@@ -185,7 +185,7 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0050f;
+static constexpr float PID_KP = 0.0040f;
 static constexpr float PID_KI = 0.0030f;
 static constexpr float PID_KD = 0.0004f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
@@ -215,7 +215,7 @@ static constexpr int32_t TURN_TICKS_180 = 430;
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
 static constexpr float MOVE_SPEED_TPS = 350.0f;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = 450.0f;
+static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
@@ -232,8 +232,8 @@ static constexpr float TURN_SPEED_TPS = 350.0f;
 // Affects: corridor following stability.
 static constexpr float CENTERING_GAIN = 1.0f;
 static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
-static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
-static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
+static constexpr float CENTER_TARGET_LEFT_MM = 110.0f;
+static constexpr float CENTER_TARGET_RIGHT_MM = 110.0f;
 static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 5.0f;
 static constexpr float CENTER_PID_KP = 2.0f;
 static constexpr float CENTER_PID_KI = 0.01f;
@@ -243,11 +243,18 @@ static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
 static constexpr float CENTER_BLEND_TAU_SEC = 0.14f;
 static constexpr float CENTER_RAW_TAU_SEC = 0.07f;
+// Front-corner anti-stick assist (especially for V2 FL/FR near-wall corner cases).
+// If front (V1) or FL/FR (V2) is closer than this threshold, apply extra steering bias.
+static constexpr float FRONT_CORNER_STICK_MM = 50.0f;
+// Additional output injected in units of CENTER_PID_OUT_LIMIT (1.0 => add one full out-limit).
+static constexpr float FRONT_CORNER_ESCAPE_EXTRA_OUT_FACTOR = 1.0f;
+// Minimum enforced steering magnitude during anti-stick assist (fraction of out-limit).
+static constexpr float FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR = 0.85f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
 static constexpr float FRONT_STOP_MM = 100.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 110.0f;
+static constexpr float CORRIDOR_FRONT_STOP_MM = 130.0f;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
