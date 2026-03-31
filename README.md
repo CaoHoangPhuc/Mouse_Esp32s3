@@ -71,6 +71,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
 - startup LED behavior now shows `red` during setup and forces `off` when boot completes and runtime enters ready idle
 - low-pass smoothing constants for TOF distance updates, motor TPS estimate, and center-track blending are now configurable in `Config.h`
+- HTTP firmware upload now uses a dedicated upload service task on the opposite core during active chunk transfer to improve upload stability under load
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

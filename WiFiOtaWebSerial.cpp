@@ -219,10 +219,10 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 128 * 1024; 
+const CHUNK_SIZE = 32 * 1024; 
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
-const CHUNK_SUCCESS_PAUSE_MS = 1000;
+const CHUNK_SUCCESS_PAUSE_MS = 20;
 
 async function postStart(totalSize){
   const res = await fetch('/upload/start?size=' + totalSize, {
@@ -357,6 +357,10 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     vTaskDelete(wifiTask_);
     wifiTask_ = nullptr;
   }
+  if (uploadTask_) {
+    vTaskDelete(uploadTask_);
+    uploadTask_ = nullptr;
+  }
 
   BaseType_t ok = xTaskCreatePinnedToCore(
     &WiFiOtaWebSerial::wifiTaskThunk_,
@@ -374,6 +378,25 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     return false;
   }
 
+  if (cfg_.enableUploadWeb && uploadWeb_) {
+    BaseType_t uploadOk = xTaskCreatePinnedToCore(
+      &WiFiOtaWebSerial::uploadTaskThunk_,
+      "uploadTask",
+      cfg_.uploadTaskStack / sizeof(StackType_t),
+      this,
+      cfg_.uploadTaskPrio,
+      &uploadTask_,
+      cfg_.uploadCore
+    );
+    if (uploadOk != pdPASS) {
+      uploadTask_ = nullptr;
+      vTaskDelete(wifiTask_);
+      wifiTask_ = nullptr;
+      started_ = false;
+      return false;
+    }
+  }
+
   println(String("OTA Hostname: ") + cfg_.hostname);
   return true;
 }
@@ -382,6 +405,10 @@ void WiFiOtaWebSerial::end() {
   if (wifiTask_) {
     vTaskDelete(wifiTask_);
     wifiTask_ = nullptr;
+  }
+  if (uploadTask_) {
+    vTaskDelete(uploadTask_);
+    uploadTask_ = nullptr;
   }
   started_ = false;
   otaStarted_ = false;
@@ -409,6 +436,10 @@ void WiFiOtaWebSerial::loopNoService() {
 
 void WiFiOtaWebSerial::wifiTaskThunk_(void* arg) {
   static_cast<WiFiOtaWebSerial*>(arg)->wifiTaskLoop_();
+}
+
+void WiFiOtaWebSerial::uploadTaskThunk_(void* arg) {
+  static_cast<WiFiOtaWebSerial*>(arg)->uploadTaskLoop_();
 }
 
 void WiFiOtaWebSerial::wifiTaskLoop_() {
@@ -472,7 +503,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       if (otaInProgress) {
         // OTA priority mode
         if (otaStarted_) ArduinoOTA.handle();
-        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+          uploadWeb_->server.handleClient();
+        }
         serviceUploadSession_();
         // Optional: skip web server to reduce load
         // if (web_) web_->server.handleClient();
@@ -480,7 +513,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
         continue;
       }
       if (webUploadInProgress_) {
-        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+          uploadWeb_->server.handleClient();
+        }
         serviceUploadSession_();
         vTaskDelay(1);
         continue;
@@ -488,7 +523,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       // Normal mode
       if (otaStarted_) ArduinoOTA.handle();
       if (cfg_.enableWeb && web_ && webServerStarted_) web_->server.handleClient();
-      if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+      if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+        uploadWeb_->server.handleClient();
+      }
       serviceUploadSession_();
       if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
         println("[WEB OTA] Rebooting now...");
@@ -500,6 +537,30 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       vTaskDelay(pdMS_TO_TICKS(100));
     }
   }
+}
+
+void WiFiOtaWebSerial::uploadTaskLoop_() {
+  for (;;) {
+    if (!started_ || !cfg_.enableUploadWeb || !uploadWeb_ || !uploadWebServerStarted_) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (!uploadServerOwnedByUploadTask_()) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
+    uploadWeb_->server.handleClient();
+    serviceUploadSession_();
+    vTaskDelay(pdMS_TO_TICKS(cfg_.uploadServiceDelayMs));
+  }
+}
+
+bool WiFiOtaWebSerial::uploadServerOwnedByUploadTask_() const {
+  return uploadTask_ != nullptr && (webUploadInProgress_ || chunkUploadActive_);
 }
 
 void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {

@@ -1614,6 +1614,9 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.serviceDelayMs = AppConfig::Wifi::SERVICE_DELAY_MS;
   wifiCfg.wifiConnectTimeoutMs = AppConfig::Wifi::CONNECT_TIMEOUT_MS;
   wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
+  wifiCfg.uploadCore = (wifiCfg.wifiCore == 0) ? 1 : 0;
+  wifiCfg.uploadTaskPrio = wifiCfg.wifiTaskPrio + 1;
+  wifiCfg.uploadTaskStack = wifiCfg.wifiTaskStack;
   dbg.setLedCommandHandler(onWebLedCommand);
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   dbg.setHealthJsonProvider(onWebHealthJson);
