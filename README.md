@@ -63,7 +63,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - `speedrun 1` keeps the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
 - `speedrun 2` now executes the known shortest path directly as `move N -> turn left/right -> ... -> goal`, without explore-style ACK/wall-apply steps and without per-primitive stop-hold pauses
 - `speedrun 2` now treats an unexpected shortest-path `uturn` as a fault instead of executing it as a normal high-speed action
-- every speedrun phase now performs an untimed pre-run centering sequence before the lap starts: turn 90 degrees toward a known side wall when available, snap there, turn back to the original heading, then do the final snap in the original heading
+- every speedrun phase now performs at most one untimed pre-run snap-center (no pre-run side turns) before the lap starts, and skips it when the known back wall condition is not met
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
 - the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops

@@ -1514,7 +1514,6 @@ static void finishSpeedRunStart() {
 
 static bool startSpeedRunPreAlignSequence() {
   speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
-  speedRunPreAlignTurnRight = true;
   speedRunPreAlignHasSideSnap = false;
 
   if (!shouldSnapCenterFromKnownBackWall()) {
@@ -1523,51 +1522,17 @@ static bool startSpeedRunPreAlignSequence() {
     return true;
   }
 
-  bool knownLeft = false;
-  bool leftWall = false;
-  bool knownRight = false;
-  bool rightWall = false;
-  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY,
-                        (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 3) & 3),
-                        knownLeft, leftWall);
-  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY,
-                        (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 1) & 3),
-                        knownRight, rightWall);
-
-  const bool canTurnRightForSideSnap = knownLeft && leftWall;
-  const bool canTurnLeftForSideSnap = knownRight && rightWall;
-  speedRunPreAlignHasSideSnap = canTurnRightForSideSnap || canTurnLeftForSideSnap;
-  speedRunPreAlignTurnRight = canTurnRightForSideSnap || !canTurnLeftForSideSnap;
-
-  if (!speedRunPreAlignHasSideSnap) {
-    if (!motionController.snapCenter()) {
-      enterFaultMode("failed to start speedrun pre-run snapcenter");
-      return false;
-    }
-    speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP;
-    debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
-                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                     "source=speedrun-prerun-final-snap");
-    debugPrintln("[SPEEDRUN] pre-run snapcenter");
-    return true;
-  }
-
-  const bool ok = speedRunPreAlignTurnRight ? motionController.turnRight90()
-                                            : motionController.turnLeft90();
-  if (!ok) {
-    enterFaultMode("failed to start speedrun pre-run side turn");
+  if (!motionController.snapCenter()) {
+    enterFaultMode("failed to start speedrun pre-run snapcenter");
     return false;
   }
 
-  speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_SIDE_TURN;
-  debugMotionEvent("[MOTION START]",
-                   speedRunPreAlignTurnRight ? MOTION_TURN_RIGHT_90 : MOTION_TURN_LEFT_90,
-                   motionController.status(),
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP;
+  debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
                    robotState.pose.cellX, robotState.pose.cellY, headingDir(),
                    robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                   "source=speedrun-prerun-side-turn");
-  debugPrintln("[SPEEDRUN] pre-run side turn");
+                   "source=speedrun-prerun-final-snap");
+  debugPrintln("[SPEEDRUN] pre-run snapcenter");
   return true;
 }
 
