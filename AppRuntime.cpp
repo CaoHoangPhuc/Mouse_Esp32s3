@@ -1704,7 +1704,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 2, &userTaskHandle,      1);
 
   enterIdleMode("ready");
-  ledController.setState(LedController::State::OFF);
+  updateRobotLed();
 }
 
 void loopApp() {

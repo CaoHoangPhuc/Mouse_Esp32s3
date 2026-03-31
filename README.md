@@ -69,7 +69,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
 - floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
-- startup LED behavior now shows `red` during setup and forces `off` when boot completes and runtime enters ready idle
+- startup LED behavior now shows `red` during setup, then on ready idle shows `white` if shortest-path-ready is loaded, otherwise `off`
 - low-pass smoothing constants for TOF distance updates, motor TPS estimate, and center-track blending are now configurable in `Config.h`
 - HTTP firmware upload now uses a dedicated upload service task on the opposite core during active chunk transfer to improve upload stability under load
 - HTTP firmware upload now pre-erases the OTA target partition before transfer and sets TCP no-delay on upload requests to improve throughput consistency
