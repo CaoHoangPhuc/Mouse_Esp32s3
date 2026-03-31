@@ -145,8 +145,8 @@ static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x
 
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
-static constexpr float DIST_LPF_PREV_WEIGHT = 0.80f;
-static constexpr float DIST_LPF_SAMPLE_WEIGHT = 0.20f;
+static constexpr float DIST_LPF_PREV_WEIGHT = 0.75f;
+static constexpr float DIST_LPF_SAMPLE_WEIGHT = 0.25f;
 
 }
 
@@ -241,8 +241,8 @@ static constexpr float CENTER_PID_KD = 1.0f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
-static constexpr float CENTER_BLEND_TAU_SEC = 0.18f;
-static constexpr float CENTER_RAW_TAU_SEC = 0.10f;
+static constexpr float CENTER_BLEND_TAU_SEC = 0.14f;
+static constexpr float CENTER_RAW_TAU_SEC = 0.07f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
