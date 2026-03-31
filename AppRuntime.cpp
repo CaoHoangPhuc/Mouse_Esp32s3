@@ -828,6 +828,7 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
   startLapTimer("HG");
   motionController.setConfig(AppConfig::makeMotionConfig());
+  motionController.setUseLatchedTrackMode(false);
   motionController.setStopOnCompletion(true);
   robotState.goalReached = false;
   robotState.speedRunReady = false;
@@ -863,6 +864,7 @@ static void beginSpeedRun(uint8_t phase) {
   motionController.setConfig(usesSpeedRun2Profile(phase)
                                ? AppConfig::makeSpeedRun2MotionConfig()
                                : AppConfig::makeMotionConfig());
+  motionController.setUseLatchedTrackMode(usesSpeedRun2Profile(phase));
   motionController.setStopOnCompletion(!isContinuousSpeedRunPhase(phase));
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
@@ -1138,7 +1140,10 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
   advancePoseForwardOneCell();
   activeForwardActionCellsCommitted++;
   updateRobotState();
-  motionController.latchStraightTrackMode(robotState.walls);
+  if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+      usesSpeedRun2Profile(robotState.speedRunPhase)) {
+    motionController.latchStraightTrackMode(robotState.walls);
+  }
 
   const bool truncateHere = shouldStopCorridorAfterCommittedCell();
   if (truncateHere) {
@@ -1696,7 +1701,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   xTaskCreatePinnedToCore(telemetryTask, "telemetry", 4096, nullptr, 1, &telemetryTaskHandle, 1);
   xTaskCreatePinnedToCore(explorerTask,  "explorer",  8192, nullptr, 2, &explorerTaskHandle,  1);
   xTaskCreatePinnedToCore(plannerTaskFn, "planner",   4096, nullptr, 2, &plannerTaskHandle,   1);
-  xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 2, &userTaskHandle,      0);
+  xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 2, &userTaskHandle,      1);
 
   enterIdleMode("ready");
   ledController.setState(LedController::State::OFF);

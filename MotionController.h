@@ -50,6 +50,7 @@ public:
   void update(RobotState& state);
   void setStopOnCompletion(bool en) { stopOnCompletion_ = en; }
   void clearCompletionState();
+  void setUseLatchedTrackMode(bool en);
 
   bool isBusy() const { return status_ == MOTION_RUNNING_PRIMITIVE; }
   MotionStatus status() const { return status_; }
@@ -92,5 +93,6 @@ private:
   bool moveEndsAtKnownWall_ = false;
   bool straightTrackModeLatched_ = false;
   MultiVL53L0X::StraightTrackMode straightTrackMode_ = MultiVL53L0X::TRACK_NONE;
+  bool useLatchedTrackMode_ = true;
   bool stopOnCompletion_ = true;
 };

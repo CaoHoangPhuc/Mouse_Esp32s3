@@ -73,6 +73,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - low-pass smoothing constants for TOF distance updates, motor TPS estimate, and center-track blending are now configurable in `Config.h`
 - HTTP firmware upload now uses a dedicated upload service task on the opposite core during active chunk transfer to improve upload stability under load
 - HTTP firmware upload now pre-erases the OTA target partition before transfer and sets TCP no-delay on upload requests to improve throughput consistency
+- latched straight-track mode is now enabled only for `speedrun 2`; `explore` and `speedrun 1` use live wall availability each cycle for safer unknown-cell transitions
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

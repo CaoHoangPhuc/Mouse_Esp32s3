@@ -165,6 +165,14 @@ void MotionController::clearCompletionState() {
   resetSnapState_();
 }
 
+void MotionController::setUseLatchedTrackMode(bool en) {
+  useLatchedTrackMode_ = en;
+  straightTrackModeLatched_ = false;
+  if (tof_ && !useLatchedTrackMode_) {
+    tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
+  }
+}
+
 MultiVL53L0X::StraightTrackMode MotionController::chooseStraightTrackMode_(const WallObservation& walls) const {
   if (walls.leftValid && walls.rightValid) return MultiVL53L0X::TRACK_DUAL;
   if (walls.leftValid) return MultiVL53L0X::TRACK_LEFT;
@@ -174,6 +182,7 @@ MultiVL53L0X::StraightTrackMode MotionController::chooseStraightTrackMode_(const
 
 void MotionController::latchStraightTrackMode(const WallObservation& walls) {
   if (!tof_) return;
+  if (!useLatchedTrackMode_) return;
   straightTrackMode_ = chooseStraightTrackMode_(walls);
   straightTrackModeLatched_ = true;
   tof_->setStraightTrackMode(straightTrackMode_);
@@ -232,8 +241,10 @@ void MotionController::update(RobotState& state) {
     state.pose.forwardProgressMm = progressMm;
 
     const WallObservation& walls = state.walls;
-    if (!straightTrackModeLatched_) {
+    if (useLatchedTrackMode_ && !straightTrackModeLatched_) {
       latchStraightTrackMode(walls);
+    } else if (!useLatchedTrackMode_) {
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
     }
     bool shouldFrontStop = walls.frontValid && walls.frontWall && walls.frontMm > 0 &&
                            walls.frontMm <= cfg_.frontStopMm;
@@ -259,8 +270,10 @@ void MotionController::update(RobotState& state) {
     state.pose.forwardProgressMm = progressMm;
 
     const WallObservation& walls = state.walls;
-    if (!straightTrackModeLatched_) {
+    if (useLatchedTrackMode_ && !straightTrackModeLatched_) {
       latchStraightTrackMode(walls);
+    } else if (!useLatchedTrackMode_) {
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
     }
     const bool inFinalCell = progressMm >= finalCellStartMm;
     const bool shouldFrontStop = inFinalCell &&
