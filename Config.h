@@ -180,13 +180,13 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0040f;
+static constexpr float PID_KP = 0.0050f;
 static constexpr float PID_KI = 0.0030f;
 static constexpr float PID_KD = 0.0004f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
-static constexpr float PID_SLEW_RATE = 5.0f;
+static constexpr float PID_SLEW_RATE = 10.0f;
 }
 
 namespace Motion {
@@ -299,6 +299,17 @@ static constexpr uint8_t BOOT_BUTTON_PIN = 0;
 static constexpr bool BOOT_BUTTON_ACTIVE_LOW = true;
 static constexpr uint32_t BOOT_BUTTON_DEBOUNCE_MS = 30;
 static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
+}
+
+namespace Tasks {
+// Main periodic task cadences (milliseconds).
+// Affects: scheduler pacing and loop watchdog expected periods.
+static constexpr uint32_t USER_LOOP_PERIOD_MS = 20;
+static constexpr uint32_t PLANNER_LOOP_PERIOD_MS = 50;
+static constexpr uint32_t MOTOR_LOOP_PERIOD_MS = 5;
+static constexpr uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
+static constexpr uint32_t TOF_LOOP_PERIOD_MS = 5;
+static constexpr uint32_t TELEMETRY_LOOP_PERIOD_MS = 1000;
 }
 
 namespace Debug {

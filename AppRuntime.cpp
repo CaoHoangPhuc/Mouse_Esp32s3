@@ -1707,10 +1707,10 @@ void userTaskBody(void* arg) {
   (void)arg;
   String line;
   TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(20);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::USER_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(userLoopWatchdog, 20);
+    serviceLoopWatchdog(userLoopWatchdog, AppConfig::Tasks::USER_LOOP_PERIOD_MS);
     updateOtaSafeMode();
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(userLoopWatchdog);
@@ -1745,10 +1745,10 @@ void userTaskBody(void* arg) {
 void plannerTaskBody(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(50);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::PLANNER_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(plannerLoopWatchdog, 50);
+    serviceLoopWatchdog(plannerLoopWatchdog, AppConfig::Tasks::PLANNER_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(plannerLoopWatchdog);
       vTaskDelayUntil(&last, period);
@@ -1808,10 +1808,10 @@ void plannerTaskBody(void* arg) {
 static void motorTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(5);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(motorLoopWatchdog, 5);
+    serviceLoopWatchdog(motorLoopWatchdog, AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(motorLoopWatchdog);
       vTaskDelayUntil(&last, period);
@@ -1826,9 +1826,9 @@ static void motorTask(void* arg) {
 static void explorerTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(10);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::EXPLORER_LOOP_PERIOD_MS);
   for (;;) {
-    serviceLoopWatchdog(explorerLoopWatchdog, 10);
+    serviceLoopWatchdog(explorerLoopWatchdog, AppConfig::Tasks::EXPLORER_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(explorerLoopWatchdog);
       vTaskDelay(pdMS_TO_TICKS(50));
@@ -1843,10 +1843,10 @@ static void explorerTask(void* arg) {
 static void tofTask(void* arg) {
   (void)arg;
   TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(2);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(tofLoopWatchdog, 2);
+    serviceLoopWatchdog(tofLoopWatchdog, AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(tofLoopWatchdog);
       vTaskDelayUntil(&lastWake, period);
@@ -1860,10 +1860,10 @@ static void tofTask(void* arg) {
 static void telemetryTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(1000);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::TELEMETRY_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(telemetryLoopWatchdog, 1000);
+    serviceLoopWatchdog(telemetryLoopWatchdog, AppConfig::Tasks::TELEMETRY_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(telemetryLoopWatchdog);
       vTaskDelayUntil(&last, period);
