@@ -331,6 +331,7 @@ form.addEventListener('submit', async (ev) => {
 
 static constexpr uint32_t kUploadStallTimeoutMs = 10000;
 static constexpr bool kUploadPreEraseEnabled = true;
+static constexpr size_t kFlashSectorSize = 4096;
 
 WiFiOtaWebSerial::WiFiOtaWebSerial() {}
 
@@ -797,7 +798,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
         return;
       }
       const size_t eraseSize =
-        ((totalSize + SPI_FLASH_SEC_SIZE - 1) / SPI_FLASH_SEC_SIZE) * SPI_FLASH_SEC_SIZE;
+        ((totalSize + kFlashSectorSize - 1) / kFlashSectorSize) * kFlashSectorSize;
       println(String("[WEB OTA] Pre-erase start bytes=") + eraseSize);
       const esp_err_t eraseErr = esp_partition_erase_range(next, 0, eraseSize);
       if (eraseErr != ESP_OK) {
