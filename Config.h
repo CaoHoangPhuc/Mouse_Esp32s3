@@ -145,8 +145,8 @@ static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x
 
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
-static constexpr float DIST_LPF_PREV_WEIGHT = 0.75f;
-static constexpr float DIST_LPF_SAMPLE_WEIGHT = 0.25f;
+static constexpr float DIST_LPF_PREV_WEIGHT = 0.8f;
+static constexpr float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 
 }
 
@@ -214,18 +214,18 @@ static constexpr int32_t TURN_TICKS_180 = 430;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
-static constexpr float MOVE_SPEED_TPS = 400.0f;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
+static constexpr float MOVE_SPEED_TPS = 350.0f;
+static constexpr float CORRIDOR_MOVE_SPEED_TPS = 450.0f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
-static constexpr float SHORT_FORWARD_SPEED_TPS = 400.0f;
+static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
 static constexpr float REVERSE_DISTANCE_MM = 100.0f;
-static constexpr float REVERSE_SPEED_TPS = 400.0f;
+static constexpr float REVERSE_SPEED_TPS = 350.0f;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
 static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
-static constexpr float TURN_SPEED_TPS = 400.0f;
+static constexpr float TURN_SPEED_TPS = 350.0f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
@@ -234,10 +234,10 @@ static constexpr float CENTERING_GAIN = 1.0f;
 static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
 static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
 static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
-static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 0.0f;
+static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 5.0f;
 static constexpr float CENTER_PID_KP = 2.0f;
 static constexpr float CENTER_PID_KI = 0.01f;
-static constexpr float CENTER_PID_KD = 1.0f;
+static constexpr float CENTER_PID_KD = 0.5f;
 static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.

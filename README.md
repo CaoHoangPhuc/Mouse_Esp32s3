@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.4.0`
+Current project version: `0.4.1`
 
 ## Current Status
 
@@ -29,7 +29,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
 - wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within the configured `5 mm` balance window
 - wall-centering correction is now tuned through the center-wall `KP` term and correction output limit, while leaving `CORRIDOR_CENTERING_GAIN` unchanged
-- motion speed targets in `Config.h` are now standardized to `400 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `500 TPS`
+- motion speed targets in `Config.h` are now standardized to `350 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `450 TPS`
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
 - the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
