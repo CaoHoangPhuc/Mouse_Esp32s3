@@ -267,6 +267,8 @@ void MotionController::update(RobotState& state) {
     const float progressMm = averageProgressMm_();
     const float targetDistanceMm = cfg_.cellDistanceMm * (float)moveCellTargetCount_;
     const float finalCellStartMm = max(0.0f, targetDistanceMm - cfg_.cellDistanceMm);
+    const float frontStopThresholdMm =
+      (moveCellTargetCount_ <= 1) ? cfg_.frontStopMm : cfg_.corridorFrontStopMm;
     state.pose.forwardProgressMm = progressMm;
 
     const WallObservation& walls = state.walls;
@@ -280,7 +282,7 @@ void MotionController::update(RobotState& state) {
                                  walls.frontValid &&
                                  walls.frontWall &&
                                  walls.frontMm > 0 &&
-                                 walls.frontMm <= cfg_.corridorFrontStopMm;
+                                 walls.frontMm <= frontStopThresholdMm;
 
     float correction = 0.0f;
     if (walls.leftValid || walls.rightValid) {
