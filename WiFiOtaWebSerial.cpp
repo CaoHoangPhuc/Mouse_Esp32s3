@@ -223,11 +223,11 @@ const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
 const CHUNK_SIZE = 64 * 1024; 
-const MAX_CHUNK_SIZE = 64 * 1024;
+const MAX_CHUNK_SIZE = 128 * 1024;
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
-const RETRY_BACKOFF_MS = 250;
-const CHUNK_SUCCESS_PAUSE_MS = 20;
+const RETRY_BACKOFF_MS = 1000;
+const CHUNK_SUCCESS_PAUSE_MS = 1000;
 const GROW_CHUNK_AFTER_SUCCESS = 4;
 
 async function postStart(totalSize){
