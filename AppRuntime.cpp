@@ -1132,11 +1132,17 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
 
   if (!crossedBoundary && allowFrontStopCompletion) {
     const bool finalCell = (activeForwardActionCellsCommitted + 1) == activeForwardActionCellsRequested;
+    // Keep one-cell completion aligned with single-cell motion behavior.
+    // Corridor threshold applies only when the active target is truly multi-cell.
+    const float frontStopThresholdMm =
+      (activeForwardActionCellsRequested <= 1)
+        ? AppConfig::Motion::FRONT_STOP_MM
+        : AppConfig::Motion::CORRIDOR_FRONT_STOP_MM;
     crossedBoundary = finalCell &&
                       robotState.walls.frontValid &&
                       robotState.walls.frontWall &&
                       robotState.walls.frontMm > 0 &&
-                      robotState.walls.frontMm <= AppConfig::Motion::CORRIDOR_FRONT_STOP_MM;
+                      robotState.walls.frontMm <= frontStopThresholdMm;
   }
 
   if (!crossedBoundary) return false;
