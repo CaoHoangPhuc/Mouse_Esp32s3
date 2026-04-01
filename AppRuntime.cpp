@@ -1002,33 +1002,26 @@ static void applyFixedTestMazeTemplate() {
   explorer.exportKnownMaze(walls, mask, visited);
 
   uint16_t appliedSides = 0;
-  for (uint8_t y = 0; y < FloodFillExplorer::N; ++y) {
-    for (uint8_t x = 0; x < FloodFillExplorer::N; ++x) {
-      const uint8_t cellMask = AppConfig::Maze::FIXED_TEST_MAZE_MASK[y][x];
-      if (cellMask == 0) continue;
-      const uint8_t cellWalls = AppConfig::Maze::FIXED_TEST_MAZE_WALLS[y][x];
+  for (size_t i = 0; i < AppConfig::Maze::FIXED_TEST_MAZE_SPEC_COUNT; ++i) {
+    const auto& spec = AppConfig::Maze::FIXED_TEST_MAZE_SPECS[i];
+    const char c = spec.dirCode;
+    const bool wallOn = (c >= 'A' && c <= 'Z');
+    char d = c;
+    if (d >= 'A' && d <= 'Z') d = (char)(d - 'A' + 'a');
 
-      if (cellMask & FloodFillExplorer::WALL_N) {
-        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::NORTH,
-                         (cellWalls & FloodFillExplorer::WALL_N) != 0);
-        appliedSides++;
-      }
-      if (cellMask & FloodFillExplorer::WALL_E) {
-        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::EAST,
-                         (cellWalls & FloodFillExplorer::WALL_E) != 0);
-        appliedSides++;
-      }
-      if (cellMask & FloodFillExplorer::WALL_S) {
-        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::SOUTH,
-                         (cellWalls & FloodFillExplorer::WALL_S) != 0);
-        appliedSides++;
-      }
-      if (cellMask & FloodFillExplorer::WALL_W) {
-        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::WEST,
-                         (cellWalls & FloodFillExplorer::WALL_W) != 0);
-        appliedSides++;
-      }
+    FloodFillExplorer::Dir dir = FloodFillExplorer::NORTH;
+    bool validDir = true;
+    switch (d) {
+      case 'n': dir = FloodFillExplorer::NORTH; break;
+      case 'e': dir = FloodFillExplorer::EAST; break;
+      case 's': dir = FloodFillExplorer::SOUTH; break;
+      case 'w': dir = FloodFillExplorer::WEST; break;
+      default: validDir = false; break;
     }
+    if (!validDir) continue;
+
+    setKnownWallPair(walls, mask, spec.x, spec.y, dir, wallOn);
+    appliedSides++;
   }
 
   const bool imported = explorer.importKnownMaze(

@@ -62,68 +62,28 @@ static constexpr uint8_t GOAL_H = 2;
 // This is useful for repeatable test mazes while still allowing explore to
 // discover and update all other walls normally.
 static constexpr bool ENABLE_FIXED_TEST_MAZE = true;
-// Fixed test-maze format:
-// - FIXED_TEST_MAZE_MASK[y][x] bit=1 means this wall is forced as KNOWN.
-// - FIXED_TEST_MAZE_WALLS[y][x] bit=1 means the forced known wall is CLOSED.
-// - If MASK bit=1 and WALLS bit=0, that side is forced KNOWN-OPEN.
-// Wall bit mapping uses FloodFillExplorer::WALL_N/E/S/W.
-// This template is overlaid after maze init and after clearmaze.
+// Compact fixed test-maze wall spec:
+// {x, y, dirCode}
+// dirCode: uppercase N/E/S/W = force KNOWN-WALL, lowercase n/e/s/w = force KNOWN-OPEN.
+struct FixedWallSpec {
+  uint8_t x;
+  uint8_t y;
+  char dirCode;
+};
 // Example preset:
-// - Start cell (0,0): fixed left wall relative to SOUTH heading (EAST wall).
-// - Known-open corridor from start down to y=7 then right to x=7.
-// - Center goal surround at cells (7,7)(8,7)(7,8)(8,8) with 7 closed sides
-//   and one known-open entry at WEST of (7,7).
-static constexpr uint8_t FIXED_TEST_MAZE_EXAMPLE_MASK[FloodFillExplorer::N][FloodFillExplorer::N] = {
-  { (uint8_t)(FloodFillExplorer::WALL_E | FloodFillExplorer::WALL_S) },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_S },
-  { FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E,
-    FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E,
-    FloodFillExplorer::WALL_E,
-    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_W),
-    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_E) },
-  { 0,0,0,0,0,0,0,
-    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_W),
-    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_E) },
-  {},
-  {},
-  {},
-  {},
-  {},
-  {},
-  {}
+// - start has fixed left wall (for SOUTH heading that is EAST wall at 0,0)
+// - known-open corridor from (0,0) down to y=7, then right to x=7
+// - center 2x2 has 7 closed sides and one open entry (west side of 7,7)
+static constexpr FixedWallSpec FIXED_TEST_MAZE_SPECS[] = {
+  {0, 0, 'E'},
+  {0, 0, 's'}, {0, 1, 's'}, {0, 2, 's'}, {0, 3, 's'}, {0, 4, 's'}, {0, 5, 's'}, {0, 6, 's'},
+  {0, 7, 'e'}, {1, 7, 'e'}, {2, 7, 'e'}, {3, 7, 'e'}, {4, 7, 'e'}, {5, 7, 'e'}, {6, 7, 'e'},
+  {7, 7, 'N'}, {8, 7, 'N'}, {8, 7, 'E'},
+  {7, 8, 'S'}, {7, 8, 'W'}, {8, 8, 'S'}, {8, 8, 'E'},
+  {7, 7, 'w'}
 };
-static constexpr uint8_t FIXED_TEST_MAZE_EXAMPLE_WALLS[FloodFillExplorer::N][FloodFillExplorer::N] = {
-  { FloodFillExplorer::WALL_E },
-  {},
-  {},
-  {},
-  {},
-  {},
-  {},
-  { 0,0,0,0,0,0,0,
-    FloodFillExplorer::WALL_N,
-    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_E) },
-  { 0,0,0,0,0,0,0,
-    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_W),
-    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_E) },
-  {},
-  {},
-  {},
-  {},
-  {},
-  {},
-  {}
-};
-// Active fixed template (point this to another preset if you add more).
-static constexpr const uint8_t (&FIXED_TEST_MAZE_MASK)[FloodFillExplorer::N][FloodFillExplorer::N] =
-  FIXED_TEST_MAZE_EXAMPLE_MASK;
-static constexpr const uint8_t (&FIXED_TEST_MAZE_WALLS)[FloodFillExplorer::N][FloodFillExplorer::N] =
-  FIXED_TEST_MAZE_EXAMPLE_WALLS;
+static constexpr size_t FIXED_TEST_MAZE_SPEC_COUNT =
+  sizeof(FIXED_TEST_MAZE_SPECS) / sizeof(FIXED_TEST_MAZE_SPECS[0]);
 }
 
 namespace Wifi {
