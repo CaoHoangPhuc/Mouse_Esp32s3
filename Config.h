@@ -68,15 +68,22 @@ static constexpr bool ENABLE_FIXED_TEST_MAZE = true;
 // - If MASK bit=1 and WALLS bit=0, that side is forced KNOWN-OPEN.
 // Wall bit mapping uses FloodFillExplorer::WALL_N/E/S/W.
 // This template is overlaid after maze init and after clearmaze.
-static constexpr uint8_t FIXED_TEST_MAZE_MASK[FloodFillExplorer::N][FloodFillExplorer::N] = {
-  { FloodFillExplorer::WALL_E },
-  {},
-  {},
-  {},
-  {},
-  {},
-  {},
-  { 0,0,0,0,0,0,0,
+// Example preset:
+// - Start cell (0,0): fixed left wall relative to SOUTH heading (EAST wall).
+// - Known-open corridor from start down to y=7 then right to x=7.
+// - Center goal surround at cells (7,7)(8,7)(7,8)(8,8) with 7 closed sides
+//   and one known-open entry at WEST of (7,7).
+static constexpr uint8_t FIXED_TEST_MAZE_EXAMPLE_MASK[FloodFillExplorer::N][FloodFillExplorer::N] = {
+  { (uint8_t)(FloodFillExplorer::WALL_E | FloodFillExplorer::WALL_S) },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_S },
+  { FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E,
+    FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E, FloodFillExplorer::WALL_E,
+    FloodFillExplorer::WALL_E,
     (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_W),
     (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_E) },
   { 0,0,0,0,0,0,0,
@@ -90,7 +97,7 @@ static constexpr uint8_t FIXED_TEST_MAZE_MASK[FloodFillExplorer::N][FloodFillExp
   {},
   {}
 };
-static constexpr uint8_t FIXED_TEST_MAZE_WALLS[FloodFillExplorer::N][FloodFillExplorer::N] = {
+static constexpr uint8_t FIXED_TEST_MAZE_EXAMPLE_WALLS[FloodFillExplorer::N][FloodFillExplorer::N] = {
   { FloodFillExplorer::WALL_E },
   {},
   {},
@@ -112,6 +119,11 @@ static constexpr uint8_t FIXED_TEST_MAZE_WALLS[FloodFillExplorer::N][FloodFillEx
   {},
   {}
 };
+// Active fixed template (point this to another preset if you add more).
+static constexpr const uint8_t (&FIXED_TEST_MAZE_MASK)[FloodFillExplorer::N][FloodFillExplorer::N] =
+  FIXED_TEST_MAZE_EXAMPLE_MASK;
+static constexpr const uint8_t (&FIXED_TEST_MAZE_WALLS)[FloodFillExplorer::N][FloodFillExplorer::N] =
+  FIXED_TEST_MAZE_EXAMPLE_WALLS;
 }
 
 namespace Wifi {
