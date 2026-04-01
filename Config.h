@@ -76,11 +76,11 @@ struct FixedWallSpec {
 // - center 2x2 has 7 closed sides and one open entry (west side of 7,7)
 static constexpr FixedWallSpec FIXED_TEST_MAZE_SPECS[] = {
   {0, 0, 'E'},
-  {0, 0, 's'}, {0, 1, 's'}, {0, 2, 's'}, {0, 3, 's'}, {0, 4, 's'}, {0, 5, 's'}, {0, 6, 's'},
-  {0, 7, 'e'}, {1, 7, 'e'}, {2, 7, 'e'}, {3, 7, 'e'}, {4, 7, 'e'}, {5, 7, 'e'}, {6, 7, 'e'},
-  {7, 7, 'N'}, {8, 7, 'N'}, {8, 7, 'E'},
-  {7, 8, 'S'}, {7, 8, 'W'}, {8, 8, 'S'}, {8, 8, 'E'},
-  {7, 7, 'w'}
+  // {0, 0, 's'}, {0, 1, 's'}, {0, 2, 's'}, {0, 3, 's'}, {0, 4, 's'}, {0, 5, 's'}, {0, 6, 's'},
+  // {0, 7, 'e'}, {1, 7, 'e'}, {2, 7, 'e'}, {3, 7, 'e'}, {4, 7, 'e'}, {5, 7, 'e'}, {6, 7, 'e'},
+  // {7, 7, 'N'}, {8, 7, 'N'}, {8, 7, 'E'},
+  // {7, 8, 'S'}, {7, 8, 'W'}, {8, 8, 'S'}, {8, 8, 'E'},
+  // {7, 7, 'w'}
 };
 static constexpr size_t FIXED_TEST_MAZE_SPEC_COUNT =
   sizeof(FIXED_TEST_MAZE_SPECS) / sizeof(FIXED_TEST_MAZE_SPECS[0]);
