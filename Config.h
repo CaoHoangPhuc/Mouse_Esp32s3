@@ -302,7 +302,7 @@ static constexpr bool CONTINUE_AFTER_GOAL = true;
 static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
 // If false, boot always starts from unknown wall memory and explore must
 // rediscover walls from live sensing.
-static constexpr bool LOAD_SAVED_MAZE_ON_BOOT = false;
+static constexpr bool LOAD_SAVED_MAZE_ON_BOOT = true;
 }
 
 namespace SpeedRun2 {
