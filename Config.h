@@ -58,6 +58,60 @@ static constexpr uint8_t GOAL_X0 = 7;
 static constexpr uint8_t GOAL_Y0 = 7;
 static constexpr uint8_t GOAL_W = 2;
 static constexpr uint8_t GOAL_H = 2;
+// Optional fixed known-wall template applied in memory after maze init/clear.
+// This is useful for repeatable test mazes while still allowing explore to
+// discover and update all other walls normally.
+static constexpr bool ENABLE_FIXED_TEST_MAZE = true;
+// Fixed test-maze format:
+// - FIXED_TEST_MAZE_MASK[y][x] bit=1 means this wall is forced as KNOWN.
+// - FIXED_TEST_MAZE_WALLS[y][x] bit=1 means the forced known wall is CLOSED.
+// - If MASK bit=1 and WALLS bit=0, that side is forced KNOWN-OPEN.
+// Wall bit mapping uses FloodFillExplorer::WALL_N/E/S/W.
+// This template is overlaid after maze init and after clearmaze.
+static constexpr uint8_t FIXED_TEST_MAZE_MASK[FloodFillExplorer::N][FloodFillExplorer::N] = {
+  { FloodFillExplorer::WALL_E },
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  { 0,0,0,0,0,0,0,
+    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_W),
+    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_E) },
+  { 0,0,0,0,0,0,0,
+    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_W),
+    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_E) },
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {}
+};
+static constexpr uint8_t FIXED_TEST_MAZE_WALLS[FloodFillExplorer::N][FloodFillExplorer::N] = {
+  { FloodFillExplorer::WALL_E },
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  { 0,0,0,0,0,0,0,
+    FloodFillExplorer::WALL_N,
+    (uint8_t)(FloodFillExplorer::WALL_N | FloodFillExplorer::WALL_E) },
+  { 0,0,0,0,0,0,0,
+    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_W),
+    (uint8_t)(FloodFillExplorer::WALL_S | FloodFillExplorer::WALL_E) },
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {}
+};
 }
 
 namespace Wifi {

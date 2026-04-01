@@ -116,6 +116,7 @@ static bool usesSpeedRun2Profile(uint8_t phase);
 static bool isContinuousSpeedRunPhase(uint8_t phase);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
+static void applyFixedTestMazeTemplate();
 static void applyCurrentPoseAsHomeRect();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
@@ -199,6 +200,54 @@ static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, Mot
                              uint8_t afterX, uint8_t afterY, FloodFillExplorer::Dir afterH,
                              const String& extra = "");
 static void debugWallApplyEvent(const char* tag, const char* source, const String& extra = "");
+
+static uint8_t wallBitForDir(FloodFillExplorer::Dir dir) {
+  switch (dir) {
+    case FloodFillExplorer::NORTH: return FloodFillExplorer::WALL_N;
+    case FloodFillExplorer::EAST: return FloodFillExplorer::WALL_E;
+    case FloodFillExplorer::SOUTH: return FloodFillExplorer::WALL_S;
+    case FloodFillExplorer::WEST: return FloodFillExplorer::WALL_W;
+    default: return 0;
+  }
+}
+
+static FloodFillExplorer::Dir oppositeWallDir(FloodFillExplorer::Dir dir) {
+  switch (dir) {
+    case FloodFillExplorer::NORTH: return FloodFillExplorer::SOUTH;
+    case FloodFillExplorer::EAST: return FloodFillExplorer::WEST;
+    case FloodFillExplorer::SOUTH: return FloodFillExplorer::NORTH;
+    case FloodFillExplorer::WEST: return FloodFillExplorer::EAST;
+    default: return FloodFillExplorer::NORTH;
+  }
+}
+
+static void setKnownWallPair(uint8_t walls[FloodFillExplorer::N][FloodFillExplorer::N],
+                             uint8_t mask[FloodFillExplorer::N][FloodFillExplorer::N],
+                             uint8_t x, uint8_t y, FloodFillExplorer::Dir dir, bool wallOn) {
+  if (x >= FloodFillExplorer::N || y >= FloodFillExplorer::N) return;
+  const uint8_t bit = wallBitForDir(dir);
+  if (bit == 0) return;
+
+  mask[y][x] |= bit;
+  if (wallOn) walls[y][x] |= bit;
+  else walls[y][x] &= (uint8_t)~bit;
+
+  int nx = (int)x;
+  int ny = (int)y;
+  switch (dir) {
+    case FloodFillExplorer::NORTH: ny -= 1; break;
+    case FloodFillExplorer::EAST: nx += 1; break;
+    case FloodFillExplorer::SOUTH: ny += 1; break;
+    case FloodFillExplorer::WEST: nx -= 1; break;
+  }
+  if (nx < 0 || ny < 0 || nx >= FloodFillExplorer::N || ny >= FloodFillExplorer::N) return;
+
+  const FloodFillExplorer::Dir opposite = oppositeWallDir(dir);
+  const uint8_t oppositeBit = wallBitForDir(opposite);
+  mask[ny][nx] |= oppositeBit;
+  if (wallOn) walls[ny][nx] |= oppositeBit;
+  else walls[ny][nx] &= (uint8_t)~oppositeBit;
+}
 
 static void logToDbg(const String& s) {
   debugPrintln(s);
@@ -851,7 +900,10 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
-  if (clearMaze) explorer.clearKnownMaze();
+  if (clearMaze) {
+    explorer.clearKnownMaze();
+    applyFixedTestMazeTemplate();
+  }
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   updateRobotLed();
   debugPrintln("[MODE] EXPLORE");
@@ -914,6 +966,7 @@ static void resetMazeToConfiguredStart() {
   applyRuntimeGoalRect();
   explorer.setStart(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
   explorer.clearKnownMaze();
+  applyFixedTestMazeTemplate();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   applyWallsToExplorer();
   updateRobotLed();
@@ -933,10 +986,58 @@ static void clearMazeMemoryOnly() {
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
   explorer.clearKnownMaze();
+  applyFixedTestMazeTemplate();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   PersistenceStore::clearMaze();
   updateRobotLed();
   debugPrintln("[CMD] maze memory cleared at current pose");
+}
+
+static void applyFixedTestMazeTemplate() {
+  if (!AppConfig::Maze::ENABLE_FIXED_TEST_MAZE) return;
+
+  uint8_t walls[FloodFillExplorer::N][FloodFillExplorer::N];
+  uint8_t mask[FloodFillExplorer::N][FloodFillExplorer::N];
+  uint8_t visited[FloodFillExplorer::N][FloodFillExplorer::N];
+  explorer.exportKnownMaze(walls, mask, visited);
+
+  uint16_t appliedSides = 0;
+  for (uint8_t y = 0; y < FloodFillExplorer::N; ++y) {
+    for (uint8_t x = 0; x < FloodFillExplorer::N; ++x) {
+      const uint8_t cellMask = AppConfig::Maze::FIXED_TEST_MAZE_MASK[y][x];
+      if (cellMask == 0) continue;
+      const uint8_t cellWalls = AppConfig::Maze::FIXED_TEST_MAZE_WALLS[y][x];
+
+      if (cellMask & FloodFillExplorer::WALL_N) {
+        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::NORTH,
+                         (cellWalls & FloodFillExplorer::WALL_N) != 0);
+        appliedSides++;
+      }
+      if (cellMask & FloodFillExplorer::WALL_E) {
+        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::EAST,
+                         (cellWalls & FloodFillExplorer::WALL_E) != 0);
+        appliedSides++;
+      }
+      if (cellMask & FloodFillExplorer::WALL_S) {
+        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::SOUTH,
+                         (cellWalls & FloodFillExplorer::WALL_S) != 0);
+        appliedSides++;
+      }
+      if (cellMask & FloodFillExplorer::WALL_W) {
+        setKnownWallPair(walls, mask, x, y, FloodFillExplorer::WEST,
+                         (cellWalls & FloodFillExplorer::WALL_W) != 0);
+        appliedSides++;
+      }
+    }
+  }
+
+  const bool imported = explorer.importKnownMaze(
+    walls, mask, visited, robotState.pose.cellX, robotState.pose.cellY, headingDir());
+  if (imported) {
+    debugPrintln("[MAZE] fixed test template applied sides=" + String(appliedSides));
+  } else {
+    debugPrintln("[MAZE] fixed test template apply failed");
+  }
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
@@ -1666,11 +1767,12 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
     debugPrintln("[SPIFFS] shortest path available from saved maze");
   } else {
     explorer.clearKnownMaze();
-    explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
     if (!AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT) {
       debugPrintln("[SPIFFS] saved maze load disabled; starting with unknown maze");
     }
   }
+  applyFixedTestMazeTemplate();
+  explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
 
   updateRobotState();
   updateRobotLed();
