@@ -198,7 +198,9 @@ function draw(){
       const d=S.dist[y][x];
       if(d!==65535){
         ctx.fillStyle = S.visited[y][x] ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.25)';
-        ctx.fillText(String(d), ox+x*cs+cs*0.5, oy+y*cs+cs*0.5);
+        const inGoal = (x >= gx0 && x < (gx0 + gw) && y >= gy0 && y < (gy0 + gh));
+        const cellLabel = (d === 0 && inGoal) ? 'G' : String(d);
+        ctx.fillText(cellLabel, ox+x*cs+cs*0.5, oy+y*cs+cs*0.5);
       }
     }
   }
