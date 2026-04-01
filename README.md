@@ -19,7 +19,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
 - SPIFFS persistence for saved maze memory when the shortest path is known
 - build fixes for the SPIFFS persistence integration on the current ESP32 core
-- when a saved maze is restored successfully at boot, the robot marks shortest-path-ready immediately and shows white LED in idle
+- saved-maze restore at boot is now configurable; default is disabled so boot starts with unknown maze until explore discovers walls
 - explore now uses the current pose as the active home target for goal/home swapping, so `resetpose` affects the next explore loop as expected
 - far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
 - battery monitoring is now telemetry-only and no longer blocks or aborts motion primitives
@@ -135,7 +135,7 @@ Release note:
 17. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
 18. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
 19. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
-20. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
+20. On boot, saved-maze restore is controlled by `AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT`; when disabled, wall memory starts unknown and explore must rediscover it.
 21. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
 22. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
 
@@ -189,7 +189,7 @@ Key sections:
 ## Persistence
 
 - maze wall memory is saved in SPIFFS automatically when explore reports `shortest path known`
-- on boot, the runtime restores saved maze wall memory if the SPIFFS file is present
+- on boot, wall-memory restore is optional via `AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT` (default `false`)
 - `clearmaze` now clears only the remembered wall map and deletes the saved maze-memory file; it no longer resets pose or goal
 
 ## Dependencies / Build Expectations

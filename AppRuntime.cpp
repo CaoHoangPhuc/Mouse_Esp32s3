@@ -1660,12 +1660,16 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
-  if (!PersistenceStore::loadMaze(explorer, robotState.pose.cellX, robotState.pose.cellY, headingDir())) {
-    explorer.clearKnownMaze();
-    explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-  } else {
+  if (AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT &&
+      PersistenceStore::loadMaze(explorer, robotState.pose.cellX, robotState.pose.cellY, headingDir())) {
     robotState.speedRunReady = true;
     debugPrintln("[SPIFFS] shortest path available from saved maze");
+  } else {
+    explorer.clearKnownMaze();
+    explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+    if (!AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT) {
+      debugPrintln("[SPIFFS] saved maze load disabled; starting with unknown maze");
+    }
   }
 
   updateRobotState();
@@ -1674,7 +1678,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
 
   xTaskCreatePinnedToCore(motorTask,     "motor",     4096, nullptr, 3, &motorTaskHandle,     0);
   xTaskCreatePinnedToCore(tofTask,       "tof",       4096, nullptr, 2, &tofTaskHandle,       0);
-  xTaskCreatePinnedToCore(plannerTaskFn, "planner",   4096, nullptr, 2, &plannerTaskHandle,   0);
+  xTaskCreatePinnedToCore(plannerTaskFn, "planner",   4096, nullptr, 2, &plannerTaskHandle,   1);
   xTaskCreatePinnedToCore(explorerTask,  "explorer",  8192, nullptr, 3, &explorerTaskHandle,  1);
   xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 1, &userTaskHandle,      1);
   xTaskCreatePinnedToCore(telemetryTask, "telemetry", 4096, nullptr, 0, &telemetryTaskHandle, 1);

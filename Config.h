@@ -54,10 +54,10 @@ static constexpr uint8_t HOME_H = 1;
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 4;
-static constexpr uint8_t GOAL_Y0 = 4;
-static constexpr uint8_t GOAL_W = 1;
-static constexpr uint8_t GOAL_H = 1;
+static constexpr uint8_t GOAL_X0 = 7;
+static constexpr uint8_t GOAL_Y0 = 7;
+static constexpr uint8_t GOAL_W = 2;
+static constexpr uint8_t GOAL_H = 2;
 }
 
 namespace Wifi {
@@ -65,7 +65,7 @@ namespace Wifi {
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
 static constexpr const char* SSID = "PhucWifi";
 static constexpr const char* PASS = "000000001";
-static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
+static constexpr const char* HOSTNAME = "PhucC_Esp32s3";
 // Set false to disable the HTTP web log on port 80.
 // OTA and the TCP debug console can still remain enabled.
 static constexpr bool ENABLE_WEB_LOG = true;
@@ -232,8 +232,8 @@ static constexpr float TURN_SPEED_TPS = 350.0f;
 // Affects: corridor following stability.
 static constexpr float CENTERING_GAIN = 1.0f;
 static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
-static constexpr float CENTER_TARGET_LEFT_MM = 110.0f;
-static constexpr float CENTER_TARGET_RIGHT_MM = 110.0f;
+static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
+static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
 static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 5.0f;
 static constexpr float CENTER_PID_KP = 2.0f;
 static constexpr float CENTER_PID_KI = 0.01f;
@@ -242,7 +242,7 @@ static constexpr float CENTER_PID_I_LIMIT = 40.0f;
 static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
 // Clamp side-wall distance used by center PID math only.
 // Sensor data can remain valid farther than this, but PID error uses this max.
-static constexpr uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM = 150;
+static constexpr uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM = 200;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
 static constexpr float CENTER_BLEND_TAU_SEC = 0.14f;
 static constexpr float CENTER_RAW_TAU_SEC = 0.07f;
@@ -300,6 +300,9 @@ static constexpr bool CONTINUE_AFTER_GOAL = true;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
 static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
+// If false, boot always starts from unknown wall memory and explore must
+// rediscover walls from live sensing.
+static constexpr bool LOAD_SAVED_MAZE_ON_BOOT = false;
 }
 
 namespace SpeedRun2 {
