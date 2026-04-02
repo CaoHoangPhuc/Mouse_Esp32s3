@@ -19,7 +19,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
 - SPIFFS persistence for saved maze memory when the shortest path is known
 - build fixes for the SPIFFS persistence integration on the current ESP32 core
-- saved-maze restore at boot is now configurable; default is disabled so boot starts with unknown maze until explore discovers walls
+- saved-maze restore at boot is now configurable; current default is enabled (`LOAD_SAVED_MAZE_ON_BOOT=true`)
 - explore now uses the current pose as the active home target for goal/home swapping, so `resetpose` affects the next explore loop as expected
 - far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
 - battery monitoring is now telemetry-only and no longer blocks or aborts motion primitives
@@ -184,15 +184,15 @@ Key sections:
 - `AppConfig::Wifi`: Wi-Fi / OTA / control-page settings
 - `AppConfig::Debug`: serial-output switches, runtime debug flags, and loop-watchdog timing thresholds
 - `AppConfig::I2C`: SDA/SCL and bus speed
-- `AppConfig::Tof`: sensor addresses, XSHUT pins, and wall threshold
+- `AppConfig::Tof`: sensor addresses, XSHUT pins, wall threshold, and sensor profile (`V2` / `V3_30DEG`)
 - `AppConfig::Motors`: motor pins, encoder inversion, PWM and PID settings
-- `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning
+- `AppConfig::Motion`: one-cell distance, turn ticks, speed and timeout tuning (including corner move and center-bias options)
 - `AppConfig::Explorer`: web floodfill UI settings, whether explore should continue looping between goal and home after a target is reached, and how many stable round trips are required before the shortest path is considered known
 
 ## Persistence
 
 - maze wall memory is saved in SPIFFS automatically when explore reports `shortest path known`
-- on boot, wall-memory restore is optional via `AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT` (default `false`)
+- on boot, wall-memory restore is optional via `AppConfig::Explorer::LOAD_SAVED_MAZE_ON_BOOT` (current default `true`)
 - `clearmaze` now clears only the remembered wall map and deletes the saved maze-memory file; it no longer resets pose or goal
 
 ## Dependencies / Build Expectations
@@ -241,6 +241,8 @@ Defined in [RobotTypes.h](RobotTypes.h):
 Implemented in [MotionController.cpp](MotionController.cpp):
 - `moveOneCell()`
 - `moveCells(n)`
+- `moveLeft90()`
+- `moveRight90()`
 - `moveForwardShort()`
 - `moveBackwardShort()`
 - `snapCenter()`
@@ -287,6 +289,8 @@ Available from the main sketch:
 - `testsnap`
 - `left`
 - `right`
+- `moveleft`
+- `moveright`
 - `uturn`
 - `maze`
 - `led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white`
@@ -306,6 +310,45 @@ Available from the main sketch:
 
 Manual motion note:
 - `testsnap` triggers the combined `snapCenter()` primitive so the back-then-forward recenter motion is executed and reported as one normal motion
+
+## V3 Sensor Bring-Up And Tuning (Before Explore)
+
+Use this flow when switching to V3 (`left/right` mounted +30 degrees forward).
+
+1. Set profile in config:
+   - `AppConfig::Tof::PROFILE = SENSOR_PROFILE_V3_30DEG`
+   - verify boot log shows `[BOOT] TOF profile=V3_30DEG`
+2. Bench-check raw sensors while stationary:
+   - run `test sensorsraw` and confirm stable values on `S0..S3`
+   - rotate robot near a side wall and confirm left/right trend is smooth (no random spikes to error)
+3. Verify interpreted walls:
+   - run `test sensors`
+   - confirm `left/front/right` booleans match real walls at several poses
+4. Tune V3 gating first (anti-corner coupling):
+   - adjust `CENTERING_FRONT_GATE_MM` so side PID is suppressed early enough near front walls
+   - symptom too low: nose pulls into front corners
+   - symptom too high: straight centering becomes weak too early
+5. Tune side geometry compensation:
+   - keep `SIDE_COS_ANGLE` at `cos(30°)=0.866` as baseline
+   - if robot consistently hugs one side in long corridors, adjust center targets before changing cosine
+6. Tune centering strength:
+   - adjust `CENTER_PID_KP`, then `CENTER_PID_KD`, then `CENTER_PID_OUT_LIMIT`
+   - keep `KI` small; only increase if persistent bias remains after `KP/KD` tune
+7. Tune snap-center settle:
+   - `CENTER_BIAS_BACK_MM` starts at `10 mm`
+   - increase if robot sees next-cell walls too early after snap
+   - decrease if snap leaves robot too far back and slows corner entry
+8. Tune corner-steering speed:
+   - `CORNER_MOVE_SPEED_TPS` first, then `CORNER_INNER_WHEEL_RATIO`
+   - lower ratio = tighter turn; too low can stall inner wheel
+9. Run short gated motion tests:
+   - `move 1`, `move 2`, `moveleft`, `moveright`, `uturn`
+   - pass criteria: correct final cell/heading, no corner oscillation, no wall clipping
+10. Start `explore` only after all tests above pass.
+
+Phase scope note:
+- Current code enables V3 compensation + corner move actions for `explore` and `speedrun 1`.
+- `speedrun 2` remains on its current behavior path intentionally.
 
 Console note:
 - periodic debug output pauses briefly while you type on serial or telnet, then resumes automatically
