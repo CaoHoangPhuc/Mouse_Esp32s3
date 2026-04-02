@@ -340,14 +340,37 @@ float MultiVL53L0X::computeError(float headingError) {
         rightState = stateTimeout(4);
     }
     else if (_version == SENSOR_V2) {
-        left  = min(getDistance(1), effectiveSideMax);
-        right = min(getDistance(2), effectiveSideMax);
+        uint16_t leftRaw = getDistance(1);
+        uint16_t rightRaw = getDistance(2);
+        if (AppConfig::Tof::PROFILE == AppConfig::Tof::SENSOR_PROFILE_V3_30DEG) {
+            leftRaw = (uint16_t)roundf((float)leftRaw * AppConfig::Tof::SIDE_COS_ANGLE);
+            rightRaw = (uint16_t)roundf((float)rightRaw * AppConfig::Tof::SIDE_COS_ANGLE);
+        }
+        left  = min(leftRaw, effectiveSideMax);
+        right = min(rightRaw, effectiveSideMax);
         leftState  = stateTimeout(1);
         rightState = stateTimeout(2);
     }
 
-    const bool leftValid  = isGood(leftState);
-    const bool rightValid = isGood(rightState);
+    bool leftValid  = isGood(leftState);
+    bool rightValid = isGood(rightState);
+    if (_version == SENSOR_V2 &&
+        AppConfig::Tof::PROFILE == AppConfig::Tof::SENSOR_PROFILE_V3_30DEG) {
+        const uint16_t fl = getDistance(0);
+        const uint16_t fr = getDistance(3);
+        const uint8_t flState = stateTimeout(0);
+        const uint8_t frState = stateTimeout(3);
+        const bool flGood = isGood(flState);
+        const bool frGood = isGood(frState);
+        uint16_t frontMin = 0;
+        if (flGood && frGood) frontMin = min(fl, fr);
+        else if (flGood) frontMin = fl;
+        else if (frGood) frontMin = fr;
+        if (frontMin > 0 && frontMin <= AppConfig::Tof::CENTERING_FRONT_GATE_MM) {
+            leftValid = false;
+            rightValid = false;
+        }
+    }
     const bool dualWallValid = leftValid && rightValid;
     const bool forceLeft = _straightTrackMode == TRACK_LEFT;
     const bool forceRight = _straightTrackMode == TRACK_RIGHT;

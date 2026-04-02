@@ -138,9 +138,19 @@ static constexpr uint32_t CLOCK_HZ = 400000;
 }
 
 namespace Tof {
+enum SensorProfile : uint8_t {
+  SENSOR_PROFILE_V2 = 0,
+  SENSOR_PROFILE_V3_30DEG
+};
+
 // PCF8574 I/O expander address used to control XSHUT pins.
 // Affects: TOF power-up and address assignment.
 static constexpr uint8_t PCF_ADDRESS = 0x20;
+// Sensor profile selection:
+// V3 keeps V2 channel mapping but side sensors are mounted +30 deg forward.
+static constexpr SensorProfile PROFILE = SENSOR_PROFILE_V3_30DEG;
+static constexpr float SIDE_COS_ANGLE = 0.8660254f;  // cos(30 deg)
+static constexpr uint16_t CENTERING_FRONT_GATE_MM = 140;
 
 // Number of configured TOF sensors and update cadence.
 // Affects: MultiVL53L0X initialization and polling behavior.
