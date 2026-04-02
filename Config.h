@@ -256,8 +256,8 @@ static constexpr int32_t TURN_TICKS_180 = 430;
 // Affects: how fast the robot attempts straight moves and turns.
 static constexpr float MOVE_SPEED_TPS = 350.0f;
 static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
-static constexpr float CORNER_MOVE_SPEED_TPS = 350.0f;
-static constexpr float CORNER_INNER_WHEEL_RATIO = 0.55f;
+static constexpr float CORNER_MOVE_SPEED_TPS = 500.0f;
+static constexpr float CORNER_INNER_WHEEL_RATIO = 0.5f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 20.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
@@ -298,8 +298,8 @@ static constexpr float FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR = 0.85f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
-static constexpr float FRONT_STOP_MM = 160.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 180.0f;
+static constexpr float FRONT_STOP_MM = 150.0f;
+static constexpr float CORRIDOR_FRONT_STOP_MM = 170.0f;
 static constexpr float FRONT_APPROACH_SLOWDOWN_MM = 220.0f;
 static constexpr float FRONT_APPROACH_MIN_SPEED_TPS = 130.0f;
 static constexpr uint8_t FRONT_STOP_CONFIRM_SAMPLES = 2;

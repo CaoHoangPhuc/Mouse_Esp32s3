@@ -1418,7 +1418,7 @@ void FloodFillExplorer::setupWs_() {
 bool FloodFillExplorer::handleWsHandshake_() {
   if (!ws_ || !ws_->client || !ws_->client.connected()) return false;
 
-  ws_->client.setTimeout(50);
+  // ws_->client.setTimeout(50);
   String key;
   while (ws_->client.connected()) {
     String line = ws_->client.readStringUntil('\n');
@@ -1653,7 +1653,7 @@ void FloodFillExplorer::serviceWs_() {
     if (ws_->client) ws_->client.stop();
     ws_->client = ws_->server.accept();
     ws_->client.setNoDelay(true); 
-    ws_->client.setTimeout(50);
+    // ws_->client.setTimeout(50);
     ws_->handshaken = false;
     ws_->lastStateVerSent = 0xFFFFFFFFu;
   }
