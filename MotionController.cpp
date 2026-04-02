@@ -34,6 +34,15 @@ bool MotionController::updateProgressOrFail_(float progressMm, uint32_t now, con
   return false;
 }
 
+bool MotionController::centerBiasActiveForState_(const RobotState& state) const {
+  if (cfg_.centerBiasBackMm <= 0.0f) return false;
+  if (state.mode == ROBOT_MODE_EXPLORE) return cfg_.centerBiasEnableExplore;
+  if (state.mode == ROBOT_MODE_SPEED_RUN && state.speedRunPhase == 1) {
+    return cfg_.centerBiasEnableSpeedRun1;
+  }
+  return false;
+}
+
 bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
   if (!left_ || !right_ || !tof_) return false;
   if (isBusy()) return false;
@@ -225,6 +234,11 @@ void MotionController::update(RobotState& state) {
 
   if (status_ != MOTION_RUNNING_PRIMITIVE) return;
 
+  const bool v3ControlAdjustmentsEnabled =
+    (state.mode == ROBOT_MODE_EXPLORE) ||
+    (state.mode == ROBOT_MODE_SPEED_RUN && state.speedRunPhase == 1);
+  tof_->setV3CompensationEnabled(v3ControlAdjustmentsEnabled);
+
   const uint32_t now = millis();
   uint32_t primitiveTimeoutMs = cfg_.primitiveTimeoutMs;
   if (primitive_ == MOTION_MOVE_MULTI_CELL && moveCellTargetCount_ > 1) {
@@ -330,6 +344,9 @@ void MotionController::update(RobotState& state) {
 
     if (updateProgressOrFail_(progressMm, now, "reverse stall")) return;
   } else if (primitive_ == MOTION_SNAP_CENTER) {
+    const bool applyBias = centerBiasActiveForState_(state);
+    const float snapReverseTargetMm = cfg_.reverseDistanceMm + (applyBias ? cfg_.centerBiasBackMm : 0.0f);
+    const float snapForwardTargetMm = cfg_.shortForwardDistanceMm;
     if (snapCenterPhase_ == SNAP_CENTER_PHASE_BACK) {
       const float progressMm = absoluteAverageProgressMm_();
       state.pose.forwardProgressMm = -progressMm;
@@ -337,7 +354,7 @@ void MotionController::update(RobotState& state) {
       left_->setSpeedTPS(-cfg_.reverseSpeedTps);
       right_->setSpeedTPS(-cfg_.reverseSpeedTps);
 
-      if (progressMm >= cfg_.reverseDistanceMm) {
+      if (progressMm >= snapReverseTargetMm) {
         left_->hardStop();
         right_->hardStop();
         snapCenterPhase_ = SNAP_CENTER_PHASE_HOLD;
@@ -372,7 +389,7 @@ void MotionController::update(RobotState& state) {
       left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
       right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
 
-      if (progressMm >= cfg_.shortForwardDistanceMm) {
+      if (progressMm >= snapForwardTargetMm) {
         markDone_(MOTION_COMPLETED);
         return;
       }

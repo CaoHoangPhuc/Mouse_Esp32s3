@@ -192,6 +192,7 @@ static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
 static uint8_t runtimeGoalH = AppConfig::Maze::GOAL_H;
 static const char* primitiveName(MotionPrimitiveType primitive);
 static const char* headingName(FloodFillExplorer::Dir dir);
+static const char* tofProfileName();
 static String poseSummary(uint8_t x, uint8_t y, FloodFillExplorer::Dir dir);
 static String wallFlagsSummary();
 static String wallDistanceSummary();
@@ -1030,6 +1031,14 @@ static void applyFixedTestMazeTemplate() {
     debugPrintln("[MAZE] fixed test template applied sides=" + String(appliedSides));
   } else {
     debugPrintln("[MAZE] fixed test template apply failed");
+  }
+}
+
+static const char* tofProfileName() {
+  switch (AppConfig::Tof::PROFILE) {
+    case AppConfig::Tof::SENSOR_PROFILE_V2: return "V2";
+    case AppConfig::Tof::SENSOR_PROFILE_V3_30DEG: return "V3_30DEG";
+    default: return "unknown";
   }
 }
 
@@ -1989,6 +1998,13 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] WiFi=") + (wifiOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Motors=") + (motorsOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
+  debugPrintln(String("[BOOT] TOF profile=") + tofProfileName() +
+               " sideAngleDeg=" + String(AppConfig::Tof::SIDE_MOUNT_ANGLE_DEG, 1) +
+               " sideCos=" + String(AppConfig::Tof::SIDE_COS_ANGLE, 3) +
+               " frontGateMm=" + String(AppConfig::Tof::CENTERING_FRONT_GATE_MM));
+  debugPrintln(String("[BOOT] CenterBias backMm=") + String(AppConfig::Motion::CENTER_BIAS_BACK_MM, 1) +
+               " explore=" + String((int)AppConfig::Motion::CENTER_BIAS_ENABLE_EXPLORE) +
+               " speedrun1=" + String((int)AppConfig::Motion::CENTER_BIAS_ENABLE_SPEEDRUN1));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
   if (WiFi.status() == WL_CONNECTED) {
     debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" +

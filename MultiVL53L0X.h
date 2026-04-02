@@ -59,6 +59,7 @@ public:
     void resetCenterPid();
     void setStraightTrackMode(StraightTrackMode mode) { _straightTrackMode = mode; }
     StraightTrackMode straightTrackMode() const { return _straightTrackMode; }
+    void setV3CompensationEnabled(bool en) { _v3CompensationEnabled = en; }
 
     // ---- Sensors ----
     bool     isSensorOk(uint8_t index) const;
@@ -125,6 +126,7 @@ private:
     float _centerTargetRight = 100.0f;
     bool _captureCenterTargetsOnFirstSample = true;
     StraightTrackMode _straightTrackMode = TRACK_NONE;
+    bool _v3CompensationEnabled = true;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
 

@@ -138,9 +138,23 @@ static constexpr uint32_t CLOCK_HZ = 400000;
 }
 
 namespace Tof {
+enum SensorProfile : uint8_t {
+  SENSOR_PROFILE_V2 = 0,
+  SENSOR_PROFILE_V3_30DEG
+};
+
 // PCF8574 I/O expander address used to control XSHUT pins.
 // Affects: TOF power-up and address assignment.
 static constexpr uint8_t PCF_ADDRESS = 0x20;
+
+// Active side-sensor geometry profile.
+// V3_30DEG keeps V2 channel order but side sensors are angled +30 degrees forward.
+static constexpr SensorProfile PROFILE = SENSOR_PROFILE_V3_30DEG;
+static constexpr float SIDE_MOUNT_ANGLE_DEG = 30.0f;
+static constexpr float SIDE_COS_ANGLE = 0.8660254f;  // cos(30 deg)
+// If front wall is this close, side centering is suppressed in V3 to avoid
+// corner/front-edge coupling from angled side sensors.
+static constexpr uint16_t CENTERING_FRONT_GATE_MM = 140;
 
 // Number of configured TOF sensors and update cadence.
 // Affects: MultiVL53L0X initialization and polling behavior.
@@ -284,6 +298,11 @@ static constexpr float FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR = 0.85f;
 // Affects: wall approach safety and cell alignment.
 static constexpr float FRONT_STOP_MM = 100.0f;
 static constexpr float CORRIDOR_FRONT_STOP_MM = 130.0f;
+// Backward settle offset for snap-center in explore/speedrun1.
+// Positive value means final snap result stops farther back from next-cell edge.
+static constexpr float CENTER_BIAS_BACK_MM = 10.0f;
+static constexpr bool CENTER_BIAS_ENABLE_EXPLORE = true;
+static constexpr bool CENTER_BIAS_ENABLE_SPEEDRUN1 = true;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
@@ -401,6 +420,9 @@ inline MotionController::Config makeMotionConfig() {
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
   cfg.mmPerTick = Motion::MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
+  cfg.centerBiasBackMm = Motion::CENTER_BIAS_BACK_MM;
+  cfg.centerBiasEnableExplore = Motion::CENTER_BIAS_ENABLE_EXPLORE;
+  cfg.centerBiasEnableSpeedRun1 = Motion::CENTER_BIAS_ENABLE_SPEEDRUN1;
   return cfg;
 }
 
@@ -413,6 +435,8 @@ inline MotionController::Config makeSpeedRun2MotionConfig() {
   cfg.corridorCenteringGain = SpeedRun2::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = SpeedRun2::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = SpeedRun2::CORRIDOR_FRONT_STOP_MM;
+  cfg.centerBiasEnableExplore = false;
+  cfg.centerBiasEnableSpeedRun1 = false;
   return cfg;
 }
 

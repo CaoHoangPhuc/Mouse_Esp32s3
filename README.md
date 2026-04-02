@@ -79,6 +79,8 @@ This repository now includes the first integrated hardware-oriented control stac
 - runtime forward-cell commit logic now matches that rule too, so `move 1` completion uses `FRONT_STOP_MM` consistently in both motion and planner-commit paths
 - added front-corner anti-stick steering assist: when front is too close (`<50 mm`, V1 front or V2 FL/FR), control injects stronger steer-away bias to avoid nose-sticking on walls
 - center PID side-distance clamp is now configurable via `CENTER_PID_EFFECTIVE_SIDE_MAX_MM`, and V2 front-right (S3) is now treated independently (no S0 dependency workaround)
+- TOF geometry profile is now compile-time selectable in `AppConfig::Tof::PROFILE` (`V2` or `V3_30DEG`); V3 mode applies side-distance cosine compensation and front-near centering suppression for angled side sensors
+- snap-centering now supports a configurable backward settle bias (`CENTER_BIAS_BACK_MM`) that is enabled for `explore` and `speedrun 1` by default, while `speedrun 2` remains unchanged in this phase
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

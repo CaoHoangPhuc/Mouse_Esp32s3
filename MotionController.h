@@ -32,6 +32,9 @@ public:
     float minProgressMm = 12.0f;
     float mmPerTick = 0.54f;
     uint8_t corridorMaxCells = 1;
+    float centerBiasBackMm = 0.0f;
+    bool centerBiasEnableExplore = false;
+    bool centerBiasEnableSpeedRun1 = false;
   };
 
   void begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery = nullptr);
@@ -70,6 +73,7 @@ private:
   int32_t differentialTicks_() const;
   void resetSnapState_();
   bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
+  bool centerBiasActiveForState_(const RobotState& state) const;
 
   DcMotor* left_ = nullptr;
   DcMotor* right_ = nullptr;
