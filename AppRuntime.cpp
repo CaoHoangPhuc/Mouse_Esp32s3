@@ -420,6 +420,8 @@ static const char* primitiveName(MotionPrimitiveType primitive) {
     case MOTION_NONE: return "none";
     case MOTION_MOVE_ONE_CELL: return "move1";
     case MOTION_MOVE_MULTI_CELL: return "moveN";
+    case MOTION_MOVE_LEFT_90: return "moveL90";
+    case MOTION_MOVE_RIGHT_90: return "moveR90";
     case MOTION_SNAP_CENTER: return "snapcenter";
     case MOTION_TURN_LEFT_90: return "turnL";
     case MOTION_TURN_RIGHT_90: return "turnR";
@@ -898,6 +900,7 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
   speedRunPreAlignHasSideSnap = false;
   explorer.setHardwareMode(true);
+  explorer.setCornerMoveActionsEnabled(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
@@ -934,6 +937,7 @@ static void beginSpeedRun(uint8_t phase) {
   speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
   speedRunPreAlignHasSideSnap = false;
   explorer.setHardwareMode(true);
+  explorer.setCornerMoveActionsEnabled(!usesSpeedRun2Profile(phase));
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
@@ -1078,6 +1082,14 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
       ok = motionController.turn180();
       startedPrimitive = MOTION_TURN_180;
       break;
+    case FloodFillExplorer::ACT_MOVE_L90:
+      ok = motionController.moveLeft90();
+      startedPrimitive = MOTION_MOVE_LEFT_90;
+      break;
+    case FloodFillExplorer::ACT_MOVE_R90:
+      ok = motionController.moveRight90();
+      startedPrimitive = MOTION_MOVE_RIGHT_90;
+      break;
     default:
       return true;
   }
@@ -1120,6 +1132,12 @@ static void advancePoseForwardOneCell() {
 static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
   if (primitive == MOTION_MOVE_ONE_CELL) {
     advancePoseForwardOneCell();
+  } else if (primitive == MOTION_MOVE_LEFT_90) {
+    advancePoseForwardOneCell();
+    robotState.pose.heading = (robotState.pose.heading + 3) & 3;
+  } else if (primitive == MOTION_MOVE_RIGHT_90) {
+    advancePoseForwardOneCell();
+    robotState.pose.heading = (robotState.pose.heading + 1) & 3;
   } else if (primitive == MOTION_TURN_LEFT_90) {
     robotState.pose.heading = (robotState.pose.heading + 3) & 3;
   } else if (primitive == MOTION_TURN_RIGHT_90) {
@@ -2013,7 +2031,7 @@ static void printStartupSummary() {
     debugPrintln(String("[BOOT] TCP Console: waiting for WiFi on :") +
                  String(AppConfig::Wifi::DEBUG_TCP_PORT));
   }
-  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | moveleft | moveright | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
@@ -2235,9 +2253,19 @@ static void handleSerialCommand(const String& rawLine) {
     executePlannerAction(FloodFillExplorer::ACT_TURN_L);
     return;
   }
+  if (line == "moveleft") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    executePlannerAction(FloodFillExplorer::ACT_MOVE_L90);
+    return;
+  }
   if (line == "right") {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     executePlannerAction(FloodFillExplorer::ACT_TURN_R);
+    return;
+  }
+  if (line == "moveright") {
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    executePlannerAction(FloodFillExplorer::ACT_MOVE_R90);
     return;
   }
   if (line == "uturn") {

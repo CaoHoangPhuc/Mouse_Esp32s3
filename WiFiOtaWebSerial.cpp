@@ -87,6 +87,8 @@ static const char* kIndexHtml PROGMEM = R"HTML(
           <li><code>back</code> - move backward using the configured short reverse distance.</li>
           <li><code>left</code> - turn left 90 degrees.</li>
           <li><code>right</code> - turn right 90 degrees.</li>
+          <li><code>moveleft</code> - move one cell while steering left 90 degrees.</li>
+          <li><code>moveright</code> - move one cell while steering right 90 degrees.</li>
           <li><code>uturn</code> - turn 180 degrees.</li>
           <li><code>testsnap</code> - run the snap-center combo for alignment tuning.</li>
           <li><code>stop</code> - stop with the normal coast-to-idle path.</li>

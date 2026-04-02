@@ -20,7 +20,9 @@ public:
     ACT_TURN_L,
     ACT_TURN_R,
     ACT_TURN_180,
-    ACT_MOVE_F
+    ACT_MOVE_F,
+    ACT_MOVE_L90,
+    ACT_MOVE_R90
   };
 
   struct PlanNode {
@@ -75,6 +77,7 @@ public:
   Action requestNextActionNoAck();
   bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
   void truncatePendingForwardAction();
+  void setCornerMoveActionsEnabled(bool en) { cornerMoveActionsEnabled_ = en; }
 
   // SIM truth walls (optional). If you don't call this, truthWalls_ default 0 (no walls),
   // robot mode should override senseCell_ later by real sensors.
@@ -210,6 +213,7 @@ private:
   uint32_t pendingSinceMs_ = 0;
   uint8_t lastActionForwardCells_ = 0;
   bool lastActionEndsAtKnownWall_ = false;
+  bool cornerMoveActionsEnabled_ = false;
 
   LogFn logFn_ = nullptr;
   WebCommandFn webCommandFn_ = nullptr;

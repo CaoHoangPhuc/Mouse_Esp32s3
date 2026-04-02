@@ -81,6 +81,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - center PID side-distance clamp is now configurable via `CENTER_PID_EFFECTIVE_SIDE_MAX_MM`, and V2 front-right (S3) is now treated independently (no S0 dependency workaround)
 - TOF geometry profile is now compile-time selectable in `AppConfig::Tof::PROFILE` (`V2` or `V3_30DEG`); V3 mode applies side-distance cosine compensation and front-near centering suppression for angled side sensors
 - snap-centering now supports a configurable backward settle bias (`CENTER_BIAS_BACK_MM`) that is enabled for `explore` and `speedrun 1` by default, while `speedrun 2` remains unchanged in this phase
+- planner/runtime now support corner-steering one-cell actions (`moveL90` / `moveR90`) used in `explore` and `speedrun 1`; `speedrun 2` keeps legacy corner behavior for now
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 

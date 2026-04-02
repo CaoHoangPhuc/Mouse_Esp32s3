@@ -85,6 +85,26 @@ bool MotionController::moveCells(uint8_t cells, bool requireFrontStopAtEnd) {
   return true;
 }
 
+bool MotionController::moveLeft90() {
+  if (!startPrimitive_(MOTION_MOVE_LEFT_90)) return false;
+  tof_->resetCenterPid();
+  const float outer = cfg_.cornerMoveSpeedTps;
+  const float inner = cfg_.cornerMoveSpeedTps * cfg_.cornerInnerWheelRatio;
+  left_->setSpeedTPS(inner);
+  right_->setSpeedTPS(outer);
+  return true;
+}
+
+bool MotionController::moveRight90() {
+  if (!startPrimitive_(MOTION_MOVE_RIGHT_90)) return false;
+  tof_->resetCenterPid();
+  const float outer = cfg_.cornerMoveSpeedTps;
+  const float inner = cfg_.cornerMoveSpeedTps * cfg_.cornerInnerWheelRatio;
+  left_->setSpeedTPS(outer);
+  right_->setSpeedTPS(inner);
+  return true;
+}
+
 void MotionController::limitMoveCellTargetCount(uint8_t cells) {
   if (primitive_ != MOTION_MOVE_MULTI_CELL || status_ != MOTION_RUNNING_PRIMITIVE) return;
   if (cells < 1) cells = 1;
@@ -317,6 +337,29 @@ void MotionController::update(RobotState& state) {
     }
 
     if (updateProgressOrFail_(progressMm, now, "corridor move stall")) return;
+  } else if (primitive_ == MOTION_MOVE_LEFT_90 ||
+             primitive_ == MOTION_MOVE_RIGHT_90) {
+    const float progressMm = averageProgressMm_();
+    const float turnTicks = (float)abs(differentialTicks_());
+    state.pose.forwardProgressMm = progressMm;
+    state.pose.turnProgressDeg = min(90.0f, (turnTicks / (float)max<int32_t>(1, cfg_.turnTicks90)) * 90.0f);
+
+    const float outer = cfg_.cornerMoveSpeedTps;
+    const float inner = cfg_.cornerMoveSpeedTps * cfg_.cornerInnerWheelRatio;
+    if (primitive_ == MOTION_MOVE_LEFT_90) {
+      left_->setSpeedTPS(inner);
+      right_->setSpeedTPS(outer);
+    } else {
+      left_->setSpeedTPS(outer);
+      right_->setSpeedTPS(inner);
+    }
+
+    if (progressMm >= cfg_.cellDistanceMm && turnTicks >= (float)max<int32_t>(1, cfg_.turnTicks90)) {
+      markDone_(MOTION_COMPLETED);
+      return;
+    }
+
+    if (updateProgressOrFail_(progressMm, now, "corner move stall")) return;
   } else if (primitive_ == MOTION_MOVE_FORWARD_SHORT) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;

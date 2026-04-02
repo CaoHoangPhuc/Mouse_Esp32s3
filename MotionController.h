@@ -15,6 +15,8 @@ public:
     int32_t turnTicks180 = 600;
     float moveSpeedTps = 320.0f;
     float corridorMoveSpeedTps = 320.0f;
+    float cornerMoveSpeedTps = 280.0f;
+    float cornerInnerWheelRatio = 0.55f;
     float shortForwardDistanceMm = 90.0f;
     float shortForwardSpeedTps = 220.0f;
     float reverseDistanceMm = 45.0f;
@@ -47,6 +49,8 @@ public:
   bool snapCenter();
   bool turnLeft90();
   bool turnRight90();
+  bool moveLeft90();
+  bool moveRight90();
   bool turn180();
   void stop();
   void abort(const String& reason);

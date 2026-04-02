@@ -599,6 +599,8 @@ const char* FloodFillExplorer::actionName_(Action a) const{
     case ACT_TURN_R: return "turnR";
     case ACT_TURN_180: return "turn180";
     case ACT_MOVE_F: return "moveF";
+    case ACT_MOVE_L90: return "moveL90";
+    case ACT_MOVE_R90: return "moveR90";
   }
   return "none";
 }
@@ -1233,8 +1235,8 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
 
   lastActionForwardCells_ = 1;
   lastActionEndsAtKnownWall_ = false;
-  if(diff == 1) return ACT_TURN_R;
-  if(diff == 3) return ACT_TURN_L;
+  if(diff == 1) return cornerMoveActionsEnabled_ ? ACT_MOVE_R90 : ACT_TURN_R;
+  if(diff == 3) return cornerMoveActionsEnabled_ ? ACT_MOVE_L90 : ACT_TURN_L;
   return ACT_TURN_180;
 }
 
@@ -1284,6 +1286,22 @@ bool FloodFillExplorer::commitPendingAction_(){
     mh_ = (Dir)(((uint8_t)mh_ + 1) & 3);
   }else if(pendingAction_ == ACT_TURN_180){
     mh_ = (Dir)(((uint8_t)mh_ + 2) & 3);
+  }else if (pendingAction_ == ACT_MOVE_L90 || pendingAction_ == ACT_MOVE_R90) {
+    if (!knownHasWall_(mx_, my_, mh_)) {
+      int nx = mx_ + dx4[(int)mh_];
+      int ny = my_ + dy4[(int)mh_];
+      if (inBounds_(nx, ny)) {
+        mx_ = (uint8_t)nx;
+        my_ = (uint8_t)ny;
+        visited_[my_][mx_] = true;
+        senseCell_(mx_, my_);
+      }
+    }
+    if (pendingAction_ == ACT_MOVE_L90) {
+      mh_ = (Dir)(((uint8_t)mh_ + 3) & 3);
+    } else {
+      mh_ = (Dir)(((uint8_t)mh_ + 1) & 3);
+    }
   }else if(pendingAction_ == ACT_MOVE_F){
     if(!knownHasWall_(mx_, my_, mh_)){
       int nx = mx_ + dx4[(int)mh_];
@@ -1297,7 +1315,7 @@ bool FloodFillExplorer::commitPendingAction_(){
     }
     if (pendingForwardCells_ > 0) pendingForwardCells_--;
   }
-  const bool done = pendingAction_ != ACT_MOVE_F || pendingForwardCells_ == 0;
+  const bool done = (pendingAction_ != ACT_MOVE_F) || pendingForwardCells_ == 0;
   if (done) {
     pendingAction_ = ACT_NONE;
   }
@@ -1335,7 +1353,7 @@ bool FloodFillExplorer::performStepMove_(String& reply){
     computePlan_();
     markDirty_();
 
-    if(act == ACT_MOVE_F){
+    if(act == ACT_MOVE_F || act == ACT_MOVE_L90 || act == ACT_MOVE_R90){
       reply = "step move ok";
       return true;
     }

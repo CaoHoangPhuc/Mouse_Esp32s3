@@ -256,6 +256,8 @@ static constexpr int32_t TURN_TICKS_180 = 430;
 // Affects: how fast the robot attempts straight moves and turns.
 static constexpr float MOVE_SPEED_TPS = 350.0f;
 static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
+static constexpr float CORNER_MOVE_SPEED_TPS = 350.0f;
+static constexpr float CORNER_INNER_WHEEL_RATIO = 0.55f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
 static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
@@ -403,6 +405,8 @@ inline MotionController::Config makeMotionConfig() {
   cfg.turnTicks180 = Motion::TURN_TICKS_180;
   cfg.moveSpeedTps = Motion::MOVE_SPEED_TPS;
   cfg.corridorMoveSpeedTps = Motion::CORRIDOR_MOVE_SPEED_TPS;
+  cfg.cornerMoveSpeedTps = Motion::CORNER_MOVE_SPEED_TPS;
+  cfg.cornerInnerWheelRatio = Motion::CORNER_INNER_WHEEL_RATIO;
   cfg.shortForwardDistanceMm = Motion::SHORT_FORWARD_DISTANCE_MM;
   cfg.shortForwardSpeedTps = Motion::SHORT_FORWARD_SPEED_TPS;
   cfg.reverseDistanceMm = Motion::REVERSE_DISTANCE_MM;
