@@ -259,7 +259,7 @@ static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
 static constexpr float CORNER_MOVE_SPEED_TPS = 350.0f;
 static constexpr float CORNER_INNER_WHEEL_RATIO = 0.55f;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
-static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
+static constexpr float SHORT_FORWARD_DISTANCE_MM = 20.0f;
 static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
 // Short reverse primitive used for manual alignment and future turn recentering work.
 static constexpr float REVERSE_DISTANCE_MM = 100.0f;
@@ -298,8 +298,11 @@ static constexpr float FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR = 0.85f;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
-static constexpr float FRONT_STOP_MM = 100.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 130.0f;
+static constexpr float FRONT_STOP_MM = 160.0f;
+static constexpr float CORRIDOR_FRONT_STOP_MM = 180.0f;
+static constexpr float FRONT_APPROACH_SLOWDOWN_MM = 220.0f;
+static constexpr float FRONT_APPROACH_MIN_SPEED_TPS = 130.0f;
+static constexpr uint8_t FRONT_STOP_CONFIRM_SAMPLES = 2;
 // Backward settle offset for snap-center in explore/speedrun1.
 // Positive value means final snap result stops farther back from next-cell edge.
 static constexpr float CENTER_BIAS_BACK_MM = 10.0f;
@@ -417,6 +420,9 @@ inline MotionController::Config makeMotionConfig() {
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
+  cfg.frontApproachSlowdownMm = Motion::FRONT_APPROACH_SLOWDOWN_MM;
+  cfg.frontApproachMinSpeedTps = Motion::FRONT_APPROACH_MIN_SPEED_TPS;
+  cfg.frontStopConfirmSamples = Motion::FRONT_STOP_CONFIRM_SAMPLES;
   cfg.primitiveTimeoutMs = Motion::PRIMITIVE_TIMEOUT_MS;
   cfg.corridorTimeoutPerCellMs = Motion::CORRIDOR_TIMEOUT_PER_CELL_MS;
   cfg.stallTimeoutMs = Motion::STALL_TIMEOUT_MS;

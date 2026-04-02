@@ -21,6 +21,32 @@ void MotionController::resetSnapState_() {
   snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
+float MotionController::frontApproachSpeedTps_(float baseSpeedTps,
+                                               const WallObservation& walls,
+                                               float stopThresholdMm) const {
+  if (!walls.frontValid || !walls.frontWall || walls.frontMm == 0) return baseSpeedTps;
+  const float frontMm = (float)walls.frontMm;
+  if (frontMm <= stopThresholdMm) return cfg_.frontApproachMinSpeedTps;
+  if (frontMm >= cfg_.frontApproachSlowdownMm) return baseSpeedTps;
+  const float span = max(1.0f, cfg_.frontApproachSlowdownMm - stopThresholdMm);
+  const float t = (frontMm - stopThresholdMm) / span;  // 0..1
+  return cfg_.frontApproachMinSpeedTps +
+         (baseSpeedTps - cfg_.frontApproachMinSpeedTps) * t;
+}
+
+bool MotionController::frontStopReached_(const WallObservation& walls, float stopThresholdMm) {
+  const bool inRange = walls.frontValid &&
+                       walls.frontWall &&
+                       walls.frontMm > 0 &&
+                       (float)walls.frontMm <= stopThresholdMm;
+  if (inRange) {
+    if (frontStopStableCount_ < 255) frontStopStableCount_++;
+  } else {
+    frontStopStableCount_ = 0;
+  }
+  return frontStopStableCount_ >= max<uint8_t>(1, cfg_.frontStopConfirmSamples);
+}
+
 bool MotionController::updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason) {
   if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
     lastProgressMm_ = progressMm;
@@ -57,6 +83,7 @@ bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
   lastProgressMs_ = startedMs_;
   resetSnapState_();
   lastProgressMm_ = 0.0f;
+  frontStopStableCount_ = 0;
   moveCellTargetCount_ = 1;
   moveEndsAtKnownWall_ = false;
   straightTrackModeLatched_ = false;
@@ -280,16 +307,16 @@ void MotionController::update(RobotState& state) {
     } else if (!useLatchedTrackMode_) {
       tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
     }
-    bool shouldFrontStop = walls.frontValid && walls.frontWall && walls.frontMm > 0 &&
-                           walls.frontMm <= cfg_.frontStopMm;
+    const bool shouldFrontStop = frontStopReached_(walls, cfg_.frontStopMm);
 
     float correction = 0.0f;
     if (walls.leftValid || walls.rightValid) {
       correction = tof_->computeError(0.0f) * cfg_.centeringGain;
     }
 
-    left_->setSpeedTPS(cfg_.moveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.moveSpeedTps - correction);
+    const float commandedSpeed = frontApproachSpeedTps_(cfg_.moveSpeedTps, walls, cfg_.frontStopMm);
+    left_->setSpeedTPS(commandedSpeed + correction);
+    right_->setSpeedTPS(commandedSpeed - correction);
 
     if (progressMm >= cfg_.cellDistanceMm || shouldFrontStop) {
       markDone_(MOTION_COMPLETED);
@@ -313,18 +340,16 @@ void MotionController::update(RobotState& state) {
     }
     const bool inFinalCell = progressMm >= finalCellStartMm;
     const bool shouldFrontStop = inFinalCell &&
-                                 walls.frontValid &&
-                                 walls.frontWall &&
-                                 walls.frontMm > 0 &&
-                                 walls.frontMm <= frontStopThresholdMm;
+                                 frontStopReached_(walls, frontStopThresholdMm);
 
     float correction = 0.0f;
     if (walls.leftValid || walls.rightValid) {
       correction = tof_->computeError(0.0f) * cfg_.corridorCenteringGain;
     }
 
-    left_->setSpeedTPS(cfg_.corridorMoveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.corridorMoveSpeedTps - correction);
+    const float corridorBase = frontApproachSpeedTps_(cfg_.corridorMoveSpeedTps, walls, frontStopThresholdMm);
+    left_->setSpeedTPS(corridorBase + correction);
+    right_->setSpeedTPS(corridorBase - correction);
 
     const bool reachedDistanceTarget = progressMm >= targetDistanceMm;
     const bool shouldComplete = moveEndsAtKnownWall_

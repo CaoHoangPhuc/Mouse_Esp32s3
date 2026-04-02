@@ -27,6 +27,9 @@ public:
     float corridorCenteringGain = 1.6f;
     float frontStopMm = 55.0f;
     float corridorFrontStopMm = 55.0f;
+    float frontApproachSlowdownMm = 180.0f;
+    float frontApproachMinSpeedTps = 140.0f;
+    uint8_t frontStopConfirmSamples = 2;
     uint32_t primitiveTimeoutMs = 3000;
     uint32_t corridorTimeoutPerCellMs = 1000;
     uint32_t stallTimeoutMs = 700;
@@ -78,6 +81,8 @@ private:
   void resetSnapState_();
   bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
   bool centerBiasActiveForState_(const RobotState& state) const;
+  float frontApproachSpeedTps_(float baseSpeedTps, const WallObservation& walls, float stopThresholdMm) const;
+  bool frontStopReached_(const WallObservation& walls, float stopThresholdMm);
 
   DcMotor* left_ = nullptr;
   DcMotor* right_ = nullptr;
@@ -103,4 +108,5 @@ private:
   MultiVL53L0X::StraightTrackMode straightTrackMode_ = MultiVL53L0X::TRACK_NONE;
   bool useLatchedTrackMode_ = true;
   bool stopOnCompletion_ = true;
+  uint8_t frontStopStableCount_ = 0;
 };
