@@ -280,10 +280,11 @@ static constexpr float MIN_PROGRESS_MM = 12.0f;
 static constexpr MotionController::StopMode COMPLETION_STOP_MODE =
   MotionController::StopMode::BRAKE;
 
-// Mechanical distance-per-tick estimate.
+// Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
-// Usually tune this before final CELL_DISTANCE_MM tuning.
-static constexpr float MM_PER_TICK = 0.54f;
+// Tune left/right independently to reduce long straight drift.
+static constexpr float LEFT_MM_PER_TICK = 0.54f;
+static constexpr float RIGHT_MM_PER_TICK = 0.54f;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 // Hold the motors in hard-stop briefly after a primitive completes.
@@ -386,7 +387,8 @@ inline MotionController::Config makeMotionConfig() {
   cfg.stopTps = Motion::STOP_TPS;
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
   cfg.completionStopMode = Motion::COMPLETION_STOP_MODE;
-  cfg.mmPerTick = Motion::MM_PER_TICK;
+  cfg.leftMmPerTick = Motion::LEFT_MM_PER_TICK;
+  cfg.rightMmPerTick = Motion::RIGHT_MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
   return cfg;
 }

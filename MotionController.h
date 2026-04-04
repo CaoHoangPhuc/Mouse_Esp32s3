@@ -38,7 +38,8 @@ public:
     uint32_t stallTimeoutMs = 700;
     float stopTps = 20.0f;
     float minProgressMm = 12.0f;
-    float mmPerTick = 0.54f;
+    float leftMmPerTick = 0.54f;
+    float rightMmPerTick = 0.54f;
     uint8_t corridorMaxCells = 1;
     StopMode completionStopMode = StopMode::HARDSTOP;
   };

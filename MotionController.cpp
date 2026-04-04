@@ -211,7 +211,9 @@ void MotionController::latchStraightTrackMode(const WallObservation& walls) {
 float MotionController::averageProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
-  return 0.5f * (leftDelta + rightDelta) * cfg_.mmPerTick;
+  const float leftMm = leftDelta * cfg_.leftMmPerTick;
+  const float rightMm = rightDelta * cfg_.rightMmPerTick;
+  return 0.5f * (leftMm + rightMm);
 }
 
 float MotionController::absoluteAverageProgressMm_() const {
