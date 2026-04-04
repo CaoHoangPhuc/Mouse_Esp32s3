@@ -159,6 +159,15 @@ extern const uint8_t XSHUT_PINS[];
 // Order matters and must match the physical sensor order expected by MultiVL53L0X.
 extern const uint8_t SENSOR_ADDR[];
 
+// Per-sensor linear calibration after distance calibration.
+// Corrected(mm) = raw(mm) * SENSOR_SCALE[i] + SENSOR_OFFSET_MM[i]
+// Index map:
+// - V1: 0=LEFT, 2=FRONT, 4=RIGHT
+// - V2: 0=FL, 1=LEFT, 2=RIGHT, 3=FR, 4=spare
+// Only first SENSOR_COUNT entries are used.
+extern const float SENSOR_SCALE[8];
+extern const int16_t SENSOR_OFFSET_MM[8];
+
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
 extern const float DIST_LPF_PREV_WEIGHT;

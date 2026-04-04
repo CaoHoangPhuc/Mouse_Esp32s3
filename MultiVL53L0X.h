@@ -131,14 +131,6 @@ private:
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
     LogFn _logFn = nullptr;
-
-    float _scale[MAX_SENSORS] = {1, 97.0/88.0, 1, 1, 1};
-    int _offset[MAX_SENSORS] = {0, -16, 16, 0, 0};
-    
-    // static constexpr uint16_t CENTER_TARGET    = 91;
-
-    // float _scale[MAX_SENSORS] = {1, 1, 92.0/89.0, 1, 1};
-    // int _offset[MAX_SENSORS] = {0, 28, -28, 0, 0};
     
     // Helpers
     void xshutAllLow();

@@ -185,7 +185,8 @@ void MultiVL53L0X::update() {
 
     if (ok && dist > 0 && dist < 1000) {
 
-        float corrected = dist * _scale[currentSensor] + _offset[currentSensor];
+        float corrected = dist * AppConfig::Tof::SENSOR_SCALE[currentSensor] +
+                          AppConfig::Tof::SENSOR_OFFSET_MM[currentSensor];
 
         if (corrected < AppConfig::Tof::DIST_MIN_VALID_MM) {
             _lastDistance[currentSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;

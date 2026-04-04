@@ -88,6 +88,12 @@ const uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
 const uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
 const uint8_t XSHUT_PINS[] = {0, 1, 2, 3, 4};
 const uint8_t SENSOR_ADDR[] = {0x30, 0x31, 0x32, 0x33, 0x34};
+const float SENSOR_SCALE[8] = {
+  1.0f, (97.0f / 88.0f), 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f
+};
+const int16_t SENSOR_OFFSET_MM[8] = {
+  0, -16, 16, 0, 0, 0, 0, 0
+};
 const float DIST_LPF_PREV_WEIGHT = 0.6f;
 const float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 }
@@ -162,7 +168,7 @@ const float CENTER_RAW_TAU_SEC = 0.07f;
 const float FRONT_STOP_MM = 110.0f;
 const float CORRIDOR_FRONT_STOP_MM = 130.0f;
 const float FRONT_APPROACH_START_FACTOR = 1.5f;
-const float FRONT_APPROACH_MIN_SPEED_TPS = 180.0f;
+const float FRONT_APPROACH_MIN_SPEED_TPS = 350.0f;
 const uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
 const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
 const uint32_t STALL_TIMEOUT_MS = 700;
