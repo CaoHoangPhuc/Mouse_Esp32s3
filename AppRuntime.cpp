@@ -1902,7 +1902,7 @@ static void printStartupSummary() {
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
-  debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl [tps]|motorr [tps]|encoders");
+  debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl [tps]|motorr [tps]|motor both [tps]|encoders");
   if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
     debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (5s timeout)");
   }
@@ -2215,14 +2215,27 @@ static void handleSerialCommand(const String& rawLine) {
     debugPrintln("[TEST] right motor tps=" + String(tps, 1));
     return;
   }
-  if (line == "test motor both") {
+  if (line == "test motor both" || line.startsWith("test motor both ")) {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
-    motorBothFlipTestEnabled = true;
-    motorFlipPower = 1.0f;
-    motorFlipLastToggleMs = millis();
-    leftMotor.setPower(motorFlipPower);
-    rightMotor.setPower(motorFlipPower);
-    debugPrintln("[TEST] both motors flip loop +100%/-100% every 1s");
+    if (line.startsWith("test motor both ")) {
+      const String arg = line.substring(16);
+      const float tps = arg.toFloat();
+      if (tps == 0.0f) {
+        debugPrintln("[CMD] usage: test motor both [tps!=0]");
+        return;
+      }
+      motorBothFlipTestEnabled = false;
+      leftMotor.setSpeedTPS(tps);
+      rightMotor.setSpeedTPS(tps);
+      debugPrintln("[TEST] both motors tps=" + String(tps, 1));
+    } else {
+      motorBothFlipTestEnabled = true;
+      motorFlipPower = 1.0f;
+      motorFlipLastToggleMs = millis();
+      leftMotor.setPower(motorFlipPower);
+      rightMotor.setPower(motorFlipPower);
+      debugPrintln("[TEST] both motors flip loop +100%/-100% every 1s");
+    }
     return;
   }
   if (line == "test encoders") {
