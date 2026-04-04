@@ -52,7 +52,7 @@ void MultiVL53L0X::resetCenterPid() {
     _straightTrackMode = TRACK_NONE;
     _centerPrevMs = 0;
     _centerPidPrimed = false;
-    _lastComputedSweepId = 0xFFFFFFFFu;
+    _sweepReadyForCompute = false;
     error = 0.0f;
 }
 
@@ -227,7 +227,7 @@ void MultiVL53L0X::update() {
 
     _cSensor = (_cSensor + 1) % _numSensors;
     if (_cSensor == 0) {
-        _sweepId++;
+        _sweepReadyForCompute = true;
     }
     i2cUnlock();
 }
@@ -342,10 +342,10 @@ void MultiVL53L0X::xshutAllHigh() {
 
 float MultiVL53L0X::computeError(float headingError) {
     if (AppConfig::Tof::COMPUTE_HEADING_FROM_FULL_SWEEP) {
-        if (_lastComputedSweepId == _sweepId) {
+        if (!_sweepReadyForCompute) {
             return error;
         }
-        _lastComputedSweepId = _sweepId;
+        _sweepReadyForCompute = false;
     }
 
     auto isGood = [&](uint8_t state) {

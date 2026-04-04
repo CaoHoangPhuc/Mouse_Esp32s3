@@ -100,8 +100,7 @@ private:
     uint16_t _raw[MAX_SENSORS];
     uint16_t _lastDistance[MAX_SENSORS];
     int      _cSensor = 0;
-    uint32_t _sweepId = 0;
-    uint32_t _lastComputedSweepId = 0xFFFFFFFFu;
+    bool _sweepReadyForCompute = false;
 
     SensorVersion _version = SENSOR_UNKNOWN;
 
