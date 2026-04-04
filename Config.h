@@ -54,10 +54,10 @@ static constexpr uint8_t HOME_H = 1;
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 4;
-static constexpr uint8_t GOAL_Y0 = 4;
-static constexpr uint8_t GOAL_W = 1;
-static constexpr uint8_t GOAL_H = 1;
+static constexpr uint8_t GOAL_X0 = 7;
+static constexpr uint8_t GOAL_Y0 = 7;
+static constexpr uint8_t GOAL_W = 2;
+static constexpr uint8_t GOAL_H = 2;
 }
 
 namespace Wifi {
@@ -195,7 +195,7 @@ static constexpr float PID_SLEW_RATE = 10.0f;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.20f;
+static constexpr float TPS_LPF_ALPHA = 0.12f;
 }
 
 namespace Motion {
