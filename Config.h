@@ -11,118 +11,118 @@ namespace AppConfig {
 namespace Battery {
 // Battery ADC input pin.
 // Affects: Battery.cpp sampling and motion safety gating.
-static constexpr uint8_t ADC_PIN = 3;
+extern const uint8_t ADC_PIN;
 
 // Physical divider currently expected:
 // battery+ -> 47k -> ADC node -> 18k -> GND
 // Divider ratio at ADC ~= 18 / (47 + 18) = 0.2769
 // Battery voltage ~= ADC voltage * 3.6111
 // This keeps a 2S pack in a safe ADC input range.
-static constexpr float DIVIDER_R_TOP_KOHM = 56.0f;
-static constexpr float DIVIDER_R_BOTTOM_KOHM = 18.0f;
+extern const float DIVIDER_R_TOP_KOHM;
+extern const float DIVIDER_R_BOTTOM_KOHM;
 
 // Two-point ADC calibration.
 // Measure pack voltage with a multimeter and record the matching ADC raw values.
 // Affects: reported battery voltage and battery percentage.
-static constexpr uint16_t RAW_LOW = 2800;
-static constexpr uint16_t RAW_HIGH = 3350;
-static constexpr float VOLTAGE_LOW = 7.20f;
-static constexpr float VOLTAGE_HIGH = 8.40f;
+extern const uint16_t RAW_LOW;
+extern const uint16_t RAW_HIGH;
+extern const float VOLTAGE_LOW;
+extern const float VOLTAGE_HIGH;
 
 // Runtime battery safety thresholds.
 // WARNING: robot may still operate but should be watched closely.
 // CRITICAL: motion is blocked/aborted for safety.
 // Affects: readyForMotion, fault behavior, primitive aborts.
-static constexpr float WARNING_VOLTAGE = 7.10f;
-static constexpr float CRITICAL_VOLTAGE = 6.90f;
+extern const float WARNING_VOLTAGE;
+extern const float CRITICAL_VOLTAGE;
 }
 
 namespace Maze {
 // Robot start pose in maze cell coordinates.
 // Affects: initial floodfill pose, web explorer pose, reset behavior.
-static constexpr uint8_t START_X = 0;
-static constexpr uint8_t START_Y = 0;
-static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::SOUTH;
+extern const uint8_t START_X;
+extern const uint8_t START_Y;
+extern const FloodFillExplorer::Dir START_HEADING;
 
 // Home rectangle used by floodfill target toggling during explore loops.
 // This can differ from the single physical start pose.
-static constexpr uint8_t HOME_X0 = 0;
-static constexpr uint8_t HOME_Y0 = 0;
-static constexpr uint8_t HOME_W = 1;
-static constexpr uint8_t HOME_H = 1;
+extern const uint8_t HOME_X0;
+extern const uint8_t HOME_Y0;
+extern const uint8_t HOME_W;
+extern const uint8_t HOME_H;
 
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 7;
-static constexpr uint8_t GOAL_Y0 = 7;
-static constexpr uint8_t GOAL_W = 2;
-static constexpr uint8_t GOAL_H = 2;
+extern const uint8_t GOAL_X0;
+extern const uint8_t GOAL_Y0;
+extern const uint8_t GOAL_W;
+extern const uint8_t GOAL_H;
 }
 
 namespace Wifi {
 // Development Wi-Fi / OTA / web logging settings.
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
-static constexpr const char* SSID = "PhucWifi";
-static constexpr const char* PASS = "000000001";
-static constexpr const char* HOSTNAME = "PhucC_Esp32s3";
+extern const char* SSID;
+extern const char* PASS;
+extern const char* HOSTNAME;
 // Set false to disable the HTTP web log on port 80.
 // OTA and the TCP debug console can still remain enabled.
-static constexpr bool ENABLE_WEB_LOG = true;
+extern const bool ENABLE_WEB_LOG;
 // Simple firmware upload page for browser-based wireless updates.
-static constexpr bool ENABLE_UPLOAD_WEB = true;
-static constexpr uint16_t UPLOAD_WEB_PORT = 82;
+extern const bool ENABLE_UPLOAD_WEB;
+extern const uint16_t UPLOAD_WEB_PORT;
 // Plain TCP debug/command console.
 // Connect with telnet, PuTTY raw TCP, or `nc <ip> <port>`.
-static constexpr uint16_t DEBUG_TCP_PORT = 2323;
+extern const uint16_t DEBUG_TCP_PORT;
 
 // FreeRTOS task placement/settings for Wi-Fi service loop.
 // Usually only change these if Wi-Fi/OTA becomes unstable.
-static constexpr BaseType_t CORE = 1;
-static constexpr UBaseType_t TASK_PRIORITY = 0;
-static constexpr uint32_t TASK_STACK = 10 * 1024;
-static constexpr uint32_t SERVICE_DELAY_MS = 5;
+extern const BaseType_t CORE;
+extern const UBaseType_t TASK_PRIORITY;
+extern const uint32_t TASK_STACK;
+extern const uint32_t SERVICE_DELAY_MS;
 // OTA reliability knobs. Increase connect timeout if Wi-Fi takes longer to join.
-static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
+extern const uint32_t CONNECT_TIMEOUT_MS;
 // Retry interval when Wi-Fi drops after boot.
-static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
+extern const uint32_t RECONNECT_INTERVAL_MS;
   }
 
 namespace Debug {
   // Global serial output switch.
   // Set false to mute Serial.print/println output across the app while still
   // allowing the serial port to be opened for input if needed.
-  static constexpr bool ENABLE_SERIAL_OUTPUT = true;
+  extern const bool ENABLE_SERIAL_OUTPUT;
 
 // Compact status line option.
 // Set false to keep status prints but hide motor TPS values.
 // Affects: periodic `status`/telemetry output formatting only.
-static constexpr bool PRINT_STATUS_TPS = false;
+extern const bool PRINT_STATUS_TPS;
 }
 
 namespace I2C {
 // ESP32 I2C pins used for the TOF bus.
 // Affects: Wire.begin() and I2C recovery.
-static constexpr uint8_t SDA = 8;
-static constexpr uint8_t SCL = 9;
+extern const uint8_t SDA;
+extern const uint8_t SCL;
 
 // Intended I2C bus speed.
 // Currently documented here for clarity; use this if/when bus speed is centralized.
-static constexpr uint32_t CLOCK_HZ = 400000;
+extern const uint32_t CLOCK_HZ;
 }
 
 namespace Tof {
 // PCF8574 I/O expander address used to control XSHUT pins.
 // Affects: TOF power-up and address assignment.
-static constexpr uint8_t PCF_ADDRESS = 0x20;
+extern const uint8_t PCF_ADDRESS;
 
 // Number of configured TOF sensors and update cadence.
 // Affects: MultiVL53L0X initialization and polling behavior.
-static constexpr uint8_t SENSOR_COUNT = 5;
-static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
+extern const uint8_t SENSOR_COUNT;
+extern const uint16_t UPDATE_INTERVAL_MS;
 // If true, heading-error PID is computed only once per full TOF sensor sweep.
 // This avoids mixing old/new sensor samples in the same control update.
-static constexpr bool COMPUTE_HEADING_FROM_FULL_SWEEP = true;
+extern const bool COMPUTE_HEADING_FROM_FULL_SWEEP;
 
 // Distance threshold for wall detection.
 // Smaller = more conservative wall detection.
@@ -133,18 +133,18 @@ extern const uint16_t WALL_THRESHOLD_MM;
 // Sensor distance validity window and sentinel values.
 // DIST_FAR represents a valid "clear / far" reading beyond the usable range.
 // DIST_ERROR represents an invalid/error sentinel for internal fusion paths.
-static constexpr uint16_t DIST_MIN_VALID_MM = 1;
+extern const uint16_t DIST_MIN_VALID_MM;
 extern const uint16_t DIST_MAX_VALID_MM;
 extern const uint16_t DIST_FAR_MM;
 extern const uint16_t DIST_ERROR_MM;
 
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
-static constexpr uint8_t XSHUT_PINS[SENSOR_COUNT] = {0, 1, 2, 3, 4};
+extern const uint8_t XSHUT_PINS[];
 
 // Final I2C addresses assigned to each sensor during startup.
 // Order matters and must match the physical sensor order expected by MultiVL53L0X.
-static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x34};
+extern const uint8_t SENSOR_ADDR[];
 
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
@@ -156,34 +156,18 @@ extern const float DIST_LPF_SAMPLE_WEIGHT;
 namespace Motors {
 // Right motor pin mapping and encoder polarity.
 // Affects: low-level motor direction, encoder tick sign, and all motion control.
-static constexpr DcMotor::Pins RIGHT_PINS = {
-  .in1 = 10,
-  .in2 = 11,
-  .pwm = 7,
-  .encA = 12,
-  .encB = 13,
-  .invertDir = false,
-  .invertEnc = false
-};
+extern const DcMotor::Pins RIGHT_PINS;
 
 // Left motor pin mapping and encoder polarity.
 // `invertDir` or `invertEnc` are common first-upload tuning points.
-static constexpr DcMotor::Pins LEFT_PINS = {
-  .in1 = 5,
-  .in2 = 6,
-  .pwm = 4,
-  .encA = 1,
-  .encB = 2,
-  .invertDir = true,
-  .invertEnc = true
-};
+extern const DcMotor::Pins LEFT_PINS;
 
 // LEDC channels and PWM setup.
 // Affects: motor drive generation on ESP32.
-static constexpr uint8_t LEFT_PWM_CHANNEL = 0;
-static constexpr uint8_t RIGHT_PWM_CHANNEL = 1;
-static constexpr uint32_t PWM_FREQ = 20000;
-static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
+extern const uint8_t LEFT_PWM_CHANNEL;
+extern const uint8_t RIGHT_PWM_CHANNEL;
+extern const uint32_t PWM_FREQ;
+extern const uint8_t PWM_RESOLUTION_BITS;
 
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
@@ -285,7 +269,7 @@ extern const MotionController::StopMode COMPLETION_STOP_MODE;
 extern const float LEFT_MM_PER_TICK;
 extern const float RIGHT_MM_PER_TICK;
 // Print known maze as ASCII after exploration updates the map.
-static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
+extern const bool AUTO_PRINT_MAZE_AFTER_SENSE;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
 extern const uint32_t POST_MOTION_HARD_STOP_HOLD_MS;
@@ -295,16 +279,16 @@ namespace Explorer {
 // Floodfill web explorer settings.
 // Affects: debug UI on the network and action ACK timeout behavior.
 // Set false to disable the floodfill web UI on port 81 while keeping floodfill logic active.
-static constexpr bool ENABLE_WEB = true;
-static constexpr uint16_t PORT = 81;
-static constexpr uint16_t WS_PORT = 83;
-static constexpr bool AUTO_RUN = false;
+extern const bool ENABLE_WEB;
+extern const uint16_t PORT;
+extern const uint16_t WS_PORT;
+extern const bool AUTO_RUN;
 extern const uint32_t ACK_TIMEOUT_MS;
-static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
+extern const bool PAUSE_ON_ACK_TIMEOUT;
 // In explore mode, keep looping between original goal and original start
 // after each target is reached. This helps continue discovering alternate
 // walls and improving the path without resetting pose.
-static constexpr bool CONTINUE_AFTER_GOAL = true;
+extern const bool CONTINUE_AFTER_GOAL;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
 extern const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS;
@@ -324,43 +308,43 @@ extern const float CORRIDOR_FRONT_STOP_MM;
 
 namespace Inputs {
 // Built-in BOOT button multi-press launcher on ESP32-S3 GPIO0.
-static constexpr bool ENABLE_BOOT_BUTTON_LAUNCH = true;
-static constexpr uint8_t BOOT_BUTTON_PIN = 0;
-static constexpr bool BOOT_BUTTON_ACTIVE_LOW = true;
-static constexpr uint32_t BOOT_BUTTON_DEBOUNCE_MS = 30;
-static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
+extern const bool ENABLE_BOOT_BUTTON_LAUNCH;
+extern const uint8_t BOOT_BUTTON_PIN;
+extern const bool BOOT_BUTTON_ACTIVE_LOW;
+extern const uint32_t BOOT_BUTTON_DEBOUNCE_MS;
+extern const uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS;
 }
 
 namespace Tasks {
 // Main periodic task cadences (milliseconds).
 // Affects: scheduler pacing and loop watchdog expected periods.
-static constexpr uint32_t USER_LOOP_PERIOD_MS = 100;
-static constexpr uint32_t PLANNER_LOOP_PERIOD_MS = 50;
-static constexpr uint32_t MOTOR_LOOP_PERIOD_MS = 5;
-static constexpr uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
-static constexpr uint32_t TOF_LOOP_PERIOD_MS = 5;
-static constexpr uint32_t TELEMETRY_LOOP_PERIOD_MS = 1000;
+extern const uint32_t USER_LOOP_PERIOD_MS;
+extern const uint32_t PLANNER_LOOP_PERIOD_MS;
+extern const uint32_t MOTOR_LOOP_PERIOD_MS;
+extern const uint32_t EXPLORER_LOOP_PERIOD_MS;
+extern const uint32_t TOF_LOOP_PERIOD_MS;
+extern const uint32_t TELEMETRY_LOOP_PERIOD_MS;
 }
 
 namespace Debug {
   // Additional runtime flow logging for motion, snap, and wall application.
   // Affects: extra serial/TCP debug output only; no behavior changes.
-  static constexpr bool DEBUG_MOTION_FLOW = true;
-  static constexpr bool DEBUG_WALL_APPLY = true;
+  extern const bool DEBUG_MOTION_FLOW;
+  extern const bool DEBUG_WALL_APPLY;
   // High-rate center PID trace from MultiVL53L0X::computeError().
-  static constexpr bool CENTER_PID_TRACE = true;
+  extern const bool CENTER_PID_TRACE;
   // Print every N center-PID updates (1 = every update).
-  static constexpr uint8_t CENTER_PID_TRACE_EVERY_N = 10;
+  extern const uint8_t CENTER_PID_TRACE_EVERY_N;
   // High-rate motor PID trace from DcMotor::update().
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
-  static constexpr bool MOTOR_PID_TRACE = false;
+  extern const bool MOTOR_PID_TRACE;
   // Print every N motor updates (1 = every update).
-  static constexpr uint8_t MOTOR_PID_TRACE_EVERY_N = 100;
+  extern const uint8_t MOTOR_PID_TRACE_EVERY_N;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
-  static constexpr bool ENABLE_LOOP_WATCHDOG = true;
-  static constexpr uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
-  static constexpr uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
+  extern const bool ENABLE_LOOP_WATCHDOG;
+  extern const uint32_t LOOP_WATCHDOG_TOLERANCE_MS;
+  extern const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS;
 }
 
 // Helper that converts config constants into the runtime motion controller config.
@@ -423,3 +407,4 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
 }
 
 }  // namespace AppConfig
+
