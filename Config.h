@@ -128,15 +128,15 @@ static constexpr bool COMPUTE_HEADING_FROM_FULL_SWEEP = true;
 // Smaller = more conservative wall detection.
 // Larger = walls detected earlier/farther away.
 // Affects: left/front/right wall booleans used by motion + planner.
-static constexpr uint16_t WALL_THRESHOLD_MM = 140;
+extern const uint16_t WALL_THRESHOLD_MM;
 
 // Sensor distance validity window and sentinel values.
 // DIST_FAR represents a valid "clear / far" reading beyond the usable range.
 // DIST_ERROR represents an invalid/error sentinel for internal fusion paths.
 static constexpr uint16_t DIST_MIN_VALID_MM = 1;
-static constexpr uint16_t DIST_MAX_VALID_MM = 250;
-static constexpr uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
-static constexpr uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
+extern const uint16_t DIST_MAX_VALID_MM;
+extern const uint16_t DIST_FAR_MM;
+extern const uint16_t DIST_ERROR_MM;
 
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
@@ -148,8 +148,8 @@ static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x
 
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
-static constexpr float DIST_LPF_PREV_WEIGHT = 0.5f;
-static constexpr float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
+extern const float DIST_LPF_PREV_WEIGHT;
+extern const float DIST_LPF_SAMPLE_WEIGHT;
 
 }
 
@@ -188,108 +188,107 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0038f;
-static constexpr float PID_KI = 0.0008f;
-static constexpr float PID_KD = 0.0005f;
-static constexpr float PID_OUT_LIMIT = 1.00f;
-static constexpr float PID_I_LIMIT = 1.0f;
-static constexpr float PID_D_FILTER_HZ = 25.0f;
-static constexpr float PID_SLEW_RATE = 1.0f;
+extern const float PID_KP;
+extern const float PID_KI;
+extern const float PID_KD;
+extern const float PID_OUT_LIMIT;
+extern const float PID_I_LIMIT;
+extern const float PID_D_FILTER_HZ;
+extern const float PID_SLEW_RATE;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.2f;
+extern const float TPS_LPF_ALPHA;
 // Window for period-based TPS estimate (ticks accumulated across this time).
 // Larger = smoother/noisier tradeoff.
-static constexpr uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
+extern const uint32_t TPS_ESTIMATE_WINDOW_MS;
 }
 
 namespace Motion {
 // Estimated forward travel for one maze cell.
 // Affects: when moveOneCell() decides the move is complete.
 // One of the most important hardware tuning values.
-static constexpr float CELL_DISTANCE_MM = 180.0f;
+extern const float CELL_DISTANCE_MM;
 
 // Differential wheel travel (mm) needed for turn completion.
 // Affects: turnLeft90() / turnRight90() / turn180() completion.
 // Tune left/right independently to compensate turn asymmetry.
-static constexpr float TURN_LEFT_90_MM = 100.0f;
-static constexpr float TURN_RIGHT_90_MM = 102.0f;
+extern const float TURN_LEFT_90_MM;
+extern const float TURN_RIGHT_90_MM;
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr float TURN_180_MM = 235.0f;
+extern const float TURN_180_MM;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
-static constexpr float MOVE_SPEED_TPS = 350.0f;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
+extern const float MOVE_SPEED_TPS;
+extern const float CORRIDOR_MOVE_SPEED_TPS;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
-static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
-static constexpr float SHORT_FORWARD_SPEED_TPS = 350.0f;
+extern const float SHORT_FORWARD_DISTANCE_MM;
+extern const float SHORT_FORWARD_SPEED_TPS;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 100.0f;
-static constexpr float REVERSE_SPEED_TPS = 350.0f;
+extern const float REVERSE_DISTANCE_MM;
+extern const float REVERSE_SPEED_TPS;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
-static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
-static constexpr float TURN_SPEED_TPS = 350.0f;
+extern const uint32_t SNAP_CENTER_STOP_HOLD_MS;
+extern const float TURN_SPEED_TPS;
 // Turn slowdown profile to reduce overshoot near 90/180 target ticks.
 // Once progress reaches TURN_SLOWDOWN_START_RATIO of target ticks, reduce to
 // TURN_MIN_SPEED_TPS for final approach.
-static constexpr float TURN_MIN_SPEED_TPS = 200.0f;
-static constexpr float TURN_SLOWDOWN_START_RATIO = 0.8f;
+extern const float TURN_MIN_SPEED_TPS;
+extern const float TURN_SLOWDOWN_START_RATIO;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
-static constexpr float CENTERING_GAIN = 1.0f;
-static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
-static constexpr float CENTER_TARGET_LEFT_MM = 96.0f;
-static constexpr float CENTER_TARGET_RIGHT_MM = 96.0f;
-static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 4.0f;
-static constexpr float CENTER_PID_KP = 2.0f;
-static constexpr float CENTER_PID_KI = 0.01f;
-static constexpr float CENTER_PID_KD = 0.5f;
-static constexpr float CENTER_PID_I_LIMIT = 40.0f;
-static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
+extern const float CENTERING_GAIN;
+extern const float CORRIDOR_CENTERING_GAIN;
+extern const float CENTER_TARGET_LEFT_MM;
+extern const float CENTER_TARGET_RIGHT_MM;
+extern const float CENTER_TARGET_CAPTURE_WINDOW_MM;
+extern const float CENTER_PID_KP;
+extern const float CENTER_PID_KI;
+extern const float CENTER_PID_KD;
+extern const float CENTER_PID_I_LIMIT;
+extern const float CENTER_PID_OUT_LIMIT;
 // Clamp side-wall distance used by center PID math only.
 // Sensor data can remain valid farther than this, but PID error uses this max.
-static constexpr uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM = 200;
+extern const uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM;
 // Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
-static constexpr float CENTER_BLEND_TAU_SEC = 0.14f;
-static constexpr float CENTER_RAW_TAU_SEC = 0.07f;
+extern const float CENTER_BLEND_TAU_SEC;
+extern const float CENTER_RAW_TAU_SEC;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
-static constexpr float FRONT_STOP_MM = 100.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 130.0f;
+extern const float FRONT_STOP_MM;
+extern const float CORRIDOR_FRONT_STOP_MM;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
-static constexpr uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
-static constexpr uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
-static constexpr uint32_t STALL_TIMEOUT_MS = 700;
-static constexpr uint8_t CORRIDOR_MAX_CELLS = 4;
+extern const uint32_t PRIMITIVE_TIMEOUT_MS;
+extern const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS;
+extern const uint32_t STALL_TIMEOUT_MS;
+extern const uint8_t CORRIDOR_MAX_CELLS;
 
 // Primitive completion thresholds.
 // STOP_TPS: considered stopped when wheel speed falls below this.
 // MIN_PROGRESS_MM: minimum progress before stall timer is refreshed.
-static constexpr float STOP_TPS = 20.0f;
-static constexpr float MIN_PROGRESS_MM = 12.0f;
+extern const float STOP_TPS;
+extern const float MIN_PROGRESS_MM;
 // Stop mode used when a primitive completes in normal motion flow
 // (explore / speedrun 1). Choose one of: COAST, BRAKE, HARDSTOP.
-static constexpr MotionController::StopMode COMPLETION_STOP_MODE =
-  MotionController::StopMode::BRAKE;
+extern const MotionController::StopMode COMPLETION_STOP_MODE;
 
 // Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
 // Tune left/right independently to reduce long straight drift.
-static constexpr float LEFT_MM_PER_TICK = 0.54f;
-static constexpr float RIGHT_MM_PER_TICK = 0.54f;
+extern const float LEFT_MM_PER_TICK;
+extern const float RIGHT_MM_PER_TICK;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
-static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
+extern const uint32_t POST_MOTION_HARD_STOP_HOLD_MS;
 }
 
 namespace Explorer {
@@ -300,7 +299,7 @@ static constexpr bool ENABLE_WEB = true;
 static constexpr uint16_t PORT = 81;
 static constexpr uint16_t WS_PORT = 83;
 static constexpr bool AUTO_RUN = false;
-static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
+extern const uint32_t ACK_TIMEOUT_MS;
 static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
 // In explore mode, keep looping between original goal and original start
 // after each target is reached. This helps continue discovering alternate
@@ -308,19 +307,19 @@ static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
 static constexpr bool CONTINUE_AFTER_GOAL = true;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
-static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
+extern const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS;
 }
 
 namespace SpeedRun2 {
 // Dedicated one-way shortest-path motion profile.
 // Starts with the current stable speedrun tuning so it can be tuned independently later.
-static constexpr float MOVE_SPEED_TPS = Motion::MOVE_SPEED_TPS;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = Motion::CORRIDOR_MOVE_SPEED_TPS;
-static constexpr float TURN_SPEED_TPS = Motion::TURN_SPEED_TPS;
-static constexpr float CENTERING_GAIN = Motion::CENTERING_GAIN;
-static constexpr float CORRIDOR_CENTERING_GAIN = Motion::CORRIDOR_CENTERING_GAIN;
-static constexpr float FRONT_STOP_MM = Motion::FRONT_STOP_MM;
-static constexpr float CORRIDOR_FRONT_STOP_MM = Motion::CORRIDOR_FRONT_STOP_MM;
+extern const float MOVE_SPEED_TPS;
+extern const float CORRIDOR_MOVE_SPEED_TPS;
+extern const float TURN_SPEED_TPS;
+extern const float CENTERING_GAIN;
+extern const float CORRIDOR_CENTERING_GAIN;
+extern const float FRONT_STOP_MM;
+extern const float CORRIDOR_FRONT_STOP_MM;
 }
 
 namespace Inputs {
