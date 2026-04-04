@@ -54,14 +54,13 @@ void Battery::update() {
 
   if (dividerRatio_ > 0.0f) {
     dividerEstimatedVoltage_ = adcVoltage_ * dividerRatio_;
-    voltage_ = dividerEstimatedVoltage_;
+    voltage_ = 0.9 * voltage_ + 0.1 * dividerEstimatedVoltage_;
   } else {
     dividerEstimatedVoltage_ = 0.0f;
     const float rawSpan = (float)(rawHigh_ - rawLow_);
     const float tRaw = rawSpan > 0.0f ? ((float)raw_ - (float)rawLow_) / rawSpan : 0.0f;
-    voltage_ = voltageLow_ + tRaw * (voltageHigh_ - voltageLow_);
+    voltage_ = 0.9 * voltage_ + 0.1 * (voltageLow_ + tRaw * (voltageHigh_ - voltageLow_));
   }
-
   const float voltageSpan = voltageHigh_ - voltageLow_;
   float tPercent = voltageSpan > 0.0f ? (voltage_ - voltageLow_) / voltageSpan : 0.0f;
   if (tPercent < 0.0f) tPercent = 0.0f;

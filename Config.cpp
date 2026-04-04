@@ -83,7 +83,7 @@ const uint16_t UPDATE_INTERVAL_MS = 20;
 const bool COMPUTE_HEADING_FROM_FULL_SWEEP = true;
 const uint16_t WALL_THRESHOLD_MM = 140;
 const uint16_t DIST_MIN_VALID_MM = 1;
-const uint16_t DIST_MAX_VALID_MM = 210;
+const uint16_t DIST_MAX_VALID_MM = 200;
 const uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
 const uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
 const uint8_t XSHUT_PINS[] = {0, 1, 2, 3, 4};
@@ -94,7 +94,7 @@ const float SENSOR_SCALE[8] = {
 const int16_t SENSOR_OFFSET_MM[8] = {
   0, -16, 16, 0, 0, 0, 0, 0
 };
-const float DIST_LPF_PREV_WEIGHT = 0.6f;
+const float DIST_LPF_PREV_WEIGHT = 0.5f;
 const float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 }
 
@@ -138,11 +138,11 @@ const uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
 namespace Motion {
 const float CELL_DISTANCE_MM = 180.0f;
 const float TURN_LEFT_90_MM = 100.0f;
-const float TURN_RIGHT_90_MM = 100.0f;
+const float TURN_RIGHT_90_MM = 105.0f;
 const float TURN_180_MM = 235.0f;
 const float MOVE_SPEED_TPS = 400.0f;
 const float CORRIDOR_MOVE_SPEED_TPS = 450.0f;
-const float SHORT_FORWARD_DISTANCE_MM = 40.0f;
+const float SHORT_FORWARD_DISTANCE_MM = 20.0f;
 const float SHORT_FORWARD_SPEED_TPS = 350.0f;
 const float REVERSE_DISTANCE_MM = 100.0f;
 const float REVERSE_SPEED_TPS = 350.0f;
@@ -155,11 +155,11 @@ const float CORRIDOR_CENTERING_GAIN = 1.0f;
 const float CENTER_TARGET_LEFT_MM = 96.0f;
 const float CENTER_TARGET_RIGHT_MM = 96.0f;
 const float CENTER_TARGET_CAPTURE_WINDOW_MM = 4.0f;
-const float CENTER_PID_KP = 1.6f;
-const float CENTER_PID_KI = 0.0f;
-const float CENTER_PID_KD = 0.12f;
-const float CENTER_PID_I_LIMIT = 10.0f;
-const float CENTER_PID_OUT_LIMIT = 45.0f;
+const float CENTER_PID_KP = 1.8f;
+const float CENTER_PID_KI = 0.01f;
+const float CENTER_PID_KD = 0.2f;
+const float CENTER_PID_I_LIMIT = 20.0f;
+const float CENTER_PID_OUT_LIMIT = 50.0f;
 const float CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM = 8.0f;
 const float CENTER_PID_DERIV_LIMIT = 80.0f;
 const uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM = 200;
@@ -167,7 +167,7 @@ const float CENTER_BLEND_TAU_SEC = 0.14f;
 const float CENTER_RAW_TAU_SEC = 0.07f;
 const float FRONT_STOP_MM = 110.0f;
 const float CORRIDOR_FRONT_STOP_MM = 130.0f;
-const float FRONT_APPROACH_START_FACTOR = 1.5f;
+const float FRONT_APPROACH_START_FACTOR = 1.4f;
 const float FRONT_APPROACH_MIN_SPEED_TPS = 350.0f;
 const uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
 const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
@@ -176,8 +176,8 @@ const uint8_t CORRIDOR_MAX_CELLS = 4;
 const float STOP_TPS = 20.0f;
 const float MIN_PROGRESS_MM = 12.0f;
 const MotionController::StopMode COMPLETION_STOP_MODE = MotionController::StopMode::BRAKE;
-const float LEFT_MM_PER_TICK = 0.53f;
-const float RIGHT_MM_PER_TICK = 0.53f;
+const float LEFT_MM_PER_TICK = 0.52f;
+const float RIGHT_MM_PER_TICK = 0.52f;
 const bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 const uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
 }
@@ -212,7 +212,7 @@ const uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
 }
 
 namespace Tasks {
-const uint32_t USER_LOOP_PERIOD_MS = 100;
+const uint32_t USER_LOOP_PERIOD_MS = 20;
 const uint32_t PLANNER_LOOP_PERIOD_MS = 50;
 const uint32_t MOTOR_LOOP_PERIOD_MS = 5;
 const uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
