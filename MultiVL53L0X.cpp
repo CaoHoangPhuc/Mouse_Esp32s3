@@ -4,28 +4,12 @@
 uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
     if (index >= _numSensors) return 255;
     if (!_initialized[index]) return 3;
-
-    if (_version == SENSOR_V2 && index == 3) {
-        uint8_t s0State = _timeoutFlag[0];
-
-        if (s0State == 2) return 2;  // S0 sees "far", clamp S3 to far too.
-        if (s0State == 3) return 3;  // S0 invalid => S3 invalid.
-    }
-
     return _timeoutFlag[index];
 }
 
 uint16_t MultiVL53L0X::effectiveDistance_(uint8_t index) const {
     if (index >= _numSensors) return 0;
     if (!_initialized[index]) return 0;
-
-    if (_version == SENSOR_V2 && index == 3) {
-        uint8_t s0State = _timeoutFlag[0];
-
-        if (s0State == 2) return AppConfig::Tof::DIST_FAR_MM;  // Match S0 "far" state.
-        if (s0State == 3) return 0;         // Match S0 invalid state.
-    }
-
     return _lastDistance[index];
 }
 
@@ -169,7 +153,12 @@ bool MultiVL53L0X::readTOF_fast(uint8_t addr, uint16_t &dist)
 
     return true;
 }
+
 void MultiVL53L0X::update() {
+    // Define the sequence pattern
+    static const uint8_t sensorOrder[] = {0, 2, 1, 3, 4};
+    uint8_t currentSensor = sensorOrder[_cSensor % _numSensors];
+
     if (_numSensors == 0) {
         return;
     }
@@ -179,52 +168,52 @@ void MultiVL53L0X::update() {
         _cSensor = (_cSensor + 1) % _numSensors;
     }
 
-    if (!_initialized[_cSensor]) {
+    if (!_initialized[currentSensor]) {
         return;
     }
 
-    // uint16_t dist = _sensors[_cSensor].readRangeContinuousMillimeters();
-    // bool to = _sensors[_cSensor].timeoutOccurred();
+    // uint16_t dist = _sensors[currentSensor].readRangeContinuousMillimeters();
+    // bool to = _sensors[currentSensor].timeoutOccurred();
     uint16_t dist;
     i2cLock();
-    bool ok = readTOF_fast(_sensorAddresses[_cSensor], dist);
+    bool ok = readTOF_fast(_sensorAddresses[currentSensor], dist);
     i2cUnlock();
 
-    _raw[_cSensor] = dist;
+    _raw[currentSensor] = dist;
 
     if (ok && dist > 0 && dist < 1000) {
 
-        float corrected = dist * _scale[_cSensor] + _offset[_cSensor];
+        float corrected = dist * _scale[currentSensor] + _offset[currentSensor];
 
         if (corrected < AppConfig::Tof::DIST_MIN_VALID_MM) {
-            _lastDistance[_cSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;
-            _timeoutFlag[_cSensor]  = 1;
+            _lastDistance[currentSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;
+            _timeoutFlag[currentSensor]  = 1;
         }
         else if (corrected > AppConfig::Tof::DIST_MAX_VALID_MM) {
-            _lastDistance[_cSensor] = AppConfig::Tof::DIST_FAR_MM;
-            _timeoutFlag[_cSensor]  = 2;
+            _lastDistance[currentSensor] = AppConfig::Tof::DIST_FAR_MM;
+            _timeoutFlag[currentSensor]  = 2;
         }
         else {
             uint16_t val = (uint16_t)corrected;
 
-            if ((_lastDistance[_cSensor] == 0) || (_lastDistance[_cSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
-                _lastDistance[_cSensor] = val;
+            if ((_lastDistance[currentSensor] == 0) || (_lastDistance[currentSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
+                _lastDistance[currentSensor] = val;
             } else {
-                _lastDistance[_cSensor] =
-                    AppConfig::Tof::DIST_LPF_PREV_WEIGHT * _lastDistance[_cSensor] +
+                _lastDistance[currentSensor] =
+                    AppConfig::Tof::DIST_LPF_PREV_WEIGHT * _lastDistance[currentSensor] +
                     AppConfig::Tof::DIST_LPF_SAMPLE_WEIGHT * val;
             }
 
-            _timeoutFlag[_cSensor] = 0;
+            _timeoutFlag[currentSensor] = 0;
         }
     }
     else {
-        _timeoutFlag[_cSensor] = 3;
+        _timeoutFlag[currentSensor] = 3;
         err_count ++;
     }
 
     _cSensor = (_cSensor + 1) % _numSensors;
-    if (_cSensor == 0) {
+    if (_cSensor == 4) {
         _sweepReadyForCompute = true;
     }
 }
@@ -277,10 +266,7 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
         uint8_t flState = stateTimeout(0);
         uint8_t frState = stateTimeout(3);
         bool flValid = isObservable(0);
-        bool frValidRaw = isObservable(3);
-        // S3 is front-right. On current hardware it is only trustworthy when
-        // S0 (front-left) is also seeing the front wall region.
-        bool frValid = flValid && frValidRaw;
+        bool frValid = isObservable(3);
         bool flFar = flState == 2;
         bool frFar = frState == 2;
         s.leftValid  = isObservable(1);
@@ -352,18 +338,20 @@ float MultiVL53L0X::computeError(float headingError) {
     uint16_t left = AppConfig::Tof::DIST_ERROR_MM;
     uint16_t right = AppConfig::Tof::DIST_ERROR_MM;
 
+    const uint16_t effectiveSideMax = AppConfig::Motion::CENTER_PID_EFFECTIVE_SIDE_MAX_MM;
+
     uint8_t leftState = 3;
     uint8_t rightState = 3;
 
     if (_version == SENSOR_V1) {
-        left  = getDistance(0);
-        right = getDistance(4);
+        left  = min(getDistance(0), effectiveSideMax);
+        right = min(getDistance(4), effectiveSideMax);
         leftState  = stateTimeout(0);
         rightState = stateTimeout(4);
     }
     else if (_version == SENSOR_V2) {
-        left  = getDistance(1);
-        right = getDistance(2);
+        left  = min(getDistance(1), effectiveSideMax);
+        right = min(getDistance(2), effectiveSideMax);
         leftState  = stateTimeout(1);
         rightState = stateTimeout(2);
     }
@@ -473,6 +461,59 @@ float MultiVL53L0X::computeError(float headingError) {
     float out = (_centerKp * rawErr) +
                 (_centerKi * _centerIntegral) +
                 (_centerKd * derivative);
+
+    // Front-corner anti-stick assist:
+    // when front corner is too close, force stronger steering away from that corner.
+    float escapeSign = 0.0f;  // + => steer right, - => steer left
+    const float stickMm = AppConfig::Motion::FRONT_CORNER_STICK_MM;
+    if (_version == SENSOR_V2) {
+        const uint16_t fl = getDistance(0);
+        const uint16_t fr = getDistance(3);
+        const uint8_t flState = stateTimeout(0);
+        const uint8_t frState = stateTimeout(3);
+        const bool flClose = isGood(flState) && fl > 0 && (float)fl < stickMm;
+        const bool frClose = isGood(frState) && fr > 0 && (float)fr < stickMm;
+
+        if (flClose && !frClose) {
+            escapeSign = 1.0f;
+        } else if (frClose && !flClose) {
+            escapeSign = -1.0f;
+        } else if (flClose && frClose) {
+            if (leftValid && rightValid) {
+                if (left < right) escapeSign = 1.0f;
+                else if (right < left) escapeSign = -1.0f;
+            }
+            if (escapeSign == 0.0f) {
+                escapeSign = (rawErr >= 0.0f) ? 1.0f : -1.0f;
+            }
+        }
+    } else if (_version == SENSOR_V1) {
+        const uint16_t front = getDistance(2);
+        const uint8_t frontState = stateTimeout(2);
+        const bool frontClose = isGood(frontState) && front > 0 && (float)front < stickMm;
+        if (frontClose) {
+            if (leftValid && rightValid) {
+                if (left < right) escapeSign = 1.0f;
+                else if (right < left) escapeSign = -1.0f;
+            } else if (leftValid) {
+                escapeSign = 1.0f;
+            } else if (rightValid) {
+                escapeSign = -1.0f;
+            } else {
+                escapeSign = (rawErr >= 0.0f) ? 1.0f : -1.0f;
+            }
+        }
+    }
+
+    if (escapeSign != 0.0f) {
+        const float extraOut =
+            AppConfig::Motion::FRONT_CORNER_ESCAPE_EXTRA_OUT_FACTOR * _centerOutLimit;
+        const float minOut =
+            AppConfig::Motion::FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR * _centerOutLimit;
+        out += escapeSign * extraOut;
+        if (escapeSign > 0.0f && out < minOut) out = minOut;
+        if (escapeSign < 0.0f && out > -minOut) out = -minOut;
+    }
 
     if (out > _centerOutLimit) out = _centerOutLimit;
     if (out < -_centerOutLimit) out = -_centerOutLimit;
