@@ -191,11 +191,11 @@ static constexpr float PID_KD = 0.0004f;
 static constexpr float PID_OUT_LIMIT = 0.80f;
 static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
-static constexpr float PID_SLEW_RATE = 10.0f;
+static constexpr float PID_SLEW_RATE = 8.0f;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.1f;
+static constexpr float TPS_LPF_ALPHA = 0.2f;
 }
 
 namespace Motion {
