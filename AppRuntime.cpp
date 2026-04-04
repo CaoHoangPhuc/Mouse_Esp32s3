@@ -2193,7 +2193,7 @@ static void handleSerialCommand(const String& rawLine) {
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     motorBothFlipTestEnabled = false;
     leftMotor.setSpeedTPS(tps);
-    rightMotor.coastStop();
+    rightMotor.hardStop();
     debugPrintln("[TEST] left motor tps=" + String(tps, 1));
     return;
   }
@@ -2210,7 +2210,7 @@ static void handleSerialCommand(const String& rawLine) {
     }
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     motorBothFlipTestEnabled = false;
-    leftMotor.coastStop();
+    leftMotor.hardStop();
     rightMotor.setSpeedTPS(tps);
     debugPrintln("[TEST] right motor tps=" + String(tps, 1));
     return;
