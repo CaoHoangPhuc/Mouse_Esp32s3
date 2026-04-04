@@ -189,10 +189,10 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
 static constexpr float PID_KP = 0.0032f;
-static constexpr float PID_KI = 0.0007f;
-static constexpr float PID_KD = 0.00015f;
+static constexpr float PID_KI = 0.0008f;
+static constexpr float PID_KD = 0.0002f;
 static constexpr float PID_OUT_LIMIT = 0.90f;
-static constexpr float PID_I_LIMIT = 0.22f;
+static constexpr float PID_I_LIMIT = 0.30f;
 static constexpr float PID_D_FILTER_HZ = 12.0f;
 static constexpr float PID_SLEW_RATE = 6.0f;
 
@@ -338,6 +338,11 @@ namespace Debug {
   // Affects: extra serial/TCP debug output only; no behavior changes.
   static constexpr bool DEBUG_MOTION_FLOW = true;
   static constexpr bool DEBUG_WALL_APPLY = true;
+  // High-rate motor PID trace from DcMotor::update().
+  // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
+  static constexpr bool MOTOR_PID_TRACE = true;
+  // Print every N motor updates (1 = every update).
+  static constexpr uint8_t MOTOR_PID_TRACE_EVERY_N = 10;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
   static constexpr bool ENABLE_LOOP_WATCHDOG = true;
