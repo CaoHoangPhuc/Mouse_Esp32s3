@@ -198,10 +198,9 @@ void DcMotor::update() {
 
   if (!_speedCtrlEnabled) return;
 
-  // Your requested behavior:
-  // dt < 5ms  -> P only (fast response, no I/D noise)
-  // dt >= 5ms -> full PID
-  bool fastUpdate = (dt_us < 5000);
+  // Keep full PID active for the normal 5 ms control loop.
+  // Only skip I/D on extremely short jitter updates.
+  bool fastUpdate = (dt_us < 2500);
 
   float err = _targetTPS - _tps;
   float pTerm = _kp * err;
