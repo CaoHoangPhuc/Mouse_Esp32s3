@@ -424,7 +424,7 @@ static void debugMotionEvent(const char* tag, MotionPrimitiveType primitive, Mot
                              uint8_t beforeX, uint8_t beforeY, FloodFillExplorer::Dir beforeH,
                              uint8_t afterX, uint8_t afterY, FloodFillExplorer::Dir afterH,
                              const String& extra) {
-  if (!AppConfig::Debug::DEBUG_MOTION_FLOW) return;
+  if (!AppConfig::Debug::DEBUG_MOTION_EVENT) return;
   String msg = String(tag) +
                " prim=" + primitiveName(primitive) +
                " status=" + motionStatusName(status) +

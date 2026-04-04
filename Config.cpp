@@ -32,18 +32,18 @@ const uint8_t HOME_X0 = 0;
 const uint8_t HOME_Y0 = 0;
 const uint8_t HOME_W = 1;
 const uint8_t HOME_H = 1;
-const uint8_t GOAL_X0 = 7;
-const uint8_t GOAL_Y0 = 7;
-const uint8_t GOAL_W = 2;
-const uint8_t GOAL_H = 2;
+const uint8_t GOAL_X0 = 4;
+const uint8_t GOAL_Y0 = 4;
+const uint8_t GOAL_W = 1;
+const uint8_t GOAL_H = 1;
 }
 
 namespace Wifi {
 const char* SSID = "PhucWifi";
 const char* PASS = "000000001";
 const char* HOSTNAME = "PhucC_Esp32s3";
-const bool ENABLE_WEB_LOG = !kLiteFirmware;
-const bool ENABLE_UPLOAD_WEB = !kLiteFirmware;
+const bool ENABLE_WEB_LOG = true;
+const bool ENABLE_UPLOAD_WEB = true;
 const uint16_t UPLOAD_WEB_PORT = 82;
 const uint16_t DEBUG_TCP_PORT = 2323;
 const BaseType_t CORE = 1;
@@ -57,13 +57,14 @@ const uint32_t RECONNECT_INTERVAL_MS = 5000;
 namespace Debug {
 const bool ENABLE_SERIAL_OUTPUT = true;
 const bool PRINT_STATUS_TPS = false;
-const bool DEBUG_MOTION_FLOW = !kLiteFirmware;
-const bool DEBUG_WALL_APPLY = !kLiteFirmware;
-const bool CENTER_PID_TRACE = false;
-const uint8_t CENTER_PID_TRACE_EVERY_N = 10;
+const bool DEBUG_MOTION_FLOW = false;
+const bool DEBUG_MOTION_EVENT = DEBUG_MOTION_FLOW;
+const bool DEBUG_WALL_APPLY = false;
+const bool CENTER_PID_TRACE = true;
+const uint8_t CENTER_PID_TRACE_EVERY_N = 1;
 const bool MOTOR_PID_TRACE = false;
 const uint8_t MOTOR_PID_TRACE_EVERY_N = 100;
-const bool ENABLE_LOOP_WATCHDOG = !kLiteFirmware;
+const bool ENABLE_LOOP_WATCHDOG = false;
 const uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
 const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
 }
@@ -86,7 +87,7 @@ const uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
 const uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
 const uint8_t XSHUT_PINS[] = {0, 1, 2, 3, 4};
 const uint8_t SENSOR_ADDR[] = {0x30, 0x31, 0x32, 0x33, 0x34};
-const float DIST_LPF_PREV_WEIGHT = 0.7f;
+const float DIST_LPF_PREV_WEIGHT = 0.6f;
 const float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 }
 
@@ -134,7 +135,7 @@ const float TURN_RIGHT_90_MM = 100.0f;
 const float TURN_180_MM = 235.0f;
 const float MOVE_SPEED_TPS = 400.0f;
 const float CORRIDOR_MOVE_SPEED_TPS = 450.0f;
-const float SHORT_FORWARD_DISTANCE_MM = 50.0f;
+const float SHORT_FORWARD_DISTANCE_MM = 40.0f;
 const float SHORT_FORWARD_SPEED_TPS = 350.0f;
 const float REVERSE_DISTANCE_MM = 100.0f;
 const float REVERSE_SPEED_TPS = 350.0f;
@@ -171,7 +172,7 @@ const uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
 }
 
 namespace Explorer {
-const bool ENABLE_WEB = !kLiteFirmware;
+const bool ENABLE_WEB = true;
 const uint16_t PORT = 81;
 const uint16_t WS_PORT = 83;
 const bool AUTO_RUN = false;

@@ -343,6 +343,8 @@ namespace Debug {
   // Additional runtime flow logging for motion, snap, and wall application.
   // Affects: extra serial/TCP debug output only; no behavior changes.
   extern const bool DEBUG_MOTION_FLOW;
+  // Dedicated gate for debugMotionEvent() start/end primitive logs.
+  extern const bool DEBUG_MOTION_EVENT;
   extern const bool DEBUG_WALL_APPLY;
   // High-rate center PID trace from MultiVL53L0X::computeError().
   extern const bool CENTER_PID_TRACE;
