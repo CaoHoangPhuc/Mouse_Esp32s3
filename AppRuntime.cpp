@@ -1902,7 +1902,7 @@ static void printStartupSummary() {
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
-  debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
+  debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl [tps]|motorr [tps]|encoders");
   if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
     debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (5s timeout)");
   }
@@ -2179,20 +2179,40 @@ static void handleSerialCommand(const String& rawLine) {
     tof_raw_debug_s();
     return;
   }
-  if (line == "test motorl") {
+  if (line == "test motorl" || line.startsWith("test motorl ")) {
+    float tps = 220.0f;
+    if (line.startsWith("test motorl ")) {
+      const String arg = line.substring(12);
+      const float parsed = arg.toFloat();
+      if (parsed == 0.0f) {
+        debugPrintln("[CMD] usage: test motorl [tps!=0]");
+        return;
+      }
+      tps = parsed;
+    }
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     motorBothFlipTestEnabled = false;
-    leftMotor.setSpeedTPS(220.0f);
+    leftMotor.setSpeedTPS(tps);
     rightMotor.coastStop();
-    debugPrintln("[TEST] left motor spin");
+    debugPrintln("[TEST] left motor tps=" + String(tps, 1));
     return;
   }
-  if (line == "test motorr") {
+  if (line == "test motorr" || line.startsWith("test motorr ")) {
+    float tps = 220.0f;
+    if (line.startsWith("test motorr ")) {
+      const String arg = line.substring(12);
+      const float parsed = arg.toFloat();
+      if (parsed == 0.0f) {
+        debugPrintln("[CMD] usage: test motorr [tps!=0]");
+        return;
+      }
+      tps = parsed;
+    }
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
     motorBothFlipTestEnabled = false;
     leftMotor.coastStop();
-    rightMotor.setSpeedTPS(220.0f);
-    debugPrintln("[TEST] right motor spin");
+    rightMotor.setSpeedTPS(tps);
+    debugPrintln("[TEST] right motor tps=" + String(tps, 1));
     return;
   }
   if (line == "test motor both") {
