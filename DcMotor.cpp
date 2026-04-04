@@ -180,7 +180,10 @@ void DcMotor::resetPID() {
 
 void DcMotor::update() {
   uint32_t now = micros();
-  uint32_t dt_us = now - _lastMicros;
+  const uint32_t loopUs = (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS > 0)
+                          ? (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS * 1000UL)
+                          : 5000UL;
+  const float dt = loopUs / 1e6f;
 
   // Always update speed estimate even if very fast
   int32_t ticksNow;
@@ -188,14 +191,12 @@ void DcMotor::update() {
 
   int32_t dTicks = ticksNow - _lastTicks;
 
-  float dt = (dt_us > 0) ? (dt_us / 1e6f) : 1e-6f;
-
   // Period-based speed estimate from a fixed accumulation window.
   const uint32_t windowUs = (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS > 0)
                             ? (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS * 1000UL)
                             : 5000UL;
   _speedAccumTicks += dTicks;
-  _speedAccumUs += dt_us;
+  _speedAccumUs += loopUs;
   if (_speedAccumUs >= windowUs) {
     float tpsInstant = _speedAccumTicks / (_speedAccumUs / 1e6f);
     const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
@@ -209,51 +210,43 @@ void DcMotor::update() {
 
   if (!_speedCtrlEnabled) return;
 
-  // Keep full PID active for the normal 5 ms control loop.
-  // Only skip I/D on extremely short jitter updates.
-  bool fastUpdate = (dt_us < 2500);
-
   float err = _targetTPS - _tps;
   float pTerm = _kp * err;
 
-  float out = pTerm;
+  // D on measurement
+  float dMeasRaw = (_tps - _lastTPSForD) / dt;
+  _lastTPSForD = _tps;
 
-  if (!fastUpdate) {
-    // D on measurement
-    float dMeasRaw = (_tps - _lastTPSForD) / dt;
-    _lastTPSForD = _tps;
-
-    float dTerm = 0.0f;
-    if (_kd != 0.0f) {
-      if (_dFilterHz > 0.0f) {
-        float rc = 1.0f / (2.0f * 3.1415926f * _dFilterHz);
-        float aD = dt / (dt + rc);
-        _dMeas = _dMeas + aD * (dMeasRaw - _dMeas);
-        dTerm = -_kd * _dMeas;
-      } else {
-        dTerm = -_kd * dMeasRaw;
-      }
+  float dTerm = 0.0f;
+  if (_kd != 0.0f) {
+    if (_dFilterHz > 0.0f) {
+      float rc = 1.0f / (2.0f * 3.1415926f * _dFilterHz);
+      float aD = dt / (dt + rc);
+      _dMeas = _dMeas + aD * (dMeasRaw - _dMeas);
+      dTerm = -_kd * _dMeas;
+    } else {
+      dTerm = -_kd * dMeasRaw;
     }
-
-    float preSat = pTerm + dTerm;
-
-    // Anti-windup integrator
-    float outUnsat = preSat + _iTerm;
-    float outSat = clampf(outUnsat, -_outLimit, _outLimit);
-
-    bool saturated = (outUnsat != outSat);
-    bool helpsUnsat =
-      (!saturated) ||
-      (outUnsat >  _outLimit && err < 0) ||
-      (outUnsat < -_outLimit && err > 0);
-
-    if (_ki != 0.0f && helpsUnsat) {
-      _iTerm += (err * _ki * dt);
-      _iTerm = clampf(_iTerm, -_iLimit, _iLimit);
-    }
-
-    out = preSat + _iTerm;
   }
+
+  float preSat = pTerm + dTerm;
+
+  // Anti-windup integrator
+  float outUnsat = preSat + _iTerm;
+  float outSat = clampf(outUnsat, -_outLimit, _outLimit);
+
+  bool saturated = (outUnsat != outSat);
+  bool helpsUnsat =
+    (!saturated) ||
+    (outUnsat >  _outLimit && err < 0) ||
+    (outUnsat < -_outLimit && err > 0);
+
+  if (_ki != 0.0f && helpsUnsat) {
+    _iTerm += (err * _ki * dt);
+    _iTerm = clampf(_iTerm, -_iLimit, _iLimit);
+  }
+
+  float out = preSat + _iTerm;
 
   // Clamp output
   out = clampf(out, -_outLimit, _outLimit);

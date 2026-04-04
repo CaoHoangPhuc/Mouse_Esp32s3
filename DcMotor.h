@@ -45,7 +45,7 @@ public:
 
   void resetPID();
 
-  // Call periodically (can be <5ms; <5ms does P-only)
+  // Call periodically at the motor-task cadence (fixed-dt PID update).
   void update();
 
   // Encoder / speed
