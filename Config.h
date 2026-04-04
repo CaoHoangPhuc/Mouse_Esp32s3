@@ -120,6 +120,9 @@ static constexpr uint8_t PCF_ADDRESS = 0x20;
 // Affects: MultiVL53L0X initialization and polling behavior.
 static constexpr uint8_t SENSOR_COUNT = 5;
 static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
+// If true, heading-error PID is computed only once per full TOF sensor sweep.
+// This avoids mixing old/new sensor samples in the same control update.
+static constexpr bool COMPUTE_HEADING_FROM_FULL_SWEEP = true;
 
 // Distance threshold for wall detection.
 // Smaller = more conservative wall detection.
