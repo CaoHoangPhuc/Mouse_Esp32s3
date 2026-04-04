@@ -7,6 +7,12 @@
 #include "MotionController.h"
 
 namespace AppConfig {
+namespace Build {
+// Build profile selected by compile flag.
+// Enable by adding `-DLITE_FIRMWARE` in build options.
+extern const bool LITE_FIRMWARE;
+extern const char* PROFILE_NAME;
+}
 
 namespace Battery {
 // Battery ADC input pin.

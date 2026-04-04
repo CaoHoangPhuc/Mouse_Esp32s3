@@ -10,12 +10,22 @@
 #include "MultiVL53L0X.h"
 #include "PersistenceStore.h"
 #include "RobotTypes.h"
+#if !defined(LITE_FIRMWARE)
 #include "WiFiOtaWebSerial.h"
+#endif
 #include "AppRuntime.h"
 
 namespace MainApp {
 
+#if defined(LITE_FIRMWARE)
+class LiteDebugBackend {
+public:
+  bool isUpdateInProgress() const { return false; }
+};
+LiteDebugBackend dbg;
+#else
 WiFiOtaWebSerial dbg;
+#endif
 FloodFillExplorer explorer;
 Battery mouseBattery;
 MotionController motionController;
@@ -1586,8 +1596,14 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
     pinMode(AppConfig::Inputs::BOOT_BUTTON_PIN,
             AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
   }
+  debugPrintln(String("[BUILD] profile=") + AppConfig::Build::PROFILE_NAME);
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
 
+  explorer.setStateExtrasJsonProvider(explorerLapStateJson);
+#if defined(LITE_FIRMWARE)
+  wifiOk = false;
+  debugPrintln("[BOOT] LITE_FIRMWARE profile: WiFi/OTA/Web disabled");
+#else
   WiFiOtaWebSerial::Config wifiCfg;
   wifiCfg.ssid = AppConfig::Wifi::SSID;
   wifiCfg.pass = AppConfig::Wifi::PASS;
@@ -1610,9 +1626,9 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   dbg.setHealthJsonProvider(onWebHealthJson);
   dbg.setSerialOutputAllowedHandler(serialOutputEnabled);
   dbg.setReconnectAllowedHandler(wifiReconnectAllowed);
-  explorer.setStateExtrasJsonProvider(explorerLapStateJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
+#endif
   debugServerStarted = false;
 
   motorsOk = leftMotor.begin(AppConfig::Motors::LEFT_PINS,

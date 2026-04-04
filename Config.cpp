@@ -1,6 +1,17 @@
 #include "Config.h"
 
 namespace AppConfig {
+#if defined(LITE_FIRMWARE)
+static constexpr bool kLiteFirmware = true;
+#else
+static constexpr bool kLiteFirmware = false;
+#endif
+
+namespace Build {
+const bool LITE_FIRMWARE = kLiteFirmware;
+const char* PROFILE_NAME = kLiteFirmware ? "LITE" : "FULL";
+}
+
 namespace Battery {
 const uint8_t ADC_PIN = 3;
 const float DIVIDER_R_TOP_KOHM = 56.0f;
@@ -31,8 +42,8 @@ namespace Wifi {
 const char* SSID = "PhucWifi";
 const char* PASS = "000000001";
 const char* HOSTNAME = "PhucC_Esp32s3";
-const bool ENABLE_WEB_LOG = true;
-const bool ENABLE_UPLOAD_WEB = true;
+const bool ENABLE_WEB_LOG = !kLiteFirmware;
+const bool ENABLE_UPLOAD_WEB = !kLiteFirmware;
 const uint16_t UPLOAD_WEB_PORT = 82;
 const uint16_t DEBUG_TCP_PORT = 2323;
 const BaseType_t CORE = 1;
@@ -46,13 +57,13 @@ const uint32_t RECONNECT_INTERVAL_MS = 5000;
 namespace Debug {
 const bool ENABLE_SERIAL_OUTPUT = true;
 const bool PRINT_STATUS_TPS = false;
-const bool DEBUG_MOTION_FLOW = true;
-const bool DEBUG_WALL_APPLY = true;
-const bool CENTER_PID_TRACE = true;
+const bool DEBUG_MOTION_FLOW = !kLiteFirmware;
+const bool DEBUG_WALL_APPLY = !kLiteFirmware;
+const bool CENTER_PID_TRACE = false;
 const uint8_t CENTER_PID_TRACE_EVERY_N = 10;
 const bool MOTOR_PID_TRACE = false;
 const uint8_t MOTOR_PID_TRACE_EVERY_N = 100;
-const bool ENABLE_LOOP_WATCHDOG = true;
+const bool ENABLE_LOOP_WATCHDOG = !kLiteFirmware;
 const uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
 const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
 }
@@ -160,7 +171,7 @@ const uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
 }
 
 namespace Explorer {
-const bool ENABLE_WEB = true;
+const bool ENABLE_WEB = !kLiteFirmware;
 const uint16_t PORT = 81;
 const uint16_t WS_PORT = 83;
 const bool AUTO_RUN = false;

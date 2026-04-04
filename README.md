@@ -91,6 +91,7 @@ Release note:
 - [AppRuntime.h](AppRuntime.h): app interface exposed to the `.ino` wrapper
 - [AppRuntime.cpp](AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
 - [Config.h](Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
+- Build profile: add `-DLITE_FIRMWARE` in `build_opt.h` (or Arduino build flags) to use the minimal runtime profile (Wi-Fi/OTA/web disabled by default)
 - [RobotTypes.h](RobotTypes.h): shared enums and `RobotState`
 
 ### Motion and hardware
