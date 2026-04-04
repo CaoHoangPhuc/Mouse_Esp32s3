@@ -36,7 +36,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - the serial `explore` and `explore n` commands now also keep the known maze, matching the BOOT-button and web explore entry paths; `clearmaze` is the explicit wall-memory reset command
 - the browser uploader on port `82` now uses the chunked HTTP retry path again, streaming firmware through `/upload/start`, `/upload/chunk`, and `/upload/finish`
 - legacy firmware-upload WebSocket transport has been removed; firmware upload now uses HTTP chunk endpoints only
-- the browser uploader now uses chunked HTTP with retry, adaptive chunk-size fallback, and session restart recovery on failures
+- the browser uploader now uses chunked HTTP with retry, adaptive chunk-size fallback, and fixed retry backoff/pacing
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
 - interrupted browser uploads now abort cleanly and force the LED `red` on failure/abort paths
 - long straight `move N` actions that are known to end at a wall now finish on the front-wall stop distance instead of stopping only on encoder distance
@@ -295,9 +295,9 @@ Available from the main sketch:
 - `test battery`
 - `test sensors`
 - `test sensorsraw`
-- `test motorl`
-- `test motorr`
-- `test motor both`
+- `test motorl [tps]`
+- `test motorr [tps]`
+- `test motor both [tps]`
 - `test encoders`
 
 Manual motion note:
@@ -306,7 +306,7 @@ Manual motion note:
 Console note:
 - periodic debug output pauses briefly while you type on serial or telnet, then resumes automatically
 - `restart` closes the TCP debug console first, then reboots the ESP32
-- `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` follows the normal coast-to-idle path
+- `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` now forces motion stop + hard-stop on both motors before entering idle
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - the TCP debug console listens on port `2323`
 - port `80` now serves a simple control page that shows the robot hostname and offers `Reconnect Telnet` plus `Cycle LED`
@@ -394,10 +394,10 @@ Current values are placeholders and will need on-robot tuning in [Config.h](Conf
 - `mmPerTick`
 
 Current front-sensor behavior:
-- In the current front fusion logic, S3 (front-right) is only trusted when S0 (front-left) is also valid
-- If S0 reports `201` / far, S3 is exposed as `201` too
-- If S0 is invalid, S3 is exposed as invalid too
-- If both front sensors are far, fused `frontMm` now reports `201` instead of `0`
+- V2 front fusion uses `min(front-left, front-right)` when both are valid, or the valid side when only one side is valid
+- V2 `frontValid` is true when either front sensor is valid, or when both front sensors are far/open
+- both front sensors are now treated independently; front-right is not gated by front-left validity
+- far/open and error values follow `AppConfig::Tof::DIST_FAR_MM` and `AppConfig::Tof::DIST_ERROR_MM`
 
 Battery divider note:
 - current comments assume a `47k / 18k` divider into `GPIO 3`
