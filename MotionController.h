@@ -14,6 +14,7 @@ public:
     int32_t turnTicks90 = 300;
     int32_t turnTicks180 = 600;
     float moveSpeedTps = 320.0f;
+    float corridorMoveSpeedTps = 320.0f;
     float shortForwardDistanceMm = 90.0f;
     float shortForwardSpeedTps = 220.0f;
     float reverseDistanceMm = 45.0f;
@@ -21,18 +22,23 @@ public:
     uint32_t snapCenterStopHoldMs = 50;
     float turnSpeedTps = 250.0f;
     float centeringGain = 1.6f;
+    float corridorCenteringGain = 1.6f;
     float frontStopMm = 55.0f;
+    float corridorFrontStopMm = 55.0f;
     uint32_t primitiveTimeoutMs = 3000;
+    uint32_t corridorTimeoutPerCellMs = 1000;
     uint32_t stallTimeoutMs = 700;
     float stopTps = 20.0f;
     float minProgressMm = 12.0f;
     float mmPerTick = 0.54f;
+    uint8_t corridorMaxCells = 1;
   };
 
   void begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery = nullptr);
   void setConfig(const Config& cfg) { cfg_ = cfg; }
 
   bool moveOneCell();
+  bool moveCells(uint8_t cells, bool requireFrontStopAtEnd = false);
   bool moveForwardShort();
   bool moveBackwardShort();
   bool snapCenter();
@@ -50,13 +56,19 @@ public:
   MotionPrimitiveType primitive() const { return primitive_; }
   MotionPrimitiveType lastFinishedPrimitive() const { return lastFinishedPrimitive_; }
   const String& lastError() const { return lastError_; }
+  uint8_t moveCellTargetCount() const { return moveCellTargetCount_; }
+  void limitMoveCellTargetCount(uint8_t cells);
+  void latchStraightTrackMode(const WallObservation& walls);
 
 private:
   bool startPrimitive_(MotionPrimitiveType primitive);
   void markDone_(MotionStatus status, const String& reason = "");
+  MultiVL53L0X::StraightTrackMode chooseStraightTrackMode_(const WallObservation& walls) const;
   float averageProgressMm_() const;
   float absoluteAverageProgressMm_() const;
   int32_t differentialTicks_() const;
+  void resetSnapState_();
+  bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
 
   DcMotor* left_ = nullptr;
   DcMotor* right_ = nullptr;
@@ -76,5 +88,9 @@ private:
   uint32_t snapCenterHoldUntilMs_ = 0;
   float lastProgressMm_ = 0.0f;
   uint8_t snapCenterPhase_ = 0;
+  uint8_t moveCellTargetCount_ = 1;
+  bool moveEndsAtKnownWall_ = false;
+  bool straightTrackModeLatched_ = false;
+  MultiVL53L0X::StraightTrackMode straightTrackMode_ = MultiVL53L0X::TRACK_NONE;
   bool stopOnCompletion_ = true;
 };

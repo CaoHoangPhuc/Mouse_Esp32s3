@@ -38,24 +38,45 @@ void LedController::begin() {
   colorIndex_ = -1;
 }
 
+void LedController::setState(State state) {
+  switch (state) {
+    case State::OFF: off(); return;
+    case State::RED: setColor_(255, 0, 0); return;
+    case State::GREEN: setColor_(0, 255, 0); return;
+    case State::BLUE: setColor_(0, 0, 255); return;
+    case State::YELLOW: setColor_(255, 255, 0); return;
+    case State::MAGENTA: setColor_(255, 0, 255); return;
+    case State::CYAN: setColor_(0, 255, 255); return;
+    case State::WHITE: setColor_(255, 255, 255); return;
+  }
+}
+
 void LedController::setRed() {
-  setColor_(255, 0, 0);
+  setState(State::RED);
 }
 
 void LedController::setGreen() {
-  setColor_(0, 255, 0);
+  setState(State::GREEN);
 }
 
 void LedController::setBlue() {
-  setColor_(0, 0, 255);
+  setState(State::BLUE);
+}
+
+void LedController::setYellow() {
+  setState(State::YELLOW);
+}
+
+void LedController::setMagenta() {
+  setState(State::MAGENTA);
 }
 
 void LedController::setCyan() {
-  setColor_(0, 255, 255);
+  setState(State::CYAN);
 }
 
 void LedController::setWhite() {
-  setColor_(255, 255, 255);
+  setState(State::WHITE);
 }
 
 bool LedController::handleCommand(const String& rawCmd, String* response) {
@@ -95,6 +116,18 @@ bool LedController::handleCommand(const String& rawCmd, String* response) {
   if (cmd == "blue") {
     setBlue();
     if (response) *response = "[LED] blue";
+    return true;
+  }
+
+  if (cmd == "yellow") {
+    setYellow();
+    if (response) *response = "[LED] yellow";
+    return true;
+  }
+
+  if (cmd == "magenta") {
+    setMagenta();
+    if (response) *response = "[LED] magenta";
     return true;
   }
 

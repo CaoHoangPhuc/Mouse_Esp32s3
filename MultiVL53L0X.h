@@ -19,6 +19,13 @@ public:
         SENSOR_V2    // 4 sensors: FL(0), L(1), R(2), FR(3)
     };
 
+    enum StraightTrackMode : uint8_t {
+        TRACK_NONE = 0,
+        TRACK_LEFT,
+        TRACK_RIGHT,
+        TRACK_DUAL
+    };
+
     struct SensorState {
         bool leftWall;
         bool rightWall;
@@ -50,6 +57,8 @@ public:
     void setCenterPid(float kp, float ki, float kd, float iLimit, float outLimit);
     void setCenterTargets(float leftMm, float rightMm);
     void resetCenterPid();
+    void setStraightTrackMode(StraightTrackMode mode) { _straightTrackMode = mode; }
+    StraightTrackMode straightTrackMode() const { return _straightTrackMode; }
 
     // ---- Sensors ----
     bool     isSensorOk(uint8_t index) const;
@@ -94,15 +103,10 @@ private:
 
     SensorVersion _version = SENSOR_UNKNOWN;
 
-    // S1 range: 62 → 150 -> range 150 - 62 = 88 -> scale 97/88; center = 97
-    // S2 range: 30 → 127 -> range 127 - 30 = 97 -> abs min = (62 - 30) /2 = 16
+    // S1 range: 62 -> 150, so range = 88, scale = 97/88, center = 97
+    // S2 range: 30 -> 127, so range = 97, absolute minimum = (62 - 30) / 2 = 16
 
     //37 183; 129 94
-
-    static constexpr uint16_t DIST_MIN_VALID   = 1;
-    static constexpr uint16_t DIST_MAX_VALID   = 200;
-    static constexpr uint16_t DIST_FAR         = DIST_MAX_VALID + 1;
-    static constexpr uint16_t DIST_ERROR       = DIST_MAX_VALID + 2;
 
     uint16_t _wallThreshold = 150;
 
@@ -120,6 +124,7 @@ private:
     float _centerTargetLeft = 100.0f;
     float _centerTargetRight = 100.0f;
     bool _captureCenterTargetsOnFirstSample = true;
+    StraightTrackMode _straightTrackMode = TRACK_NONE;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
 

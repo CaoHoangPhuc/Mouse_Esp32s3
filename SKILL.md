@@ -43,7 +43,7 @@ Documentation rule:
 ## Common Workflows
 
 ### 1. Hardware bring-up
-- Open [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino) from the Arduino sketch folder, not as an arbitrary loose file.
+- Open [Mouse_esp32s3.ino](Mouse_esp32s3.ino) from the Arduino sketch folder, not as an arbitrary loose file.
 - Use the intended ESP32-S3 Arduino settings during bring-up:
   - `USB CDC On Boot`: `Enabled`
   - `Partition Scheme`: the minimal SPIFFS/OTA layout used by this project
@@ -54,7 +54,7 @@ Documentation rule:
 - Use `maze` to inspect the robot's known wall map after sensor and motion tests.
 - Use `test loop maze` when you want a live ASCII map stream during exploration tests.
 - If Arduino OTA is flaky, use the browser upload page on port `82` as a simpler fallback.
-- During OTA/web upload, expect the onboard LED to turn blue immediately, then blink blue, then turn green on success or red on error/abort.
+- During OTA/web upload, expect the onboard LED to turn solid blue while receiving, turn off on success, and turn red on error/abort.
 - When `ENABLE_WEB_LOG` is off, `dbg.print/println` are effectively Serial-only and should not add load to the web log path.
 - OTA and the browser upload page are currently configured without a password gate.
 - Only enable `explore` after one-cell moves and 90-degree turns are reliable.
@@ -81,7 +81,7 @@ Documentation rule:
 
 ## Design Rules
 
-- Battery critical should always stop motion.
+- Battery state is telemetry-only in the current codebase; do not assume `critical` will stop motion unless that behavior is intentionally reintroduced.
 - Planner should issue one action at a time.
 - Motion executor should be the only layer deciding primitive success/failure.
 - Pose should only advance when the primitive really completes.

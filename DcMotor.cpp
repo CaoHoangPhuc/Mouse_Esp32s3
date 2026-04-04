@@ -97,17 +97,17 @@ bool DcMotor::begin(const Pins& pins,
 }
 
 void DcMotor::applyDuty(int32_t duty) {
-  // 🔹 Handle inversion
+  // Handle inversion
   if (_p.invertDir) duty = -duty;
 
-  // 🔹 Clamp range
+  // Clamp range
   if (duty > (int32_t)_pwmMax) duty = _pwmMax;
   if (duty < -(int32_t)_pwmMax) duty = -_pwmMax;
 
   if (duty > 0 && duty < DEADZONE) duty = 0;
   if (duty < 0 && duty > -DEADZONE) duty = 0;
 
-  // 🔹 Direction
+  // Direction
   if (duty > 0) {
     // forward
     digitalWrite(_p.in1, HIGH);

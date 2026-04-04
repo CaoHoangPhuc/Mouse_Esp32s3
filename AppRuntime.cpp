@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <driver/gpio.h>
 
 #include "Battery.h"
 #include "Config.h"
@@ -48,6 +47,11 @@ static TestLoopMode testLoopMode = TEST_LOOP_NONE;
 static bool motorBothFlipTestEnabled = false;
 static uint32_t motorFlipLastToggleMs = 0;
 static float motorFlipPower = 1.0f;
+static bool bootButtonRawPressed = false;
+static bool bootButtonStablePressed = false;
+static uint32_t bootButtonLastEdgeMs = 0;
+static uint32_t bootButtonLastAcceptedPressMs = 0;
+static uint8_t bootButtonPressCount = 0;
 
 MultiVL53L0X tofArray(
   AppConfig::Tof::PCF_ADDRESS, AppConfig::Tof::SENSOR_COUNT,
@@ -71,6 +75,7 @@ static void handleSerialCommand(const String& line);
 static void updateRobotState();
 static void applyWallsToExplorer();
 static bool executePlannerAction(FloodFillExplorer::Action act);
+static void serviceActiveForwardAction();
 static void handleMotionCompletion();
 static void enterIdleMode(const String& reason);
 static void enterFaultMode(const String& reason);
@@ -85,13 +90,20 @@ static void tof_raw_debug_s();
 static void robot_debug_s();
 static void battery_debug_s();
 static void serviceDebugConsole();
+static void serviceDebugServerState();
 static void serviceMotorBothFlipTest();
+static void serviceBootButtonLauncher();
+static bool readBootButtonPressed();
+static void dispatchBootButtonAction(uint8_t pressCount);
 static void debugPrint(const String& s);
 static void debugPrintln(const String& s = "");
 static void debugPrompt();
 static bool debugClientConnected();
 static bool serialOutputEnabled();
+static bool wifiReconnectAllowed();
 static void updateOtaSafeMode();
+static void suspendTaskIfRunning(TaskHandle_t handle);
+static void resumeTaskIfSuspended(TaskHandle_t handle);
 static bool handleLedCommand(const String& cmd);
 static bool onWebTelnetReconnect();
 static String onWebHealthJson();
@@ -100,15 +112,25 @@ static void updateRobotLed();
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void beginSpeedRun(uint8_t phase = 1);
 static uint8_t speedRunBasePhase(uint8_t phase);
+static bool usesSpeedRun2Profile(uint8_t phase);
+static bool isContinuousSpeedRunPhase(uint8_t phase);
 static void resetMazeToConfiguredStart();
 static void clearMazeMemoryOnly();
 static void applyCurrentPoseAsHomeRect();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
 static void maze_debug_s();
+static void resetCommonModeState();
 static void closeDebugConsole(const String& reason = "");
+static bool shouldSnapCenterFromKnownBackWall();
 static bool startRunSnapSequence(const char* label);
-static bool shouldSnapCenterAfterTurn();
+static bool startSpeedRunPreAlignSequence();
+static void finishSpeedRunStart();
+static void advancePoseForwardOneCell();
+static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBudgetReached, bool& reachedGoal);
+static bool handleReachedGoal(bool& skipPostMotionHold);
+static void clearForwardActionTracking();
+static bool shouldStopCorridorAfterCommittedCell();
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 static void resetLapHistory();
@@ -130,6 +152,19 @@ static bool reachedOriginalGoalOnThisLoop = false;
 static bool exploreGoalSeen = false;
 static int32_t exploreStepBudget = -1;
 static bool serialOutputTemporarilyMuted = false;
+static bool debugServerStarted = false;
+static uint8_t activeForwardActionCellsRequested = 0;
+static uint8_t activeForwardActionCellsCommitted = 0;
+enum SpeedRunPreAlignStage : uint8_t {
+  SPEEDRUN_PREALIGN_NONE = 0,
+  SPEEDRUN_PREALIGN_AFTER_SIDE_TURN,
+  SPEEDRUN_PREALIGN_AFTER_SIDE_SNAP,
+  SPEEDRUN_PREALIGN_AFTER_RETURN_TURN,
+  SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP
+};
+static SpeedRunPreAlignStage speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+static bool speedRunPreAlignTurnRight = true;
+static bool speedRunPreAlignHasSideSnap = false;
 static bool lapTimerRunning = false;
 static uint32_t lapStartMs = 0;
 static uint32_t lapCurrentMsSnapshot = 0;
@@ -177,6 +212,10 @@ static bool serialOutputEnabled() {
   return AppConfig::Debug::ENABLE_SERIAL_OUTPUT && !serialOutputTemporarilyMuted;
 }
 
+static bool wifiReconnectAllowed() {
+  return robotState.mode == ROBOT_MODE_IDLE;
+}
+
 static void resetLoopWatchdogState(LoopWatchdogState& state) {
   state.lastTick = 0;
   state.lastWarnTick = 0;
@@ -185,6 +224,7 @@ static void resetLoopWatchdogState(LoopWatchdogState& state) {
 
 static void serviceLoopWatchdog(LoopWatchdogState& state, uint32_t expectedMs) {
   if (!AppConfig::Debug::ENABLE_LOOP_WATCHDOG) return;
+  if (xPortGetCoreID() != 0) return;
 
   const TickType_t now = xTaskGetTickCount();
   if (state.lastTick == 0) {
@@ -293,6 +333,14 @@ static uint8_t speedRunBasePhase(uint8_t phase) {
   return phase - 1;
 }
 
+static bool usesSpeedRun2Profile(uint8_t phase) {
+  return phase >= 2;
+}
+
+static bool isContinuousSpeedRunPhase(uint8_t phase) {
+  return phase >= 2;
+}
+
 static void debugPrint(const String& s) {
   if (serialOutputEnabled()) {
     Serial.print(s);
@@ -321,6 +369,7 @@ static const char* primitiveName(MotionPrimitiveType primitive) {
   switch (primitive) {
     case MOTION_NONE: return "none";
     case MOTION_MOVE_ONE_CELL: return "move1";
+    case MOTION_MOVE_MULTI_CELL: return "moveN";
     case MOTION_SNAP_CENTER: return "snapcenter";
     case MOTION_TURN_LEFT_90: return "turnL";
     case MOTION_TURN_RIGHT_90: return "turnR";
@@ -404,6 +453,7 @@ static void closeDebugConsole(const String& reason) {
 }
 
 static void serviceDebugConsole() {
+  if (!debugServerStarted) return;
   if (debugServer.hasClient()) {
     WiFiClient incoming = debugServer.accept();
     if (debugClientConnected()) {
@@ -439,6 +489,26 @@ static void serviceDebugConsole() {
     debugClient.stop();
     netLine = "";
   }
+}
+
+static void serviceDebugServerState() {
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiConnected) {
+    if (!debugServerStarted) {
+      debugServer.begin();
+      debugServer.setNoDelay(true);
+      debugServerStarted = true;
+      debugPrintln(String("[NET] TCP console ready: ") + WiFi.localIP().toString() +
+                   ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
+    }
+    return;
+  }
+
+  if (!debugServerStarted) return;
+
+  closeDebugConsole("[NET] disconnected (wifi offline)");
+  debugServer.stop();
+  debugServerStarted = false;
 }
 
 static void i2cRecover(int sda, int scl) {
@@ -508,24 +578,24 @@ static void updateRobotLed() {
   if (dbg.isUpdateInProgress()) return;
 
   if (robotState.goalReached) {
-    ledController.setWhite();
+    ledController.setState(LedController::State::WHITE);
     return;
   }
 
   switch (robotState.mode) {
     case ROBOT_MODE_EXPLORE:
-      if (exploreGoalSeen) ledController.setBlue();
-      else ledController.setGreen();
+      if (exploreGoalSeen) ledController.setState(LedController::State::BLUE);
+      else ledController.setState(LedController::State::GREEN);
       return;
     case ROBOT_MODE_FAULT:
-      ledController.setRed();
+      ledController.setState(LedController::State::RED);
       return;
     default:
       if (robotState.speedRunReady) {
-        ledController.setWhite();
+        ledController.setState(LedController::State::WHITE);
         return;
       }
-      ledController.off();
+      ledController.setState(LedController::State::OFF);
       return;
   }
 }
@@ -541,6 +611,73 @@ static void serviceMotorBothFlipTest() {
   leftMotor.setPower(motorFlipPower);
   rightMotor.setPower(motorFlipPower);
   debugPrintln(String("[TEST] both motors power=") + (motorFlipPower > 0.0f ? "+100%" : "-100%"));
+}
+
+static bool readBootButtonPressed() {
+  if (!AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) return false;
+  const int level = digitalRead(AppConfig::Inputs::BOOT_BUTTON_PIN);
+  return AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? (level == LOW) : (level == HIGH);
+}
+
+static void dispatchBootButtonAction(uint8_t pressCount) {
+  if (pressCount == 0) return;
+  if (pressCount == 1) {
+    debugPrintln("[BOOT BTN] launch explore");
+    beginExplore(false, -1);
+    return;
+  }
+
+  if (pressCount >= 2 && pressCount <= 5) {
+    const uint8_t phase = pressCount - 1;
+    debugPrintln("[BOOT BTN] launch speedrun " + String(phase));
+    beginSpeedRun(phase);
+    return;
+  }
+
+  debugPrintln("[BOOT BTN] ignored press count=" + String(pressCount));
+}
+
+static void serviceBootButtonLauncher() {
+  if (!AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) return;
+
+  const bool launcherReady =
+      !dbg.isUpdateInProgress() &&
+      robotState.mode == ROBOT_MODE_IDLE &&
+      !motionController.isBusy();
+  if (!launcherReady) {
+    bootButtonPressCount = 0;
+    bootButtonRawPressed = false;
+    bootButtonStablePressed = false;
+    bootButtonLastEdgeMs = millis();
+    return;
+  }
+
+  const uint32_t now = millis();
+  const bool rawPressed = readBootButtonPressed();
+  if (rawPressed != bootButtonRawPressed) {
+    bootButtonRawPressed = rawPressed;
+    bootButtonLastEdgeMs = now;
+  }
+
+  if ((uint32_t)(now - bootButtonLastEdgeMs) >= AppConfig::Inputs::BOOT_BUTTON_DEBOUNCE_MS &&
+      bootButtonStablePressed != bootButtonRawPressed) {
+    bootButtonStablePressed = bootButtonRawPressed;
+    if (bootButtonStablePressed) {
+      if (bootButtonPressCount < 5) {
+        bootButtonPressCount++;
+      }
+      bootButtonLastAcceptedPressMs = now;
+      handleLedCommand("cycle");
+      debugPrintln("[BOOT BTN] press count=" + String(bootButtonPressCount));
+    }
+  }
+
+  if (bootButtonPressCount > 0 &&
+      (uint32_t)(now - bootButtonLastAcceptedPressMs) >= AppConfig::Inputs::BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS) {
+    const uint8_t actionPressCount = bootButtonPressCount;
+    bootButtonPressCount = 0;
+    dispatchBootButtonAction(actionPressCount);
+  }
 }
 
 static void resetExploreLoopTracking() {
@@ -586,41 +723,40 @@ static void maze_debug_s() {
   debugPrintln("");
 }
 
-static void enterIdleMode(const String& reason) {
+static void resetCommonModeState() {
   serialOutputTemporarilyMuted = false;
   motionController.setStopOnCompletion(true);
+  motionController.setConfig(AppConfig::makeMotionConfig());
   if (lapTimerRunning) {
     stopLapTimer(false);
   }
-  robotState.mode = ROBOT_MODE_IDLE;
-  robotState.motionStatus = MOTION_IDLE;
-  robotState.activePrimitive = MOTION_NONE;
+  clearForwardActionTracking();
   testLoopMode = TEST_LOOP_NONE;
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+  speedRunPreAlignHasSideSnap = false;
   motorBothFlipTestEnabled = false;
   explorer.setRunning(false);
+}
+
+static void enterIdleMode(const String& reason) {
+  resetCommonModeState();
+  robotState.mode = ROBOT_MODE_IDLE;
+  robotState.motionStatus = MOTION_IDLE;
+  robotState.activePrimitive = MOTION_NONE;
   motionController.stop();
   updateRobotLed();
   debugPrintln("[MODE] IDLE: " + reason);
 }
 
 static void enterFaultMode(const String& reason) {
-  serialOutputTemporarilyMuted = false;
-  motionController.setStopOnCompletion(true);
-  if (lapTimerRunning) {
-    stopLapTimer(false);
-  }
+  resetCommonModeState();
   robotState.mode = ROBOT_MODE_FAULT;
   robotState.lastFault = reason;
   robotState.faultCount++;
-  runStartSnapPending = false;
-  deferPlannerAckUntilSnapCenter = false;
-  runStartSnapMode = ROBOT_MODE_IDLE;
-  motorBothFlipTestEnabled = false;
   motionController.abort(reason);
-  explorer.setRunning(false);
   updateRobotLed();
   debugPrintln("[FAULT] " + reason);
 }
@@ -640,9 +776,33 @@ static void updateOtaSafeMode() {
     robotState.motionStatus = MOTION_IDLE;
     robotState.activePrimitive = MOTION_NONE;
     testLoopMode = TEST_LOOP_NONE;
+    suspendTaskIfRunning(motorTaskHandle);
+    suspendTaskIfRunning(tofTaskHandle);
+    suspendTaskIfRunning(explorerTaskHandle);
+    suspendTaskIfRunning(plannerTaskHandle);
+    suspendTaskIfRunning(telemetryTaskHandle);
     debugPrintln("[OTA] App safe mode");
   } else {
+    resumeTaskIfSuspended(telemetryTaskHandle);
+    resumeTaskIfSuspended(plannerTaskHandle);
+    resumeTaskIfSuspended(explorerTaskHandle);
+    resumeTaskIfSuspended(tofTaskHandle);
+    resumeTaskIfSuspended(motorTaskHandle);
     debugPrintln("[OTA] App resumed");
+  }
+}
+
+static void suspendTaskIfRunning(TaskHandle_t handle) {
+  if (!handle) return;
+  if (eTaskGetState(handle) != eSuspended) {
+    vTaskSuspend(handle);
+  }
+}
+
+static void resumeTaskIfSuspended(TaskHandle_t handle) {
+  if (!handle) return;
+  if (eTaskGetState(handle) == eSuspended) {
+    vTaskResume(handle);
   }
 }
 
@@ -667,16 +827,20 @@ static void onExplorerWebCommand(const String& cmd) {
 static void beginExplore(bool clearMaze, int32_t stepBudget) {
   serialOutputTemporarilyMuted = false;
   startLapTimer("HG");
+  motionController.setConfig(AppConfig::makeMotionConfig());
   motionController.setStopOnCompletion(true);
   robotState.goalReached = false;
   robotState.speedRunReady = false;
   robotState.mode = ROBOT_MODE_EXPLORE;
   robotState.lastFault = "";
+  clearForwardActionTracking();
   resetExploreLoopTracking();
   exploreStepBudget = stepBudget;
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+  speedRunPreAlignHasSideSnap = false;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
@@ -694,30 +858,39 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
 static void beginSpeedRun(uint8_t phase) {
   if (phase < 1 || phase > 4) phase = 1;
   robotState.speedRunPhase = phase;
-  serialOutputTemporarilyMuted = (phase == 1);
-  startLapTimer("HG");
-  motionController.setStopOnCompletion(phase != 1);
+  serialOutputTemporarilyMuted = false;
+  stopLapTimer(false);
+  motionController.setConfig(usesSpeedRun2Profile(phase)
+                               ? AppConfig::makeSpeedRun2MotionConfig()
+                               : AppConfig::makeMotionConfig());
+  motionController.setStopOnCompletion(!isContinuousSpeedRunPhase(phase));
   robotState.mode = ROBOT_MODE_SPEED_RUN;
   robotState.goalReached = false;
   robotState.lastFault = "";
+  clearForwardActionTracking();
   runStartSnapPending = false;
   deferPlannerAckUntilSnapCenter = false;
   runStartSnapMode = ROBOT_MODE_IDLE;
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+  speedRunPreAlignHasSideSnap = false;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   applyCurrentPoseAsHomeRect();
   applyRuntimeGoalRect();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-  explorer.setRunning(true);
+  explorer.setRunning(false);
   updateRobotLed();
   debugPrintln("[MODE] SPEED RUN " + String((int)phase));
   if (phase == 1) {
     debugPrintln("[SPEEDRUN] phase 1 is the baseline shortest-path run");
+  } else if (phase == 2) {
+    debugPrintln("[SPEEDRUN] phase 2 is the one-way shortest-path run with the dedicated motion profile");
   } else {
     debugPrintln("[SPEEDRUN] phase " + String((int)phase) +
                  " inherits phase " + String((int)speedRunBasePhase(phase)) +
                  " behavior until its profile is tuned");
   }
+  startSpeedRunPreAlignSequence();
 }
 
 static void resetMazeToConfiguredStart() {
@@ -760,12 +933,28 @@ static void clearMazeMemoryOnly() {
 }
 
 static bool executePlannerAction(FloodFillExplorer::Action act) {
+  if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+      usesSpeedRun2Profile(robotState.speedRunPhase) &&
+      act == FloodFillExplorer::ACT_TURN_180) {
+    enterFaultMode("speedrun 2 unexpected uturn");
+    return false;
+  }
+
   bool ok = false;
   MotionPrimitiveType startedPrimitive = MOTION_NONE;
+  uint8_t forwardCells = 1;
+  bool endsAtKnownWall = false;
   switch (act) {
     case FloodFillExplorer::ACT_MOVE_F:
-      ok = motionController.moveOneCell();
-      startedPrimitive = MOTION_MOVE_ONE_CELL;
+      forwardCells = explorer.lastActionForwardCells();
+      endsAtKnownWall = explorer.lastActionEndsAtKnownWall();
+      if (forwardCells <= 1) {
+        ok = motionController.moveOneCell();
+        startedPrimitive = MOTION_MOVE_ONE_CELL;
+      } else {
+        ok = motionController.moveCells(forwardCells, endsAtKnownWall);
+        startedPrimitive = MOTION_MOVE_MULTI_CELL;
+      }
       break;
     case FloodFillExplorer::ACT_TURN_L:
       ok = motionController.turnLeft90();
@@ -788,22 +977,39 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
     return false;
   }
 
+  if (act == FloodFillExplorer::ACT_MOVE_F) {
+    activeForwardActionCellsRequested = (forwardCells > 0) ? forwardCells : 1;
+    activeForwardActionCellsCommitted = 0;
+  } else {
+    clearForwardActionTracking();
+  }
+
   debugMotionEvent("[MOTION START]", startedPrimitive, motionController.status(),
                    robotState.pose.cellX, robotState.pose.cellY, headingDir(),
                    robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                   "action=" + String((int)act));
+                   "action=" + String((int)act) +
+                   " cells=" + String((int)((forwardCells > 0) ? forwardCells : 1)));
 
   return true;
 }
 
+static void clearForwardActionTracking() {
+  activeForwardActionCellsRequested = 0;
+  activeForwardActionCellsCommitted = 0;
+}
+
+static void advancePoseForwardOneCell() {
+  switch (headingDir()) {
+    case FloodFillExplorer::NORTH: if (robotState.pose.cellY > 0) robotState.pose.cellY--; break;
+    case FloodFillExplorer::EAST:  if (robotState.pose.cellX < 15) robotState.pose.cellX++; break;
+    case FloodFillExplorer::SOUTH: if (robotState.pose.cellY < 15) robotState.pose.cellY++; break;
+    case FloodFillExplorer::WEST:  if (robotState.pose.cellX > 0) robotState.pose.cellX--; break;
+  }
+}
+
 static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
   if (primitive == MOTION_MOVE_ONE_CELL) {
-    switch (headingDir()) {
-      case FloodFillExplorer::NORTH: if (robotState.pose.cellY > 0) robotState.pose.cellY--; break;
-      case FloodFillExplorer::EAST:  if (robotState.pose.cellX < 15) robotState.pose.cellX++; break;
-      case FloodFillExplorer::SOUTH: if (robotState.pose.cellY < 15) robotState.pose.cellY++; break;
-      case FloodFillExplorer::WEST:  if (robotState.pose.cellX > 0) robotState.pose.cellX--; break;
-    }
+    advancePoseForwardOneCell();
   } else if (primitive == MOTION_TURN_LEFT_90) {
     robotState.pose.heading = (robotState.pose.heading + 3) & 3;
   } else if (primitive == MOTION_TURN_RIGHT_90) {
@@ -814,6 +1020,159 @@ static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
 
   robotState.pose.forwardProgressMm = 0.0f;
   robotState.pose.turnProgressDeg = 0.0f;
+}
+
+static bool handleReachedGoal(bool& skipPostMotionHold) {
+  const bool atOriginalGoal = explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY);
+  const bool atOriginalStart = explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY);
+  if (atOriginalGoal || atOriginalStart) {
+    stopLapTimer(true);
+  }
+  if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+    if (robotState.speedRunPhase == 1 &&
+        atOriginalGoal &&
+        !atOriginalStart) {
+      startLapTimer("GH");
+      explorer.advanceTargetAfterReach();
+      explorer.setRunning(true);
+      robotState.goalReached = false;
+      robotState.speedRunReady = true;
+      skipPostMotionHold = true;
+      updateRobotLed();
+      debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
+      clearForwardActionTracking();
+      motionController.clearCompletionState();
+      return false;
+    }
+    if (robotState.speedRunPhase == 1 && atOriginalStart) {
+      explorer.advanceTargetAfterReach();
+    }
+    if (robotState.speedRunPhase == 1) {
+      serialOutputTemporarilyMuted = false;
+    } else if (usesSpeedRun2Profile(robotState.speedRunPhase)) {
+      debugPrintln("[SPEEDRUN] reached goal, finish one-way run");
+    }
+    robotState.goalReached = true;
+    updateRobotLed();
+    debugPrintln("[GOAL] Goal reached");
+    robotState.speedRunReady = true;
+    clearForwardActionTracking();
+    enterIdleMode("speed run finished");
+    return false;
+  }
+
+  if (robotState.mode == ROBOT_MODE_EXPLORE &&
+      AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
+    robotState.goalReached = true;
+    updateRobotLed();
+    debugPrintln("[GOAL] Goal reached");
+    exploreGoalSeen = true;
+    const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
+    if (atOriginalGoal) {
+      reachedOriginalGoalOnThisLoop = true;
+      debugPrintln("[EXPLORE] reached goal leg bestCost=" + String(bestCost));
+      startLapTimer("GH");
+    } else if (atOriginalStart &&
+               reachedOriginalGoalOnThisLoop) {
+      reachedOriginalGoalOnThisLoop = false;
+      startLapTimer("HG");
+      if (bestCost == lastStableBestCost) {
+        stableRoundTripCount++;
+      } else {
+        lastStableBestCost = bestCost;
+        stableRoundTripCount = 1;
+      }
+
+      debugPrintln("[EXPLORE] round trip bestCost=" + String(bestCost) +
+                   " stable=" + String(stableRoundTripCount) + "/" +
+                   String(AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS));
+
+      if (bestCost != 0xFFFF &&
+          stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
+        robotState.speedRunReady = true;
+        debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
+        PersistenceStore::saveMaze(explorer);
+        clearForwardActionTracking();
+        enterIdleMode("shortest path known");
+        return false;
+      }
+    }
+
+    explorer.setRunning(true);
+    robotState.goalReached = false;
+    skipPostMotionHold = true;
+    updateRobotLed();
+    debugPrintln("[EXPLORE] target toggled, continue exploring");
+  }
+
+  return true;
+}
+
+static bool shouldStopCorridorAfterCommittedCell() {
+  if (activeForwardActionCellsCommitted >= activeForwardActionCellsRequested) return false;
+  return robotState.walls.frontValid &&
+         robotState.walls.frontWall;
+}
+
+static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBudgetReached, bool& reachedGoal) {
+  if (activeForwardActionCellsRequested == 0 ||
+      activeForwardActionCellsCommitted >= activeForwardActionCellsRequested) {
+    return false;
+  }
+
+  const float nextBoundaryMm =
+    (float)(activeForwardActionCellsCommitted + 1) * AppConfig::Motion::CELL_DISTANCE_MM;
+  bool crossedBoundary = robotState.pose.forwardProgressMm >= nextBoundaryMm;
+
+  if (!crossedBoundary && allowFrontStopCompletion) {
+    const bool finalCell = (activeForwardActionCellsCommitted + 1) == activeForwardActionCellsRequested;
+    crossedBoundary = finalCell &&
+                      robotState.walls.frontValid &&
+                      robotState.walls.frontWall &&
+                      robotState.walls.frontMm > 0 &&
+                      robotState.walls.frontMm <= AppConfig::Motion::CORRIDOR_FRONT_STOP_MM;
+  }
+
+  if (!crossedBoundary) return false;
+
+  advancePoseForwardOneCell();
+  activeForwardActionCellsCommitted++;
+  updateRobotState();
+  motionController.latchStraightTrackMode(robotState.walls);
+
+  const bool truncateHere = shouldStopCorridorAfterCommittedCell();
+  if (truncateHere) {
+    activeForwardActionCellsRequested = activeForwardActionCellsCommitted;
+    motionController.limitMoveCellTargetCount(activeForwardActionCellsRequested);
+    if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+      explorer.truncatePendingForwardAction();
+    }
+  }
+
+  if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+    debugWallApplyEvent("[WALL APPLY]", "forward_progress",
+                        "step=" + String((int)activeForwardActionCellsCommitted) + "/" +
+                        String((int)activeForwardActionCellsRequested));
+    applyWallsToExplorer();
+    debugWallApplyEvent("[WALL APPLIED]", "forward_progress");
+    reachedGoal = explorer.ackPendingActionExternal(true,
+      robotState.pose.cellX,
+      robotState.pose.cellY,
+      headingDir());
+  } else {
+    explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+    reachedGoal = explorer.atGoal();
+  }
+
+  if (robotState.mode == ROBOT_MODE_EXPLORE && exploreStepBudget > 0) {
+    exploreStepBudget--;
+    debugPrintln("[EXPLORE] steps remaining=" + String(exploreStepBudget));
+    if (exploreStepBudget == 0) {
+      stepBudgetReached = true;
+    }
+  }
+
+  return true;
 }
 
 static void handleMotionCompletion() {
@@ -827,24 +1186,138 @@ static void handleMotionCompletion() {
     primitive == MOTION_TURN_RIGHT_90 ||
     primitive == MOTION_TURN_180;
   const bool isSnapCenterPrimitive = primitive == MOTION_SNAP_CENTER;
+  const bool isMultiCellForward = primitive == MOTION_MOVE_MULTI_CELL;
+  const bool continuousSpeedRun =
+    robotState.mode == ROBOT_MODE_SPEED_RUN &&
+    isContinuousSpeedRunPhase(robotState.speedRunPhase) &&
+    speedRunPreAlignStage == SPEEDRUN_PREALIGN_NONE;
   bool skipPostMotionHold = false;
   bool stepBudgetReached = false;
 
-    if (status == MOTION_COMPLETED) {
-      advancePoseForFinishedPrimitive(primitive);
-      debugMotionEvent("[MOTION END]", primitive, status,
-                       beforeX, beforeY, beforeH,
-                       robotState.pose.cellX, robotState.pose.cellY, headingDir());
-      const bool smoothSpeedRun = (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1);
-      if (!smoothSpeedRun) {
-        leftMotor.hardStop();
-        rightMotor.hardStop();
+  if (status == MOTION_COMPLETED) {
+    bool reachedGoal = false;
+    bool forwardAlreadyCommitted = false;
+
+    if (isMultiCellForward) {
+      updateRobotState();
+      while (commitForwardActionCell(true, stepBudgetReached, reachedGoal)) {
+        forwardAlreadyCommitted = true;
+        if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+          return;
+        }
+        if (stepBudgetReached) {
+          enterIdleMode("explore step budget reached");
+          return;
+        }
       }
+      if (activeForwardActionCellsCommitted < activeForwardActionCellsRequested) {
+        enterFaultMode("corridor move ended early");
+        return;
+      }
+    } else {
+      advancePoseForFinishedPrimitive(primitive);
+    }
+
+    debugMotionEvent("[MOTION END]", primitive, status,
+                     beforeX, beforeY, beforeH,
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     isMultiCellForward ?
+                       ("cells=" + String((int)activeForwardActionCellsCommitted) + "/" +
+                        String((int)activeForwardActionCellsRequested)) :
+                       String());
+    if (!continuousSpeedRun) {
+      leftMotor.hardStop();
+      rightMotor.hardStop();
+    }
+
+    if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+        speedRunPreAlignStage != SPEEDRUN_PREALIGN_NONE) {
+      if (speedRunPreAlignStage == SPEEDRUN_PREALIGN_AFTER_SIDE_TURN) {
+        updateRobotState();
+        if (shouldSnapCenterFromKnownBackWall()) {
+          if (!motionController.snapCenter()) {
+            enterFaultMode("failed to start speedrun pre-run side snapcenter");
+            return;
+          }
+          speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_SIDE_SNAP;
+          debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           "source=speedrun-prerun-side-snap");
+          debugPrintln("[SPEEDRUN] pre-run side snapcenter");
+          return;
+        }
+
+        const bool ok = speedRunPreAlignTurnRight ? motionController.turnLeft90()
+                                                  : motionController.turnRight90();
+        if (!ok) {
+          enterFaultMode("failed to start speedrun pre-run return turn");
+          return;
+        }
+        speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_RETURN_TURN;
+        debugMotionEvent("[MOTION START]",
+                         speedRunPreAlignTurnRight ? MOTION_TURN_LEFT_90 : MOTION_TURN_RIGHT_90,
+                         motionController.status(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         "source=speedrun-prerun-return-turn");
+        debugPrintln("[SPEEDRUN] pre-run return turn");
+        return;
+      }
+
+      if (speedRunPreAlignStage == SPEEDRUN_PREALIGN_AFTER_SIDE_SNAP) {
+        const bool ok = speedRunPreAlignTurnRight ? motionController.turnLeft90()
+                                                  : motionController.turnRight90();
+        if (!ok) {
+          enterFaultMode("failed to start speedrun pre-run return turn");
+          return;
+        }
+        speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_RETURN_TURN;
+        debugMotionEvent("[MOTION START]",
+                         speedRunPreAlignTurnRight ? MOTION_TURN_LEFT_90 : MOTION_TURN_RIGHT_90,
+                         motionController.status(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         "source=speedrun-prerun-return-turn");
+        debugPrintln("[SPEEDRUN] pre-run return turn");
+        return;
+      }
+
+      if (speedRunPreAlignStage == SPEEDRUN_PREALIGN_AFTER_RETURN_TURN) {
+        updateRobotState();
+        if (shouldSnapCenterFromKnownBackWall()) {
+          if (!motionController.snapCenter()) {
+            enterFaultMode("failed to start speedrun pre-run snapcenter");
+            return;
+          }
+          speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP;
+          debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           "source=speedrun-prerun-final-snap");
+          debugPrintln("[SPEEDRUN] pre-run snapcenter");
+          return;
+        }
+
+        finishSpeedRunStart();
+        clearForwardActionTracking();
+        motionController.stop();
+        return;
+      }
+
+      if (speedRunPreAlignStage == SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP) {
+        finishSpeedRunStart();
+        clearForwardActionTracking();
+        motionController.stop();
+        return;
+      }
+    }
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
         robotState.mode == ROBOT_MODE_EXPLORE &&
-        shouldSnapCenterAfterTurn()) {
+        primitive == MOTION_TURN_180 &&
+        (updateRobotState(), shouldSnapCenterFromKnownBackWall())) {
       if (!motionController.snapCenter()) {
         enterFaultMode("failed to start post-turn snapcenter");
         return;
@@ -859,27 +1332,30 @@ static void handleMotionCompletion() {
     }
 
     updateRobotState();
-    if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+    if (!forwardAlreadyCommitted && robotState.mode != ROBOT_MODE_SPEED_RUN) {
       debugWallApplyEvent("[WALL APPLY]", "motion_complete");
       applyWallsToExplorer();
       debugWallApplyEvent("[WALL APPLIED]", "motion_complete");
     }
 
-    bool reachedGoal = false;
-    if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-      explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-      reachedGoal = explorer.atGoal();
+    if (!forwardAlreadyCommitted) {
+      if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+        explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+        reachedGoal = explorer.atGoal();
+      } else if (deferPlannerAckUntilSnapCenter) {
+        deferPlannerAckUntilSnapCenter = false;
+        reachedGoal = explorer.ackPendingActionExternal(true,
+          robotState.pose.cellX,
+          robotState.pose.cellY,
+          headingDir());
+      } else if (!runStartSnapPending || !isSnapCenterPrimitive) {
+        reachedGoal = explorer.ackPendingActionExternal(true,
+          robotState.pose.cellX,
+          robotState.pose.cellY,
+          headingDir());
+      }
     } else if (deferPlannerAckUntilSnapCenter) {
       deferPlannerAckUntilSnapCenter = false;
-      reachedGoal = explorer.ackPendingActionExternal(true,
-        robotState.pose.cellX,
-        robotState.pose.cellY,
-        headingDir());
-    } else if (!runStartSnapPending || !isSnapCenterPrimitive) {
-      reachedGoal = explorer.ackPendingActionExternal(true,
-        robotState.pose.cellX,
-        robotState.pose.cellY,
-        headingDir());
     }
 
     if (runStartSnapPending && isSnapCenterPrimitive) {
@@ -893,7 +1369,8 @@ static void handleMotionCompletion() {
       maze_debug_s();
     }
 
-    if (primitive == MOTION_MOVE_ONE_CELL &&
+    if (!forwardAlreadyCommitted &&
+        primitive == MOTION_MOVE_ONE_CELL &&
         robotState.mode == ROBOT_MODE_EXPLORE &&
         exploreStepBudget > 0) {
       exploreStepBudget--;
@@ -903,80 +1380,8 @@ static void handleMotionCompletion() {
       }
     }
 
-    if (reachedGoal) {
-      const bool atOriginalGoal = explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY);
-      const bool atOriginalStart = explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY);
-      if (atOriginalGoal || atOriginalStart) {
-        stopLapTimer(true);
-      }
-      if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-        if (robotState.speedRunPhase == 1 &&
-            atOriginalGoal &&
-            !atOriginalStart) {
-          startLapTimer("GH");
-          explorer.advanceTargetAfterReach();
-          explorer.setRunning(true);
-          robotState.goalReached = false;
-          robotState.speedRunReady = true;
-          skipPostMotionHold = true;
-          updateRobotLed();
-          debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
-          motionController.clearCompletionState();
-          return;
-        }
-        if (robotState.speedRunPhase == 1 && atOriginalStart) {
-          explorer.advanceTargetAfterReach();
-        }
-        if (robotState.speedRunPhase == 1) {
-          serialOutputTemporarilyMuted = false;
-        }
-        robotState.goalReached = true;
-        updateRobotLed();
-        debugPrintln("[GOAL] Goal reached");
-        robotState.speedRunReady = true;
-        enterIdleMode("speed run finished");
-      } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
-                 AppConfig::Explorer::CONTINUE_AFTER_GOAL) {
-        robotState.goalReached = true;
-        updateRobotLed();
-        debugPrintln("[GOAL] Goal reached");
-        exploreGoalSeen = true;
-        const uint16_t bestCost = explorer.bestKnownCostOriginalStartToGoal();
-        if (atOriginalGoal) {
-          reachedOriginalGoalOnThisLoop = true;
-          debugPrintln("[EXPLORE] reached goal leg bestCost=" + String(bestCost));
-          startLapTimer("GH");
-        } else if (atOriginalStart &&
-                   reachedOriginalGoalOnThisLoop) {
-          reachedOriginalGoalOnThisLoop = false;
-          startLapTimer("HG");
-          if (bestCost == lastStableBestCost) {
-            stableRoundTripCount++;
-          } else {
-            lastStableBestCost = bestCost;
-            stableRoundTripCount = 1;
-          }
-
-          debugPrintln("[EXPLORE] round trip bestCost=" + String(bestCost) +
-                       " stable=" + String(stableRoundTripCount) + "/" +
-                       String(AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS));
-
-          if (bestCost != 0xFFFF &&
-              stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
-            robotState.speedRunReady = true;
-            debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
-            PersistenceStore::saveMaze(explorer);
-            enterIdleMode("shortest path known");
-            return;
-          }
-        }
-
-        explorer.setRunning(true);
-        robotState.goalReached = false;
-        skipPostMotionHold = true;
-        updateRobotLed();
-        debugPrintln("[EXPLORE] target toggled, continue exploring");
-      }
+    if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+      return;
     }
 
     if (stepBudgetReached) {
@@ -984,11 +1389,11 @@ static void handleMotionCompletion() {
       return;
     }
 
-      if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
-          !smoothSpeedRun &&
-          !skipPostMotionHold &&
-          motionController.status() == MOTION_COMPLETED &&
-          robotState.mode != ROBOT_MODE_IDLE &&
+    if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
+        !continuousSpeedRun &&
+        !skipPostMotionHold &&
+        motionController.status() == MOTION_COMPLETED &&
+        robotState.mode != ROBOT_MODE_IDLE &&
         robotState.mode != ROBOT_MODE_FAULT) {
       if (AppConfig::Debug::DEBUG_WALL_APPLY) {
         debugPrintln("[STOP HOLD] wait " + String(AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS) +
@@ -1008,14 +1413,37 @@ static void handleMotionCompletion() {
         headingDir());
     }
     enterFaultMode(motionController.lastError());
-    }
+  }
 
-    if (robotState.mode == ROBOT_MODE_SPEED_RUN && robotState.speedRunPhase == 1 && status == MOTION_COMPLETED) {
-      motionController.clearCompletionState();
-    } else {
-      motionController.stop();
+  clearForwardActionTracking();
+  if (continuousSpeedRun &&
+      status == MOTION_COMPLETED &&
+      robotState.mode == ROBOT_MODE_SPEED_RUN) {
+    motionController.clearCompletionState();
+  } else {
+    motionController.stop();
+  }
+}
+
+static void serviceActiveForwardAction() {
+  if (!motionController.isBusy()) return;
+  if (motionController.primitive() != MOTION_MOVE_MULTI_CELL) return;
+  if (activeForwardActionCellsRequested <= 1) return;
+
+  bool stepBudgetReached = false;
+  bool reachedGoal = false;
+  bool skipPostMotionHold = false;
+
+  while (commitForwardActionCell(false, stepBudgetReached, reachedGoal)) {
+    if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+      return;
+    }
+    if (stepBudgetReached) {
+      enterIdleMode("explore step budget reached");
+      return;
     }
   }
+}
 
 static void updateRobotState() {
   mouseBattery.update();
@@ -1070,15 +1498,79 @@ static bool shouldSnapCenterFromKnownBackWall() {
   return known && wall;
 }
 
-static bool shouldSnapCenterAfterTurn() {
-  return shouldSnapCenterFromKnownBackWall();
+static void finishSpeedRunStart() {
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+  debugPrintln("[SPEEDRUN] pre-run centering complete");
+  serialOutputTemporarilyMuted = (robotState.speedRunPhase == 1);
+  startLapTimer("HG");
+  explorer.setRunning(true);
+  updateRobotLed();
+}
+
+static bool startSpeedRunPreAlignSequence() {
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
+  speedRunPreAlignTurnRight = true;
+  speedRunPreAlignHasSideSnap = false;
+
+  if (!shouldSnapCenterFromKnownBackWall()) {
+    debugPrintln("[SPEEDRUN] skip pre-run centering (need known back wall)");
+    finishSpeedRunStart();
+    return true;
+  }
+
+  bool knownLeft = false;
+  bool leftWall = false;
+  bool knownRight = false;
+  bool rightWall = false;
+  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY,
+                        (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 3) & 3),
+                        knownLeft, leftWall);
+  explorer.getKnownWall(robotState.pose.cellX, robotState.pose.cellY,
+                        (FloodFillExplorer::Dir)(((uint8_t)headingDir() + 1) & 3),
+                        knownRight, rightWall);
+
+  const bool canTurnRightForSideSnap = knownLeft && leftWall;
+  const bool canTurnLeftForSideSnap = knownRight && rightWall;
+  speedRunPreAlignHasSideSnap = canTurnRightForSideSnap || canTurnLeftForSideSnap;
+  speedRunPreAlignTurnRight = canTurnRightForSideSnap || !canTurnLeftForSideSnap;
+
+  if (!speedRunPreAlignHasSideSnap) {
+    if (!motionController.snapCenter()) {
+      enterFaultMode("failed to start speedrun pre-run snapcenter");
+      return false;
+    }
+    speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_FINAL_SNAP;
+    debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     "source=speedrun-prerun-final-snap");
+    debugPrintln("[SPEEDRUN] pre-run snapcenter");
+    return true;
+  }
+
+  const bool ok = speedRunPreAlignTurnRight ? motionController.turnRight90()
+                                            : motionController.turnLeft90();
+  if (!ok) {
+    enterFaultMode("failed to start speedrun pre-run side turn");
+    return false;
+  }
+
+  speedRunPreAlignStage = SPEEDRUN_PREALIGN_AFTER_SIDE_TURN;
+  debugMotionEvent("[MOTION START]",
+                   speedRunPreAlignTurnRight ? MOTION_TURN_RIGHT_90 : MOTION_TURN_LEFT_90,
+                   motionController.status(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                   "source=speedrun-prerun-side-turn");
+  debugPrintln("[SPEEDRUN] pre-run side turn");
+  return true;
 }
 
 static bool startRunSnapSequence(const char* label) {
   explorer.setRunning(false);
   if (!shouldSnapCenterFromKnownBackWall()) {
     explorer.setRunning(robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN);
-    debugPrintln(String("[SNAP] skip ") + label + " (no known back wall)");
+    debugPrintln(String("[SNAP] skip ") + label + " (need known back wall)");
     return true;
   }
   if (!motionController.snapCenter()) {
@@ -1097,11 +1589,16 @@ static bool startRunSnapSequence(const char* label) {
 }
 
 void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
+  ledController.begin();
+  ledController.setState(LedController::State::RED);
   Serial.begin(921600);
   vTaskDelay(pdMS_TO_TICKS(200));
   i2cRecover(AppConfig::I2C::SDA, AppConfig::I2C::SCL);
+  if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
+    pinMode(AppConfig::Inputs::BOOT_BUTTON_PIN,
+            AppConfig::Inputs::BOOT_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT);
+  }
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
-  ledController.begin();
 
   WiFiOtaWebSerial::Config wifiCfg;
   wifiCfg.ssid = AppConfig::Wifi::SSID;
@@ -1121,11 +1618,11 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   dbg.setTelnetReconnectHandler(onWebTelnetReconnect);
   dbg.setHealthJsonProvider(onWebHealthJson);
   dbg.setSerialOutputAllowedHandler(serialOutputEnabled);
+  dbg.setReconnectAllowedHandler(wifiReconnectAllowed);
   explorer.setStateExtrasJsonProvider(explorerLapStateJson);
   wifiOk = dbg.begin(wifiCfg);
   debugPrintln(wifiOk ? "Boot OK" : "Boot with WiFi failed");
-  debugServer.begin();
-  debugServer.setNoDelay(true);
+  debugServerStarted = false;
 
   motorsOk = leftMotor.begin(AppConfig::Motors::LEFT_PINS,
                              AppConfig::Motors::LEFT_PWM_CHANNEL,
@@ -1199,6 +1696,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 2, &userTaskHandle,      0);
 
   enterIdleMode("ready");
+  ledController.setState(LedController::State::OFF);
 }
 
 void loopApp() {
@@ -1209,10 +1707,10 @@ void userTaskBody(void* arg) {
   (void)arg;
   String line;
   TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(20);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::USER_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(userLoopWatchdog, 20);
+    serviceLoopWatchdog(userLoopWatchdog, AppConfig::Tasks::USER_LOOP_PERIOD_MS);
     updateOtaSafeMode();
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(userLoopWatchdog);
@@ -1223,6 +1721,8 @@ void userTaskBody(void* arg) {
     updateRobotState();
     motionController.update(robotState);
     serviceMotorBothFlipTest();
+    serviceBootButtonLauncher();
+    serviceDebugServerState();
     serviceDebugConsole();
 
     while (Serial.available() > 0) {
@@ -1245,20 +1745,23 @@ void userTaskBody(void* arg) {
 void plannerTaskBody(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(50);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::PLANNER_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(plannerLoopWatchdog, 50);
+    serviceLoopWatchdog(plannerLoopWatchdog, AppConfig::Tasks::PLANNER_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(plannerLoopWatchdog);
       vTaskDelayUntil(&last, period);
       continue;
     }
 
-    const MotionStatus motionStatus = motionController.status();
-    if (motionStatus == MOTION_COMPLETED ||
-        motionStatus == MOTION_FAILED ||
-        motionStatus == MOTION_ABORTED) {
+      const MotionStatus motionStatus = motionController.status();
+      if (motionController.isBusy()) {
+        serviceActiveForwardAction();
+      }
+      if (motionStatus == MOTION_COMPLETED ||
+          motionStatus == MOTION_FAILED ||
+          motionStatus == MOTION_ABORTED) {
       handleMotionCompletion();
       vTaskDelayUntil(&last, period);
       continue;
@@ -1305,10 +1808,10 @@ void plannerTaskBody(void* arg) {
 static void motorTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(5);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(motorLoopWatchdog, 5);
+    serviceLoopWatchdog(motorLoopWatchdog, AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(motorLoopWatchdog);
       vTaskDelayUntil(&last, period);
@@ -1323,9 +1826,9 @@ static void motorTask(void* arg) {
 static void explorerTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(10);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::EXPLORER_LOOP_PERIOD_MS);
   for (;;) {
-    serviceLoopWatchdog(explorerLoopWatchdog, 10);
+    serviceLoopWatchdog(explorerLoopWatchdog, AppConfig::Tasks::EXPLORER_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(explorerLoopWatchdog);
       vTaskDelay(pdMS_TO_TICKS(50));
@@ -1340,10 +1843,10 @@ static void explorerTask(void* arg) {
 static void tofTask(void* arg) {
   (void)arg;
   TickType_t lastWake = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(5);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(tofLoopWatchdog, 5);
+    serviceLoopWatchdog(tofLoopWatchdog, AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(tofLoopWatchdog);
       vTaskDelayUntil(&lastWake, period);
@@ -1357,10 +1860,10 @@ static void tofTask(void* arg) {
 static void telemetryTask(void* arg) {
   (void)arg;
   TickType_t last = xTaskGetTickCount();
-  const TickType_t period = pdMS_TO_TICKS(1000);
+  const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::TELEMETRY_LOOP_PERIOD_MS);
 
   for (;;) {
-    serviceLoopWatchdog(telemetryLoopWatchdog, 1000);
+    serviceLoopWatchdog(telemetryLoopWatchdog, AppConfig::Tasks::TELEMETRY_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(telemetryLoopWatchdog);
       vTaskDelayUntil(&last, period);
@@ -1404,12 +1907,22 @@ static void printStartupSummary() {
   debugPrintln(String("[BOOT] Motors=") + (motorsOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] TOF=") + (tofOk ? "OK" : "FAIL"));
   debugPrintln(String("[BOOT] Battery=") + (batteryOk ? "OK" : "FAIL"));
-  debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" + String(AppConfig::Wifi::DEBUG_TCP_PORT));
-  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
-  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|cyan|white");
+  if (WiFi.status() == WL_CONNECTED) {
+    debugPrintln(String("[BOOT] TCP Console: ") + WiFi.localIP().toString() + ":" +
+                 String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  } else {
+    debugPrintln(String("[BOOT] TCP Console: waiting for WiFi on :") +
+                 String(AppConfig::Wifi::DEBUG_TCP_PORT));
+  }
+  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
+  debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl|motorr|encoders");
+  if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
+    debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (5s timeout)");
+  }
 }
 
 static void handleSerialCommand(const String& rawLine) {
@@ -1466,8 +1979,20 @@ static void handleSerialCommand(const String& rawLine) {
     }
     return;
   }
+  if (line == "led yellow") {
+    if (!handleLedCommand("yellow")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
   if (line == "led cyan" || line == "led bluegreen") {
     if (!handleLedCommand("cyan")) {
+      debugPrintln("[CMD] led command failed");
+    }
+    return;
+  }
+  if (line == "led magenta") {
+    if (!handleLedCommand("magenta")) {
       debugPrintln("[CMD] led command failed");
     }
     return;
@@ -1507,13 +2032,13 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
   if (line == "explore") {
-    beginExplore(true, -1);
+    beginExplore(false, -1);
     return;
   }
   if (line.startsWith("explore ")) {
     int steps = 0;
     if (sscanf(line.c_str(), "explore %d", &steps) == 1 && steps > 0) {
-      beginExplore(true, steps);
+      beginExplore(false, steps);
     } else {
       debugPrintln("[CMD] usage: explore [n>0]");
     }
@@ -1560,9 +2085,31 @@ static void handleSerialCommand(const String& rawLine) {
     debugPrintln("[CMD] brake stop");
     return;
   }
-  if (line == "move") {
+  if (line == "move" || line.startsWith("move ")) {
+    int cells = 1;
+    if (line.startsWith("move ")) {
+      if (sscanf(line.c_str(), "move %d", &cells) != 1 || cells <= 0) {
+        debugPrintln("[CMD] usage: move [n>0]");
+        return;
+      }
+    }
+
     robotState.mode = ROBOT_MODE_MANUAL_TEST;
-    executePlannerAction(FloodFillExplorer::ACT_MOVE_F);
+    const uint8_t requestedCells = (uint8_t)min(cells, (int)AppConfig::Motion::CORRIDOR_MAX_CELLS);
+    const bool ok = (requestedCells <= 1) ? motionController.moveOneCell() : motionController.moveCells(requestedCells);
+    if (!ok) {
+      debugPrintln("[CMD] failed to start move");
+      return;
+    }
+
+    activeForwardActionCellsRequested = requestedCells;
+    activeForwardActionCellsCommitted = 0;
+    const MotionPrimitiveType primitive =
+      (requestedCells <= 1) ? MOTION_MOVE_ONE_CELL : MOTION_MOVE_MULTI_CELL;
+    debugMotionEvent("[MOTION START]", primitive, motionController.status(),
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                     "source=manual cells=" + String((int)requestedCells));
     return;
   }
   if (line == "back") {

@@ -466,6 +466,14 @@ bool FloodFillExplorer::atActiveTarget_() const{
   return mh_ == origSh_;
 }
 
+bool FloodFillExplorer::isKnownOpen_(int x, int y, Dir d) const {
+  if (!inBounds_(x, y)) return false;
+  bool known = false;
+  bool wall = false;
+  getKnownWall((uint8_t)x, (uint8_t)y, d, known, wall);
+  return known && !wall;
+}
+
 uint16_t FloodFillExplorer::computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
                                                   uint8_t startW, uint8_t startH,
                                                   uint8_t goalX0, uint8_t goalY0,
@@ -586,6 +594,14 @@ const char* FloodFillExplorer::actionName_(Action a) const{
   return "none";
 }
 
+String FloodFillExplorer::actionLabel_(Action a, uint8_t forwardCells) const {
+  const char* name = actionName_(a);
+  if (a == ACT_MOVE_F && forwardCells > 1) {
+    return String(name) + " x" + String(forwardCells);
+  }
+  return String(name);
+}
+
 void FloodFillExplorer::markDirty_(){
   stateVer_++;
   buildStateJson_();
@@ -645,6 +661,9 @@ void FloodFillExplorer::clearKnownMaze() {
   visited_[my_][mx_] = true;
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
+  lastActionForwardCells_ = 0;
+  lastActionEndsAtKnownWall_ = false;
   computeFloodFill_();
   computePlan_();
   markDirty_();
@@ -697,6 +716,7 @@ FloodFillExplorer::Action FloodFillExplorer::requestNextAction() {
 FloodFillExplorer::Action FloodFillExplorer::requestNextActionNoAck() {
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
 
   Action act = chooseNextAction_();
   if (act == ACT_NONE) {
@@ -719,6 +739,7 @@ bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, 
     running_ = false;
     waitAck_ = false;
     pendingAction_ = ACT_NONE;
+    pendingForwardCells_ = 0;
     markDirty_();
     return false;
   }
@@ -728,19 +749,40 @@ bool FloodFillExplorer::ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, 
   mh_ = h;
   visited_[my_][mx_] = true;
 
-  waitAck_ = false;
-  pendingAction_ = ACT_NONE;
-
   bool reachedGoal = atActiveTarget_();
   if (reachedGoal) {
+    waitAck_ = false;
+    pendingAction_ = ACT_NONE;
+    pendingForwardCells_ = 0;
     onGoalReached_();
     return true;
   }
+
+  if (pendingAction_ == ACT_MOVE_F && pendingForwardCells_ > 1) {
+    pendingForwardCells_--;
+    pendingSinceMs_ = millis();
+    computeFloodFill_();
+    computePlan_();
+    markDirty_();
+    return false;
+  }
+
+  waitAck_ = false;
+  pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
 
   computeFloodFill_();
   computePlan_();
   markDirty_();
   return false;
+}
+
+void FloodFillExplorer::truncatePendingForwardAction() {
+  if (!waitAck_ || pendingAction_ != ACT_MOVE_F) return;
+  if (pendingForwardCells_ > 1) {
+    pendingForwardCells_ = 1;
+    markDirty_();
+  }
 }
 
 bool FloodFillExplorer::begin(const Config& cfg){
@@ -766,16 +808,17 @@ bool FloodFillExplorer::begin(const Config& cfg){
 
   if (cfg_.enableWeb && server_) {
     setupWeb_();
-    server_->begin();
-    setupWs_();
   }
 
   started_ = true;
+  webServing_ = false;
   running_ = cfg_.autoRun;
 
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
   pendingSeq_ = 0;
+  lastActionForwardCells_ = 0;
 
   if (cfg_.enableWeb) {
     log_("[Explorer] Web on port " + String(cfg_.port) + ", WS on port " + String(cfg_.wsPort));
@@ -787,11 +830,14 @@ bool FloodFillExplorer::begin(const Config& cfg){
 
 void FloodFillExplorer::loop() {
   if (!started_) return;
+  serviceWebServerState_();
 
-  if (server_) {
+  if (webServing_ && server_) {
     server_->handleClient();
   }
-  serviceWs_();
+  if (webServing_) {
+    serviceWs_();
+  }
 
   static uint32_t lastLogMs = 0;
 
@@ -801,8 +847,8 @@ void FloodFillExplorer::loop() {
     if (cfg_.ackTimeoutMs > 0 && (uint32_t)(now - pendingSinceMs_) > cfg_.ackTimeoutMs) {
       const uint32_t LOG_EVERY_MS = 2000;
       if ((uint32_t)(now - lastLogMs) > LOG_EVERY_MS) {
-        log_("[ACK] timeout (still waiting). seq=" + String(pendingSeq_) +
-             " act=" + String(actionName_(pendingAction_)));
+          log_("[ACK] timeout (still waiting). seq=" + String(pendingSeq_) +
+             " act=" + actionLabel_(pendingAction_, pendingForwardCells_));
         lastLogMs = now;
       }
     }
@@ -977,9 +1023,36 @@ void FloodFillExplorer::reset(){
   running_ = false;
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
+  lastActionForwardCells_ = 0;
+  lastActionEndsAtKnownWall_ = false;
 
   log_("[FF] reset");
   markDirty_();
+}
+
+void FloodFillExplorer::serviceWebServerState_() {
+  if (!cfg_.enableWeb || !server_) return;
+  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  if (wifiConnected) {
+    if (!webServing_) {
+      server_->begin();
+      setupWs_();
+      webServing_ = true;
+      log_("[Explorer] Web server started (WiFi connected)");
+    }
+    return;
+  }
+
+  if (!webServing_) return;
+  if (ws_) {
+    if (ws_->client) ws_->client.stop();
+    ws_->server.stop();
+    ws_->handshaken = false;
+    ws_->lastStateVerSent = 0xFFFFFFFFu;
+  }
+  webServing_ = false;
+  log_("[Explorer] Web server paused (WiFi disconnected)");
 }
 
 void FloodFillExplorer::computeFloodFill_(){
@@ -1087,12 +1160,17 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
   computeFloodFill_();
   computePlan_();
 
+  lastActionForwardCells_ = 0;
+  lastActionEndsAtKnownWall_ = false;
+
   if(atActiveTarget_()) return ACT_NONE;
 
   if(targetHome_ && isGoal_(mx_, my_) && mh_ != origSh_){
     uint8_t curh = (uint8_t)mh_;
     uint8_t tarh = (uint8_t)origSh_;
     uint8_t diff = (tarh + 4 - curh) & 3;
+    lastActionForwardCells_ = 1;
+    lastActionEndsAtKnownWall_ = false;
     if(diff == 1) return ACT_TURN_R;
     if(diff == 3) return ACT_TURN_L;
     return ACT_TURN_180;
@@ -1125,26 +1203,72 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
   }
   if(!found) return ACT_NONE;
 
-  if(best == mh_) return ACT_MOVE_F;
+  if(best == mh_) {
+    lastActionForwardCells_ = chooseForwardCells_();
+    bool known = false;
+    bool wall = false;
+    uint8_t fx = mx_;
+    uint8_t fy = my_;
+    for (uint8_t i = 0; i < lastActionForwardCells_; ++i) {
+      fx = (uint8_t)(fx + dx4[(int)mh_]);
+      fy = (uint8_t)(fy + dy4[(int)mh_]);
+    }
+    getKnownWall(fx, fy, mh_, known, wall);
+    lastActionEndsAtKnownWall_ = known && wall;
+    return ACT_MOVE_F;
+  }
 
   uint8_t curh = (uint8_t)mh_;
   uint8_t tarh = (uint8_t)best;
   uint8_t diff = (tarh + 4 - curh) & 3;
 
+  lastActionForwardCells_ = 1;
+  lastActionEndsAtKnownWall_ = false;
   if(diff == 1) return ACT_TURN_R;
   if(diff == 3) return ACT_TURN_L;
   return ACT_TURN_180;
 }
 
+uint8_t FloodFillExplorer::chooseForwardCells_() const {
+  uint8_t maxCells = cfg_.maxForwardCells;
+  if (maxCells == 0) maxCells = 1;
+
+  uint8_t x = mx_;
+  uint8_t y = my_;
+  uint16_t cur = dist_[y][x];
+  uint8_t cells = 0;
+
+  while (cells < maxCells) {
+    if (!isKnownOpen_(x, y, mh_)) break;
+
+    const int nx = x + dx4[(int)mh_];
+    const int ny = y + dy4[(int)mh_];
+    if (!inBounds_(nx, ny)) break;
+
+    const uint16_t nd = dist_[ny][nx];
+    if (nd >= cur) break;
+
+    x = (uint8_t)nx;
+    y = (uint8_t)ny;
+    cur = nd;
+    cells++;
+
+    if (isGoal_(x, y)) break;
+  }
+
+  return cells > 0 ? cells : 1;
+}
+
 void FloodFillExplorer::dispatchAction_(Action a){
   pendingAction_ = a;
+  pendingForwardCells_ = (a == ACT_MOVE_F) ? ((lastActionForwardCells_ > 0) ? lastActionForwardCells_ : 1) : 1;
   pendingSeq_++;
   pendingSinceMs_ = millis();
   waitAck_ = true;
   markDirty_();
 }
 
-void FloodFillExplorer::commitPendingAction_(){
+bool FloodFillExplorer::commitPendingAction_(){
   if(pendingAction_ == ACT_TURN_L){
     mh_ = (Dir)(((uint8_t)mh_ + 3) & 3);
   }else if(pendingAction_ == ACT_TURN_R){
@@ -1162,8 +1286,13 @@ void FloodFillExplorer::commitPendingAction_(){
         senseCell_(mx_, my_);
       }
     }
+    if (pendingForwardCells_ > 0) pendingForwardCells_--;
   }
-  pendingAction_ = ACT_NONE;
+  const bool done = pendingAction_ != ACT_MOVE_F || pendingForwardCells_ == 0;
+  if (done) {
+    pendingAction_ = ACT_NONE;
+  }
+  return done;
 }
 
 bool FloodFillExplorer::performStepMove_(String& reply){
@@ -1185,6 +1314,7 @@ bool FloodFillExplorer::performStepMove_(String& reply){
     commitPendingAction_();
     waitAck_ = false;
     pendingAction_ = ACT_NONE;
+    pendingForwardCells_ = 0;
 
     if(atActiveTarget_()){
       onGoalReached_();
@@ -1211,10 +1341,12 @@ void FloodFillExplorer::onGoalReached_(){
   running_ = false;
   waitAck_ = false;
   pendingAction_ = ACT_NONE;
+  pendingForwardCells_ = 0;
+  lastActionForwardCells_ = 0;
 
   // --- Toggle target ---
-  // Nếu vừa tới GOAL gốc (2x2) => đổi mục tiêu về HOME (start gốc 1 ô)
-  // Nếu vừa tới HOME => đổi mục tiêu về GOAL gốc (2x2)
+  // If we just reached the original GOAL (2x2), switch the target back to HOME (the original 1-cell start).
+  // If we just reached HOME, switch the target back to the original GOAL (2x2).
   targetHome_ = !targetHome_;
 
   if(targetHome_){
@@ -1727,7 +1859,7 @@ void FloodFillExplorer::handleState_() {
 
 void FloodFillExplorer::buildStateJson_(){
   String out;
-  out.reserve(12000); // giảm một chút để bớt pressure heap
+  out.reserve(12000); // Reduce slightly to lower heap pressure.
 
   out += "{";
   out += "\"ver\":" + String(stateVer_) + ",";
@@ -1740,7 +1872,7 @@ void FloodFillExplorer::buildStateJson_(){
   out += "\"hardwareMode\":" + String(hardwareMode_ ? "true":"false") + ",";
   out += "\"waitAck\":" + String(waitAck_ ? "true":"false") + ",";
   out += "\"pendingSeq\":" + String((uint32_t)pendingSeq_) + ",";
-  out += "\"pendingActionName\":\"" + String(actionName_(pendingAction_)) + "\",";
+  out += "\"pendingActionName\":\"" + jsonEscape_(actionLabel_(pendingAction_, pendingForwardCells_)) + "\",";
 
   out += "\"knownWalls\":[";
   for(int y=0;y<N;y++){

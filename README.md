@@ -2,7 +2,7 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.3.3`
+Current project version: `0.4.0`
 
 ## Current Status
 
@@ -18,7 +18,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - centralized configuration for hardware and tuning values
 - Wi-Fi boot logging now waits for a real STA IP before printing HTTP/upload URLs, and the reconnect loop no longer retries while the station is already connecting
 - SPIFFS persistence for saved maze memory when the shortest path is known
-- build fixes for the SPIFFS persistence integration and WebSocket accept path on the current ESP32 core
+- build fixes for the SPIFFS persistence integration on the current ESP32 core
 - when a saved maze is restored successfully at boot, the robot marks shortest-path-ready immediately and shows white LED in idle
 - explore now uses the current pose as the active home target for goal/home swapping, so `resetpose` affects the next explore loop as expected
 - far/open TOF readings now count as valid maze observations, so revisits can clear stale remembered walls for recovery
@@ -27,57 +27,83 @@ This repository now includes the first integrated hardware-oriented control stac
 - SPIFFS persistence now lives in a dedicated module for easier control and future changes
 - wall-centering now blends smoothly when transitioning between both-wall centering and single-wall following
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
-- wall-centering now captures left/right targets once at the start of a straight move, only when both walls are visible and nearly balanced
+- wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within the configured `5 mm` balance window
+- wall-centering correction is now tuned through the center-wall `KP` term and correction output limit, while leaving `CORRIDOR_CENTERING_GAIN` unchanged
+- motion speed targets in `Config.h` are now standardized to `400 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `500 TPS`
+- the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
+- the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
+- BOOT-button `1` press now starts `explore` without clearing the known maze first
+- the serial `explore` and `explore n` commands now also keep the known maze, matching the BOOT-button and web explore entry paths; `clearmaze` is the explicit wall-memory reset command
+- the browser uploader on port `82` now uses the chunked HTTP retry path again, streaming firmware through `/upload/start`, `/upload/chunk`, and `/upload/finish`
+- legacy firmware-upload WebSocket transport has been removed; firmware upload now uses HTTP chunk endpoints only
+- the browser uploader now uses chunked HTTP with retry, adaptive chunk-size fallback, and session restart recovery on failures
+- OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
+- interrupted browser uploads now abort cleanly and force the LED `red` on failure/abort paths
+- long straight `move N` actions that are known to end at a wall now finish on the front-wall stop distance instead of stopping only on encoder distance
+- OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
+- the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
+- the Wi-Fi service loop now runs with a `5 ms` cadence during normal service to balance OTA/web responsiveness and system stability
+- Wi-Fi reconnect recovery now escalates from normal `WiFi.reconnect()` attempts to a full STA restart and fresh `WiFi.begin(...)` after a longer disconnect, so the robot can recover from wedged network states without a power cycle
+- Wi-Fi reconnect attempts now run only while the robot is idle; active explore/speedrun/test motion leaves the link alone so reconnect churn does not destabilize motion
+- manual LED commands now also support `yellow` and `magenta`
+- the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
+- the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
-- `speedrun [1-4]` is now phase-aware, and phase 1 runs the known shortest path directly without wall updates, ACK handshakes, or snap-center recovery motions
+- `speedrun [1-4]` is now phase-aware: `speedrun 1` keeps the existing baseline behavior, while `speedrun 2` is now the dedicated one-way home-to-goal profile and phases `3-4` inherit the previous phase until tuned
 - `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
 - `speedrun 1` now flips the active target at the goal and continues the shortest-path run back home before finishing
 - `speedrun 1` now restores the active target back to the original goal after the return-home leg finishes, so the web/planner state is ready for the next run
 - `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
-- `speedrun` now means `speedrun 1`, and phases 2-4 are defined as incremental layers that inherit the previous phase until tuned separately
+- `speedrun` still means `speedrun 1`, while `speedrun 2` now runs the known shortest path one-way from home to goal using its own motion-profile selection and continuous execution path
 - fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
-- `speedrun 1` now keeps successful primitive transitions smooth by skipping the normal completion brake/hold between moves and turns, while still stopping normally on finish or fault
+- `speedrun 1` keeps the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
+- `speedrun 2` now executes the known shortest path directly as `move N -> turn left/right -> ... -> goal`, without explore-style ACK/wall-apply steps and without per-primitive stop-hold pauses
+- `speedrun 2` now treats an unexpected shortest-path `uturn` as a fault instead of executing it as a normal high-speed action
+- every speedrun phase now performs an untimed pre-run centering sequence before the lap starts: turn 90 degrees toward a known side wall when available, snap there, turn back to the original heading, then do the final snap in the original heading
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
+- the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
 - global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
+- floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
+- startup LED behavior now shows `red` during setup and forces `off` when boot completes and runtime enters ready idle
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
 Release note:
-- see [RELEASE_0.3.0.md](Documents/Arduino/Mouse_esp32s3/RELEASE_0.3.0.md) for the packaged solver milestone summary and the next target after this release
+- see [RELEASE_0.3.0.md](RELEASE_0.3.0.md) for the packaged solver milestone summary and the next target after this release
 
 ## Architecture
 
 ### Entry and application split
-- [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino): thin Arduino entrypoint with `setup()`, `loop()`, `userTask()`, and `plannerTask()` wrappers only
-- [AppRuntime.h](Documents/Arduino/Mouse_esp32s3\AppRuntime.h): app interface exposed to the `.ino` wrapper
-- [AppRuntime.cpp](Documents/Arduino/Mouse_esp32s3\AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
-- [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
-- [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h): shared enums and `RobotState`
+- [Mouse_esp32s3.ino](Mouse_esp32s3.ino): thin Arduino entrypoint with `setup()`, `loop()`, `userTask()`, and `plannerTask()` wrappers only
+- [AppRuntime.h](AppRuntime.h): app interface exposed to the `.ino` wrapper
+- [AppRuntime.cpp](AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
+- [Config.h](Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
+- [RobotTypes.h](RobotTypes.h): shared enums and `RobotState`
 
 ### Motion and hardware
-- [DcMotor.h](Documents/Arduino/Mouse_esp32s3\DcMotor.h): low-level motor + encoder + speed PID
-- [DcMotor.cpp](Documents/Arduino/Mouse_esp32s3\DcMotor.cpp): PWM / ISR / TPS estimation
-- [MotionController.h](Documents/Arduino/Mouse_esp32s3\MotionController.h): primitive motion interface
-- [MotionController.cpp](Documents/Arduino/Mouse_esp32s3\MotionController.cpp): move / turn / stop execution and fault detection
-- [Battery.h](Documents/Arduino/Mouse_esp32s3\Battery.h): battery voltage API
-- [Battery.cpp](Documents/Arduino/Mouse_esp32s3\Battery.cpp): ADC sampling and battery-state classification
+- [DcMotor.h](DcMotor.h): low-level motor + encoder + speed PID
+- [DcMotor.cpp](DcMotor.cpp): PWM / ISR / TPS estimation
+- [MotionController.h](MotionController.h): primitive motion interface
+- [MotionController.cpp](MotionController.cpp): move / turn / stop execution and fault detection
+- [Battery.h](Battery.h): battery voltage API
+- [Battery.cpp](Battery.cpp): ADC sampling and battery-state classification
 
 ### Sensors and planning
-- [MultiVL53L0X.h](Documents/Arduino/Mouse_esp32s3\MultiVL53L0X.h): TOF array API and wall observation structure
-- [MultiVL53L0X.cpp](Documents/Arduino/Mouse_esp32s3\MultiVL53L0X.cpp): sensor reads, correction, thresholding, wall interpretation
-- [FloodFillExplorer.h](Documents/Arduino/Mouse_esp32s3\FloodFillExplorer.h): floodfill planner / map / web interface
-- [FloodFillExplorer.cpp](Documents/Arduino/Mouse_esp32s3\FloodFillExplorer.cpp): planner logic and live web UI
-- [PersistenceStore.h](Documents/Arduino/Mouse_esp32s3\PersistenceStore.h): SPIFFS persistence interface for saved maze memory
-- [PersistenceStore.cpp](Documents/Arduino/Mouse_esp32s3\PersistenceStore.cpp): SPIFFS file format and load/save/clear implementation
+- [MultiVL53L0X.h](MultiVL53L0X.h): TOF array API and wall observation structure
+- [MultiVL53L0X.cpp](MultiVL53L0X.cpp): sensor reads, correction, thresholding, wall interpretation
+- [FloodFillExplorer.h](FloodFillExplorer.h): floodfill planner / map / web interface
+- [FloodFillExplorer.cpp](FloodFillExplorer.cpp): planner logic and live web UI
+- [PersistenceStore.h](PersistenceStore.h): SPIFFS persistence interface for saved maze memory
+- [PersistenceStore.cpp](PersistenceStore.cpp): SPIFFS file format and load/save/clear implementation
 
 ### Connectivity
-- [WiFiOtaWebSerial.h](Documents/Arduino/Mouse_esp32s3\WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
-- [WiFiOtaWebSerial.cpp](Documents/Arduino/Mouse_esp32s3\WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
+- [WiFiOtaWebSerial.h](WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
+- [WiFiOtaWebSerial.cpp](WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
 
 ## Runtime Flow
 
@@ -90,18 +116,19 @@ Release note:
 7. `plannerTask()` remains visible in the `.ino`, but forwards to `MainApp::plannerTaskBody(...)`.
 8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
-10. After a 90-degree or 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
+10. After a 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
 11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
-12. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
-13. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
-14. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
-15. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
-16. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
-17. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
-18. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
-19. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
-20. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
-20. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
+12. `speedrun 2` runs one-way from home to goal with its own motion profile and continuous shortest-path execution, so the runtime syncs pose and dispatches the next action directly instead of using the explore ACK loop.
+13. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
+14. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
+15. When the robot is standing still and ready for the next planner action, the runtime refreshes wall sensing from the current cell before calling floodfill again, so valid current-cell observations can overwrite stale wall memory.
+16. In explore mode, the runtime can continue after a reached target by keeping the current pose, letting `FloodFillExplorer` flip the target between the original goal rectangle and the original home rectangle, and then resuming exploration from where the robot stands.
+17. Explore now stops automatically and prints that the shortest path is known once the same best-known home-to-goal cost has remained unchanged for the configured number of consecutive round trips.
+18. Floodfill now distinguishes the single physical start pose from a separate home rectangle, so target toggling happens between the configured home region and goal region.
+19. When explore continues immediately after a reached target, the runtime now skips the normal post-motion hold so the goal-to-home transition starts without the extra 100 ms pause.
+20. On boot, the runtime restores saved maze wall memory from SPIFFS when that file exists, while pose and goal still come from the current runtime/config state.
+21. `clearmaze` clears only wall memory and removes the saved maze file without changing the current pose or goal.
+22. When explore decides the shortest path is known, the runtime saves maze memory to SPIFFS automatically before going idle.
 
 Planner synchronization note:
 - `plannerTaskBody()` now uses `MotionController` as the single source of truth for motion completion/busy state before dispatching the next action.
@@ -124,12 +151,19 @@ Explore loop note:
 - The runtime tracks the best-known cost from the original home region to the original goal region.
 - After each completed goal->home round trip, if that best-known cost is unchanged, the stable round-trip count increases.
 - When the count reaches `AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS`, explore stops and prints `shortest path known`.
+- From idle, the ESP32-S3 BOOT button can launch runs after a `5s` multi-press timeout:
+  - `1` press: `explore`
+  - `2` presses: `speedrun 1`
+  - `3` presses: `speedrun 2`
+  - `4` presses: `speedrun 3`
+  - `5` presses: `speedrun 4`
+  - each accepted press cycles the LED so the user gets immediate feedback
 - Reaching a target no longer rewrites the explorer's configured start marker; the original start remains fixed while only the active target toggles between goal and home.
 - The original home/goal references used for toggling are now taken from `setHomeRect()` and `setGoalRect()`, so the loop uses the configured maze values instead of the class default placeholders.
 
 ## Configuration
 
-All hard configuration now lives in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h).
+All hard configuration now lives in [Config.h](Config.h).
 
 Key sections:
 - `AppConfig::Battery`: ADC pin, battery calibration, warning/critical thresholds
@@ -164,7 +198,7 @@ If the project is not already under your Arduino sketch folder, place or copy th
 
 Then build and upload like this:
 
-1. Open [Mouse_esp32s3.ino](Documents/Arduino/Mouse_esp32s3\Mouse_esp32s3.ino) in Arduino IDE.
+1. Open [Mouse_esp32s3.ino](Mouse_esp32s3.ino) in Arduino IDE.
 2. Select your ESP32-S3 board target in `Tools`.
 3. Set the ESP32-S3 board options to match this project:
    - `USB CDC On Boot`: `Enabled`
@@ -183,7 +217,7 @@ Bring-up notes:
 
 ## Robot Modes
 
-Defined in [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h):
+Defined in [RobotTypes.h](RobotTypes.h):
 - `ROBOT_MODE_IDLE`
 - `ROBOT_MODE_MANUAL_TEST`
 - `ROBOT_MODE_EXPLORE`
@@ -192,8 +226,9 @@ Defined in [RobotTypes.h](Documents/Arduino/Mouse_esp32s3\RobotTypes.h):
 
 ## Motion Primitives
 
-Implemented in [MotionController.cpp](Documents/Arduino/Mouse_esp32s3\MotionController.cpp):
+Implemented in [MotionController.cpp](MotionController.cpp):
 - `moveOneCell()`
+- `moveCells(n)`
 - `moveForwardShort()`
 - `moveBackwardShort()`
 - `snapCenter()`
@@ -213,6 +248,7 @@ Primitive execution currently includes:
 - motor commands inside the PWM dead zone now coast at zero instead of forcing a minimum forward/reverse duty
 - motion start/end debug hooks in the runtime for tracing primitive flow during tuning
 - a short post-motion hard-stop hold after sensing/ACK so the robot pauses only when the system is otherwise ready for the next action
+- `speedrun 2` bypasses the normal per-primitive stop-hold path so one-way shortest-path execution can flow directly from one segment to the next
 - `snapCenter()` runs as one primitive: reverse short, hard stop, hold briefly, then forward short
 - `snapCenter()` does not change the logical maze pose; it is a physical re-centering primitive only
 - task-context millisecond waits now use `vTaskDelay(...)` instead of Arduino `delay(...)` so other FreeRTOS tasks can keep running cleanly during those pauses
@@ -234,13 +270,14 @@ Available from the main sketch:
 - `brake`
 - `restart`
 - `move`
+- `move n`
 - `back`
 - `testsnap`
 - `left`
 - `right`
 - `uturn`
 - `maze`
-- `led cycle|rotate|off|red|green|blue|cyan|white`
+- `led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white`
 - `test`
 - `test off`
 - `test loop status|battery|sensors|sensorsraw|encoders|maze|off`
@@ -301,17 +338,18 @@ Browser upload flow:
 1. compile the firmware so you have the `.bin`
 2. open `http://<mouse-ip>:82/`
 3. choose the firmware `.bin`
-4. upload and wait for the board to reboot
+4. upload; the page now transfers the firmware over chunked HTTP requests with retry handling in the browser
+5. wait for the board to reboot
 
 During browser upload:
 - the robot enters the same quiet/safe mode used for Arduino OTA
 - motion, planner, telemetry, and sensor polling are paused so the upload has priority
-- after a successful upload, the browser should receive `OK` first and the ESP32 reboots shortly after
+- after a successful upload, the browser receives a success JSON reply and the ESP32 reboots shortly after
 - while an update is active, the firmware no longer forces a Wi-Fi reconnect cycle; this avoids killing the upload socket during brief link wobble
 - if an upload aborts mid-transfer, the firmware now avoids stacking extra reconnect requests while the STA is already reconnecting
 - LED status during upload:
-  - immediate blue, then blinking blue: upload/OTA in progress
-  - green: upload finished successfully
+  - blue: upload/OTA in progress
+  - off: upload finished successfully
   - red: upload/OTA error or abort
 - Robot-state LED status:
   - green: explore active before first reached target
@@ -327,13 +365,13 @@ Do not use these for the browser uploader:
 - `Mouse_esp32s3.ino.merged.bin`
 - bootloader or partition binaries
 
-Related config in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h):
+Related config in [Config.h](Config.h):
 - `AppConfig::Wifi::ENABLE_UPLOAD_WEB`
 - `AppConfig::Wifi::UPLOAD_WEB_PORT`
 
 ## Hardware / Tuning Notes
 
-Current values are placeholders and will need on-robot tuning in [Config.h](Documents/Arduino/Mouse_esp32s3\Config.h):
+Current values are placeholders and will need on-robot tuning in [Config.h](Config.h):
 - battery ADC pin and calibration values
 - `cellDistanceMm`
 - `turnTicks90`

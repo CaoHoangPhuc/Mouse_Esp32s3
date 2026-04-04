@@ -12,7 +12,6 @@
 - If browser upload still aborts, compare whether the last serial line is `[WEB OTA] Received ... bytes`, `[WEB OTA] Aborted`, or a Wi-Fi reconnect event to isolate transport vs. flash finalization.
 - Current evidence points to a mid-transfer network drop after partial progress, not an OTA password or `.bin` selection issue.
 - Update docs/examples if the Arduino builder needs any filename/layout adjustments.
-- Replace remaining mojibake / encoding corruption in comments and UI strings.
 - Confirm the battery ADC pin is correct for the real board.
 - Confirm the current Wi-Fi credentials strategy is acceptable for development.
 
