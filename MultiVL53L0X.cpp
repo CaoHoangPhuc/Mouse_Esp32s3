@@ -170,10 +170,7 @@ bool MultiVL53L0X::readTOF_fast(uint8_t addr, uint16_t &dist)
     return true;
 }
 void MultiVL53L0X::update() {
-    i2cLock();
-
     if (_numSensors == 0) {
-        i2cUnlock();
         return;
     }
 
@@ -183,14 +180,15 @@ void MultiVL53L0X::update() {
     }
 
     if (!_initialized[_cSensor]) {
-        i2cUnlock();
         return;
     }
 
     // uint16_t dist = _sensors[_cSensor].readRangeContinuousMillimeters();
     // bool to = _sensors[_cSensor].timeoutOccurred();
     uint16_t dist;
+    i2cLock();
     bool ok = readTOF_fast(_sensorAddresses[_cSensor], dist);
+    i2cUnlock();
 
     _raw[_cSensor] = dist;
 
@@ -229,7 +227,6 @@ void MultiVL53L0X::update() {
     if (_cSensor == 0) {
         _sweepReadyForCompute = true;
     }
-    i2cUnlock();
 }
 
 // Detect layout
