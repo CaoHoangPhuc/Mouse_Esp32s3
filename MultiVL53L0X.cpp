@@ -462,59 +462,6 @@ float MultiVL53L0X::computeError(float headingError) {
                 (_centerKi * _centerIntegral) +
                 (_centerKd * derivative);
 
-    // Front-corner anti-stick assist:
-    // when front corner is too close, force stronger steering away from that corner.
-    float escapeSign = 0.0f;  // + => steer right, - => steer left
-    const float stickMm = AppConfig::Motion::FRONT_CORNER_STICK_MM;
-    if (_version == SENSOR_V2) {
-        const uint16_t fl = getDistance(0);
-        const uint16_t fr = getDistance(3);
-        const uint8_t flState = stateTimeout(0);
-        const uint8_t frState = stateTimeout(3);
-        const bool flClose = isGood(flState) && fl > 0 && (float)fl < stickMm;
-        const bool frClose = isGood(frState) && fr > 0 && (float)fr < stickMm;
-
-        if (flClose && !frClose) {
-            escapeSign = 1.0f;
-        } else if (frClose && !flClose) {
-            escapeSign = -1.0f;
-        } else if (flClose && frClose) {
-            if (leftValid && rightValid) {
-                if (left < right) escapeSign = 1.0f;
-                else if (right < left) escapeSign = -1.0f;
-            }
-            if (escapeSign == 0.0f) {
-                escapeSign = (rawErr >= 0.0f) ? 1.0f : -1.0f;
-            }
-        }
-    } else if (_version == SENSOR_V1) {
-        const uint16_t front = getDistance(2);
-        const uint8_t frontState = stateTimeout(2);
-        const bool frontClose = isGood(frontState) && front > 0 && (float)front < stickMm;
-        if (frontClose) {
-            if (leftValid && rightValid) {
-                if (left < right) escapeSign = 1.0f;
-                else if (right < left) escapeSign = -1.0f;
-            } else if (leftValid) {
-                escapeSign = 1.0f;
-            } else if (rightValid) {
-                escapeSign = -1.0f;
-            } else {
-                escapeSign = (rawErr >= 0.0f) ? 1.0f : -1.0f;
-            }
-        }
-    }
-
-    if (escapeSign != 0.0f) {
-        const float extraOut =
-            AppConfig::Motion::FRONT_CORNER_ESCAPE_EXTRA_OUT_FACTOR * _centerOutLimit;
-        const float minOut =
-            AppConfig::Motion::FRONT_CORNER_ESCAPE_MIN_OUT_FACTOR * _centerOutLimit;
-        out += escapeSign * extraOut;
-        if (escapeSign > 0.0f && out < minOut) out = minOut;
-        if (escapeSign < 0.0f && out > -minOut) out = -minOut;
-    }
-
     if (out > _centerOutLimit) out = _centerOutLimit;
     if (out < -_centerOutLimit) out = -_centerOutLimit;
 
