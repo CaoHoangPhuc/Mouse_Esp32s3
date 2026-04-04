@@ -1330,8 +1330,16 @@ static void handleMotionCompletion() {
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
-        robotState.mode == ROBOT_MODE_EXPLORE &&
-        (updateRobotState(), shouldSnapCenterFromKnownBackWall())) {
+        robotState.mode == ROBOT_MODE_EXPLORE) {
+      updateRobotState();
+      const bool knownBackWall = shouldSnapCenterFromKnownBackWall();
+      const bool sideWallsOpen = !robotState.walls.leftWall && !robotState.walls.rightWall;
+      const bool shouldPostTurnSnap =
+        (primitive == MOTION_TURN_180 && knownBackWall) ||
+        ((primitive == MOTION_TURN_LEFT_90 || primitive == MOTION_TURN_RIGHT_90) &&
+         knownBackWall && sideWallsOpen);
+
+      if (shouldPostTurnSnap) {
       if (!motionController.snapCenter()) {
         enterFaultMode("failed to start post-turn snapcenter");
         return;
@@ -1343,6 +1351,7 @@ static void handleMotionCompletion() {
                        "source=post-turn");
       debugPrintln("[SNAP] post-turn snapcenter");
       return;
+      }
     }
 
     updateRobotState();
