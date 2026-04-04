@@ -1,7 +1,7 @@
 #include "Config.h"
 
 namespace AppConfig {
-#if defined(LITE_FIRMWARE)
+#if APP_LITE_FIRMWARE
 static constexpr bool kLiteFirmware = true;
 #else
 static constexpr bool kLiteFirmware = false;

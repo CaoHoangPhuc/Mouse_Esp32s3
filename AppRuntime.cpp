@@ -10,14 +10,14 @@
 #include "MultiVL53L0X.h"
 #include "PersistenceStore.h"
 #include "RobotTypes.h"
-#if !defined(LITE_FIRMWARE)
+#if !APP_LITE_FIRMWARE
 #include "WiFiOtaWebSerial.h"
 #endif
 #include "AppRuntime.h"
 
 namespace MainApp {
 
-#if defined(LITE_FIRMWARE)
+#if APP_LITE_FIRMWARE
 class LiteDebugBackend {
 public:
   bool isUpdateInProgress() const { return false; }
@@ -1600,7 +1600,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   setPose(AppConfig::Maze::START_X, AppConfig::Maze::START_Y, AppConfig::Maze::START_HEADING);
 
   explorer.setStateExtrasJsonProvider(explorerLapStateJson);
-#if defined(LITE_FIRMWARE)
+#if APP_LITE_FIRMWARE
   wifiOk = false;
   debugPrintln("[BOOT] LITE_FIRMWARE profile: WiFi/OTA/Web disabled");
 #else

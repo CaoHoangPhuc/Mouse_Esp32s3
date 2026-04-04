@@ -6,10 +6,17 @@
 #include "FloodFillExplorer.h"
 #include "MotionController.h"
 
+// Easy firmware profile switch (no build flags needed):
+// 0 = FULL firmware (WiFi/OTA/web enabled by config defaults)
+// 1 = LITE firmware (minimal runtime, WiFi/OTA/web disabled by default)
+#ifndef APP_LITE_FIRMWARE
+#define APP_LITE_FIRMWARE 0
+#endif
+
 namespace AppConfig {
 namespace Build {
 // Build profile selected by compile flag.
-// Enable by adding `-DLITE_FIRMWARE` in build options.
+// Controlled by APP_LITE_FIRMWARE above.
 extern const bool LITE_FIRMWARE;
 extern const char* PROFILE_NAME;
 }
