@@ -21,6 +21,27 @@ void MotionController::resetSnapState_() {
   snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
+void MotionController::applyStopMode_(StopMode mode) {
+  if (!left_ || !right_) return;
+  switch (mode) {
+    case StopMode::COAST:
+      left_->coastStop();
+      right_->coastStop();
+      break;
+    case StopMode::BRAKE:
+      left_->enableSpeedControl(false);
+      right_->enableSpeedControl(false);
+      left_->brakeStop();
+      right_->brakeStop();
+      break;
+    case StopMode::HARDSTOP:
+    default:
+      left_->hardStop();
+      right_->hardStop();
+      break;
+  }
+}
+
 bool MotionController::updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason) {
   if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
     lastProgressMm_ = progressMm;
@@ -145,8 +166,7 @@ void MotionController::stop() {
 void MotionController::abort(const String& reason) {
   if (!left_ || !right_) return;
   if (tof_) tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
-  left_->hardStop();
-  right_->hardStop();
+  applyStopMode_(StopMode::HARDSTOP);
   primitive_ = MOTION_NONE;
   lastFinishedPrimitive_ = MOTION_NONE;
   status_ = MOTION_ABORTED;
@@ -205,9 +225,10 @@ int32_t MotionController::differentialTicks_() const {
 }
 
 void MotionController::markDone_(MotionStatus status, const String& reason) {
-  if (status != MOTION_COMPLETED || stopOnCompletion_) {
-    left_->hardStop();
-    right_->hardStop();
+  if (status != MOTION_COMPLETED) {
+    applyStopMode_(StopMode::HARDSTOP);
+  } else if (stopOnCompletion_) {
+    applyStopMode_(cfg_.completionStopMode);
   }
   if (tof_) tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
   status_ = status;
@@ -385,19 +406,26 @@ void MotionController::update(RobotState& state) {
     const int32_t turnTarget = (primitive_ == MOTION_TURN_180)
       ? ((cfg_.turnTicks180 > 0) ? cfg_.turnTicks180 : max<int32_t>(1, cfg_.turnTicks90 * 2))
       : ((cfg_.turnTicks90 > 0) ? cfg_.turnTicks90 : 1);
+    const int32_t diffTicks = abs(differentialTicks_());
     const float turnDegrees = (primitive_ == MOTION_TURN_180) ? 180.0f : 90.0f;
-    const float turnRatio = (float)abs(differentialTicks_()) / (float)turnTarget;
+    const float turnRatio = (float)diffTicks / (float)turnTarget;
     state.pose.turnProgressDeg = min(turnDegrees, turnRatio * turnDegrees);
 
+    const float slowdownStartRatio = constrain(cfg_.turnSlowdownStartRatio, 0.0f, 1.0f);
+    const bool slowZone = turnRatio >= slowdownStartRatio;
+    const float turnCmdTps = slowZone
+      ? min(cfg_.turnSpeedTps, max(1.0f, cfg_.turnMinSpeedTps))
+      : cfg_.turnSpeedTps;
+
     if (primitive_ == MOTION_TURN_LEFT_90) {
-      left_->setSpeedTPS(-cfg_.turnSpeedTps);
-      right_->setSpeedTPS(cfg_.turnSpeedTps);
+      left_->setSpeedTPS(-turnCmdTps);
+      right_->setSpeedTPS(turnCmdTps);
     } else {
-      left_->setSpeedTPS(cfg_.turnSpeedTps);
-      right_->setSpeedTPS(-cfg_.turnSpeedTps);
+      left_->setSpeedTPS(turnCmdTps);
+      right_->setSpeedTPS(-turnCmdTps);
     }
 
-    if (abs(differentialTicks_()) >= turnTarget) {
+    if (diffTicks >= turnTarget) {
       markDone_(MOTION_COMPLETED);
       return;
     }

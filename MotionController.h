@@ -9,6 +9,12 @@
 
 class MotionController {
 public:
+  enum class StopMode : uint8_t {
+    COAST = 0,
+    BRAKE = 1,
+    HARDSTOP = 2,
+  };
+
   struct Config {
     float cellDistanceMm = 180.0f;
     int32_t turnTicks90 = 300;
@@ -21,6 +27,8 @@ public:
     float reverseSpeedTps = 180.0f;
     uint32_t snapCenterStopHoldMs = 50;
     float turnSpeedTps = 250.0f;
+    float turnMinSpeedTps = 120.0f;
+    float turnSlowdownStartRatio = 0.75f;
     float centeringGain = 1.6f;
     float corridorCenteringGain = 1.6f;
     float frontStopMm = 55.0f;
@@ -32,6 +40,7 @@ public:
     float minProgressMm = 12.0f;
     float mmPerTick = 0.54f;
     uint8_t corridorMaxCells = 1;
+    StopMode completionStopMode = StopMode::HARDSTOP;
   };
 
   void begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery = nullptr);
@@ -68,6 +77,7 @@ private:
   float averageProgressMm_() const;
   float absoluteAverageProgressMm_() const;
   int32_t differentialTicks_() const;
+  void applyStopMode_(StopMode mode);
   void resetSnapState_();
   bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
 

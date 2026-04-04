@@ -213,10 +213,10 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 // Encoder differential ticks needed for a 90-degree turn.
 // Affects: turnLeft90() / turnRight90() completion.
 // One of the most important hardware tuning values.
-static constexpr int32_t TURN_TICKS_90 = 210;
+static constexpr int32_t TURN_TICKS_90 = 190;
 // Encoder differential ticks needed for a 180-degree turn.
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr int32_t TURN_TICKS_180 = 430;
+static constexpr int32_t TURN_TICKS_180 = 420;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
@@ -232,6 +232,11 @@ static constexpr float REVERSE_SPEED_TPS = 350.0f;
 // Affects: how long the robot pauses after backing up before returning to center.
 static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
 static constexpr float TURN_SPEED_TPS = 350.0f;
+// Turn slowdown profile to reduce overshoot near 90/180 target ticks.
+// Once progress reaches TURN_SLOWDOWN_START_RATIO of target ticks, reduce to
+// TURN_MIN_SPEED_TPS for final approach.
+static constexpr float TURN_MIN_SPEED_TPS = 140.0f;
+static constexpr float TURN_SLOWDOWN_START_RATIO = 0.75f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
@@ -270,6 +275,10 @@ static constexpr uint8_t CORRIDOR_MAX_CELLS = 4;
 // MIN_PROGRESS_MM: minimum progress before stall timer is refreshed.
 static constexpr float STOP_TPS = 20.0f;
 static constexpr float MIN_PROGRESS_MM = 12.0f;
+// Stop mode used when a primitive completes in normal motion flow
+// (explore / speedrun 1). Choose one of: COAST, BRAKE, HARDSTOP.
+static constexpr MotionController::StopMode COMPLETION_STOP_MODE =
+  MotionController::StopMode::BRAKE;
 
 // Mechanical distance-per-tick estimate.
 // Affects: forward progress estimation and one-cell completion.
@@ -340,7 +349,7 @@ namespace Debug {
   static constexpr bool DEBUG_WALL_APPLY = true;
   // High-rate motor PID trace from DcMotor::update().
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
-  static constexpr bool MOTOR_PID_TRACE = true;
+  static constexpr bool MOTOR_PID_TRACE = false;
   // Print every N motor updates (1 = every update).
   static constexpr uint8_t MOTOR_PID_TRACE_EVERY_N = 100;
   // Lightweight periodic-task timing watchdog.
@@ -365,6 +374,8 @@ inline MotionController::Config makeMotionConfig() {
   cfg.reverseSpeedTps = Motion::REVERSE_SPEED_TPS;
   cfg.snapCenterStopHoldMs = Motion::SNAP_CENTER_STOP_HOLD_MS;
   cfg.turnSpeedTps = Motion::TURN_SPEED_TPS;
+  cfg.turnMinSpeedTps = Motion::TURN_MIN_SPEED_TPS;
+  cfg.turnSlowdownStartRatio = Motion::TURN_SLOWDOWN_START_RATIO;
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
@@ -374,6 +385,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.stallTimeoutMs = Motion::STALL_TIMEOUT_MS;
   cfg.stopTps = Motion::STOP_TPS;
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
+  cfg.completionStopMode = Motion::COMPLETION_STOP_MODE;
   cfg.mmPerTick = Motion::MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
   return cfg;
