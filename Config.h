@@ -345,6 +345,8 @@ namespace Debug {
   extern const bool DEBUG_MOTION_FLOW;
   // Dedicated gate for debugMotionEvent() start/end primitive logs.
   extern const bool DEBUG_MOTION_EVENT;
+  // Gate for automatic maze ASCII dumps via maze_debug_s().
+  extern const bool DEBUG_MAZE_PRINT;
   extern const bool DEBUG_WALL_APPLY;
   // High-rate center PID trace from MultiVL53L0X::computeError().
   extern const bool CENTER_PID_TRACE;

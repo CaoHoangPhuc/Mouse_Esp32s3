@@ -59,6 +59,7 @@ const bool ENABLE_SERIAL_OUTPUT = true;
 const bool PRINT_STATUS_TPS = false;
 const bool DEBUG_MOTION_FLOW = false;
 const bool DEBUG_MOTION_EVENT = DEBUG_MOTION_FLOW;
+const bool DEBUG_MAZE_PRINT = false;
 const bool DEBUG_WALL_APPLY = false;
 const bool CENTER_PID_TRACE = true;
 const uint8_t CENTER_PID_TRACE_EVERY_N = 1;

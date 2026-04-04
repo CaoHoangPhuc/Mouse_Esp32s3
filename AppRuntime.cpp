@@ -129,7 +129,7 @@ static void clearMazeMemoryOnly();
 static void applyCurrentPoseAsHomeRect();
 static FloodFillExplorer::Dir headingDir();
 static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir);
-static void maze_debug_s();
+static void maze_debug_s(bool force = false);
 static void resetCommonModeState();
 static void closeDebugConsole(const String& reason = "");
 static bool shouldSnapCenterFromKnownBackWall();
@@ -721,7 +721,8 @@ static FloodFillExplorer::Dir oppositeDir(FloodFillExplorer::Dir dir) {
   return (FloodFillExplorer::Dir)(((uint8_t)dir + 2) & 3);
 }
 
-static void maze_debug_s() {
+static void maze_debug_s(bool force) {
+  if (!force && !AppConfig::Debug::DEBUG_MAZE_PRINT) return;
   String maze = explorer.buildKnownMazeAscii(robotState.pose.cellX, robotState.pose.cellY, headingDir());
   maze.replace("\n", "\r\n");
   debugPrintln("[MAZE]");
@@ -1954,7 +1955,7 @@ static void handleSerialCommand(const String& rawLine) {
     return;
   }
   if (line == "maze") {
-    maze_debug_s();
+    maze_debug_s(true);
     return;
   }
   if (line == "led" || line == "led cycle" || line == "led rotate") {
