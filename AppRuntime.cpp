@@ -2055,6 +2055,8 @@ static void handleSerialCommand(const String& rawLine) {
   }
   if (line == "stop") {
     motionController.stop();
+    leftMotor.hardStop();
+    rightMotor.hardStop();
     enterIdleMode("manual stop");
     return;
   }

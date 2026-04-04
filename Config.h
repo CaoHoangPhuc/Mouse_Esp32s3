@@ -198,7 +198,7 @@ static constexpr float PID_SLEW_RATE = 8.0f;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.2f;
+static constexpr float TPS_LPF_ALPHA = 0.1f;
 }
 
 namespace Motion {
