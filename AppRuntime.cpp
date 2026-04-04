@@ -1897,7 +1897,7 @@ static void printStartupSummary() {
     debugPrintln(String("[BOOT] TCP Console: waiting for WiFi on :") +
                  String(AppConfig::Wifi::DEBUG_TCP_PORT));
   }
-  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | hardstop | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
   debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
@@ -2055,19 +2055,37 @@ static void handleSerialCommand(const String& rawLine) {
   }
   if (line == "stop") {
     motionController.stop();
-    leftMotor.hardStop();
-    rightMotor.hardStop();
     enterIdleMode("manual stop");
     return;
   }
   if (line == "brake") {
-    leftMotor.hardStop();
-    rightMotor.hardStop();
+    motionController.stop();
+    leftMotor.enableSpeedControl(false);
+    rightMotor.enableSpeedControl(false);
+    leftMotor.brakeStop();
+    rightMotor.brakeStop();
+    resetCommonModeState();
+    robotState.mode = ROBOT_MODE_IDLE;
     robotState.motionStatus = MOTION_IDLE;
     robotState.activePrimitive = MOTION_NONE;
     robotState.pose.forwardProgressMm = 0.0f;
     robotState.pose.turnProgressDeg = 0.0f;
+    updateRobotLed();
     debugPrintln("[CMD] brake stop");
+    return;
+  }
+  if (line == "hardstop") {
+    motionController.stop();
+    leftMotor.hardStop();
+    rightMotor.hardStop();
+    resetCommonModeState();
+    robotState.mode = ROBOT_MODE_IDLE;
+    robotState.motionStatus = MOTION_IDLE;
+    robotState.activePrimitive = MOTION_NONE;
+    robotState.pose.forwardProgressMm = 0.0f;
+    robotState.pose.turnProgressDeg = 0.0f;
+    updateRobotLed();
+    debugPrintln("[CMD] hard stop (target TPS = 0)");
     return;
   }
   if (line == "move" || line.startsWith("move ")) {
