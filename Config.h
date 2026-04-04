@@ -188,17 +188,17 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0038f;
-static constexpr float PID_KI = 0.0009f;
-static constexpr float PID_KD = 0.00018f;
+static constexpr float PID_KP = 0.0032f;
+static constexpr float PID_KI = 0.0007f;
+static constexpr float PID_KD = 0.00015f;
 static constexpr float PID_OUT_LIMIT = 0.90f;
 static constexpr float PID_I_LIMIT = 0.22f;
-static constexpr float PID_D_FILTER_HZ = 15.0f;
-static constexpr float PID_SLEW_RATE = 10.0f;
+static constexpr float PID_D_FILTER_HZ = 12.0f;
+static constexpr float PID_SLEW_RATE = 6.0f;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.16f;
+static constexpr float TPS_LPF_ALPHA = 0.12f;
 // Window for period-based TPS estimate (ticks accumulated across this time).
 // Larger = smoother/noisier tradeoff.
 static constexpr uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
