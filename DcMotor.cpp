@@ -76,6 +76,8 @@ bool DcMotor::begin(const Pins& pins,
   _lastMicros = micros();
   _lastTicks = 0;
   _tps = 0.0f;
+  _speedAccumTicks = 0;
+  _speedAccumUs = 0;
 
   _speedCtrlEnabled = false;
   _targetTPS = 0.0f;
@@ -187,11 +189,20 @@ void DcMotor::update() {
   int32_t dTicks = ticksNow - _lastTicks;
 
   float dt = (dt_us > 0) ? (dt_us / 1e6f) : 1e-6f;
-  float tpsInstant = dTicks / dt;
 
-  // Filter TPS (keeps it stable)
-  const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
-  _tps = _tps + alpha * (tpsInstant - _tps);
+  // Period-based speed estimate from a fixed accumulation window.
+  const uint32_t windowUs = (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS > 0)
+                            ? (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS * 1000UL)
+                            : 5000UL;
+  _speedAccumTicks += dTicks;
+  _speedAccumUs += dt_us;
+  if (_speedAccumUs >= windowUs) {
+    float tpsInstant = _speedAccumTicks / (_speedAccumUs / 1e6f);
+    const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
+    _tps = _tps + alpha * (tpsInstant - _tps);
+    _speedAccumTicks = 0;
+    _speedAccumUs = 0;
+  }
 
   _lastMicros = now;
   _lastTicks = ticksNow;
@@ -269,6 +280,8 @@ int32_t DcMotor::getTicks() const {
 void DcMotor::resetTicks(int32_t value) {
   _ticks = value;
   _lastTicks = value;
+  _speedAccumTicks = 0;
+  _speedAccumUs = 0;
 }
 
 // ---------------- Encoder ISR (simple, encA only) ----------------

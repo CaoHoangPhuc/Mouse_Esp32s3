@@ -79,6 +79,8 @@ private:
   uint32_t _lastMicros = 0;
   int32_t  _lastTicks = 0;
   float    _tps = 0.0f; // filtered ticks/sec
+  int32_t  _speedAccumTicks = 0;
+  uint32_t _speedAccumUs = 0;
 
   // control
   bool  _speedCtrlEnabled = false;
