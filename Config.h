@@ -216,7 +216,7 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 static constexpr float TURN_LEFT_90_MM = 100.0f;
 static constexpr float TURN_RIGHT_90_MM = 102.0f;
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr float TURN_180_MM = 230.0f;
+static constexpr float TURN_180_MM = 235.0f;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
@@ -349,9 +349,9 @@ namespace Debug {
   static constexpr bool DEBUG_MOTION_FLOW = true;
   static constexpr bool DEBUG_WALL_APPLY = true;
   // High-rate center PID trace from MultiVL53L0X::computeError().
-  static constexpr bool CENTER_PID_TRACE = false;
+  static constexpr bool CENTER_PID_TRACE = true;
   // Print every N center-PID updates (1 = every update).
-  static constexpr uint8_t CENTER_PID_TRACE_EVERY_N = 1;
+  static constexpr uint8_t CENTER_PID_TRACE_EVERY_N = 10;
   // High-rate motor PID trace from DcMotor::update().
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
   static constexpr bool MOTOR_PID_TRACE = false;

@@ -11,6 +11,7 @@
 
 class MultiVL53L0X {
 public:
+    using LogFn = void (*)(const String&);
     static const uint8_t MAX_SENSORS = 8;
 
     enum SensorVersion {
@@ -71,6 +72,7 @@ public:
     float getError(float headingError = 0.0f) {return error; };
 
     void setMutex(SemaphoreHandle_t m) {_i2cMutex = m;}
+    void setLog(LogFn fn) { _logFn = fn; }
 
     bool readTOF_fast(uint8_t addr, uint16_t &dist);
     
@@ -128,6 +130,7 @@ private:
     StraightTrackMode _straightTrackMode = TRACK_NONE;
     uint32_t _centerPrevMs = 0;
     bool _centerPidPrimed = false;
+    LogFn _logFn = nullptr;
 
     float _scale[MAX_SENSORS] = {1, 97.0/88.0, 1, 1, 1};
     int _offset[MAX_SENSORS] = {0, -16, 16, 0, 0};

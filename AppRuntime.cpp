@@ -1632,6 +1632,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
                         AppConfig::Motion::CENTER_PID_KD,
                         AppConfig::Motion::CENTER_PID_I_LIMIT,
                         AppConfig::Motion::CENTER_PID_OUT_LIMIT);
+  tofArray.setLog(logToDbg);
   tofArray.setCenterTargets(AppConfig::Motion::CENTER_TARGET_LEFT_MM,
                             AppConfig::Motion::CENTER_TARGET_RIGHT_MM);
   tofOk = tofArray.begin();

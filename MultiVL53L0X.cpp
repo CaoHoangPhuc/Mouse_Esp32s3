@@ -482,7 +482,7 @@ float MultiVL53L0X::computeError(float headingError) {
     _centerPrevMs = now;
     error = out;
 
-    if (AppConfig::Debug::CENTER_PID_TRACE && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+    if (AppConfig::Debug::CENTER_PID_TRACE && _logFn != nullptr) {
         const uint8_t everyN = (AppConfig::Debug::CENTER_PID_TRACE_EVERY_N == 0)
                              ? 1
                              : AppConfig::Debug::CENTER_PID_TRACE_EVERY_N;
@@ -504,7 +504,7 @@ float MultiVL53L0X::computeError(float headingError) {
                      (unsigned)right, (unsigned)rightState,
                      rawErr, targetRawErr, headingError,
                      pTerm, iTerm, dTerm, out);
-            Serial.println(buf);
+            _logFn(String(buf));
         }
     }
 
