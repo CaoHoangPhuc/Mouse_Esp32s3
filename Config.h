@@ -195,12 +195,6 @@ static constexpr float PID_OUT_LIMIT = 1.00f;
 static constexpr float PID_I_LIMIT = 1.0f;
 static constexpr float PID_D_FILTER_HZ = 25.0f;
 static constexpr float PID_SLEW_RATE = 1.0f;
-// Active braking assist when speed-control target is exactly zero.
-// If wheel is still moving faster than ZERO_TPS_BRAKE_MIN_TPS, force at least
-// ZERO_TPS_BRAKE_MIN_DUTY in the opposite direction to settle to zero quicker.
-static constexpr bool ZERO_TPS_ACTIVE_BRAKE = true;
-static constexpr float ZERO_TPS_BRAKE_MIN_TPS = 20.0f;
-static constexpr int32_t ZERO_TPS_BRAKE_MIN_DUTY = 30;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)

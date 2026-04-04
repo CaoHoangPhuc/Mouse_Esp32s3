@@ -156,10 +156,7 @@ void DcMotor::brakeStop() {
 }
 
 void DcMotor::hardStop() {
-  _targetTPS = 0.0f;
-  _speedCtrlEnabled = false;
-  resetPID();
-  brakeStop();
+  setSpeedTPS(0.0f);
 }
 
 void DcMotor::setSpeedPID(float kp, float ki, float kd,
@@ -264,15 +261,6 @@ void DcMotor::update() {
   _lastOut = out;
 
   int32_t duty = (int32_t)(out * (float)_pwmMax + (out >= 0 ? 0.5f : -0.5f));
-  if (_targetTPS == 0.0f && AppConfig::Motors::ZERO_TPS_ACTIVE_BRAKE) {
-    if (fabsf(_tps) > AppConfig::Motors::ZERO_TPS_BRAKE_MIN_TPS) {
-      const int32_t minBrakeDuty = (AppConfig::Motors::ZERO_TPS_BRAKE_MIN_DUTY > 0)
-                                   ? AppConfig::Motors::ZERO_TPS_BRAKE_MIN_DUTY
-                                   : 0;
-      if (_tps > 0.0f && duty > -minBrakeDuty) duty = -minBrakeDuty;
-      if (_tps < 0.0f && duty < minBrakeDuty) duty = minBrakeDuty;
-    }
-  }
   if (AppConfig::Debug::MOTOR_PID_TRACE && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
     const char* side = "?";
     uint32_t* ctr = nullptr;
