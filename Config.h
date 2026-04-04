@@ -65,7 +65,7 @@ namespace Wifi {
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
 static constexpr const char* SSID = "PhucWifi";
 static constexpr const char* PASS = "000000001";
-static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
+static constexpr const char* HOSTNAME = "PhucC_Esp32s3";
 // Set false to disable the HTTP web log on port 80.
 // OTA and the TCP debug console can still remain enabled.
 static constexpr bool ENABLE_WEB_LOG = true;
@@ -148,7 +148,7 @@ static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x
 
 // Low-pass smoothing for per-sensor distance updates.
 // update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
-static constexpr float DIST_LPF_PREV_WEIGHT = 0.8f;
+static constexpr float DIST_LPF_PREV_WEIGHT = 0.5f;
 static constexpr float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 
 }
