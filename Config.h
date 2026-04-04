@@ -248,6 +248,11 @@ extern const float CENTER_PID_KI;
 extern const float CENTER_PID_KD;
 extern const float CENTER_PID_I_LIMIT;
 extern const float CENTER_PID_OUT_LIMIT;
+// Clamp one-wall tracking target error to reduce large steering spikes
+// when the opposite side is open/far.
+extern const float CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM;
+// Clamp derivative magnitude to avoid large D kicks on abrupt sensor transitions.
+extern const float CENTER_PID_DERIV_LIMIT;
 // Clamp side-wall distance used by center PID math only.
 // Sensor data can remain valid farther than this, but PID error uses this max.
 extern const uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM;

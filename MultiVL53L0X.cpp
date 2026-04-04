@@ -458,6 +458,14 @@ float MultiVL53L0X::computeError(float headingError) {
         }
     }
 
+    // In one-wall tracking, clamp target error to avoid aggressive steering
+    // when the opposite side is open/far.
+    if (!dualWallValid && (leftWallTrackable || rightWallTrackable)) {
+        const float lim = AppConfig::Motion::CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM;
+        if (targetRawErr > lim) targetRawErr = lim;
+        if (targetRawErr < -lim) targetRawErr = -lim;
+    }
+
     const float rawTauSec = AppConfig::Motion::CENTER_RAW_TAU_SEC;
     const float rawAlpha = dt / (rawTauSec + dt);
     _centerRawFiltered += (targetRawErr - _centerRawFiltered) * rawAlpha;
@@ -470,6 +478,9 @@ float MultiVL53L0X::computeError(float headingError) {
     float derivative = 0.0f;
     if (dt > 0.0f) {
         derivative = (rawErr - _centerPrevError) / dt;
+        const float dLim = AppConfig::Motion::CENTER_PID_DERIV_LIMIT;
+        if (derivative > dLim) derivative = dLim;
+        if (derivative < -dLim) derivative = -dLim;
     }
 
     const float pTerm = _centerKp * rawErr;
