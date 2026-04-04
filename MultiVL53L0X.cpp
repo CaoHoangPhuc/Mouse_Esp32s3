@@ -370,7 +370,9 @@ float MultiVL53L0X::computeError(float headingError) {
 
     const bool leftValid  = isGood(leftState);
     const bool rightValid = isGood(rightState);
-    const bool dualWallValid = leftValid && rightValid;
+    const bool leftWallTrackable = leftValid && (left < _wallThreshold);
+    const bool rightWallTrackable = rightValid && (right < _wallThreshold);
+    const bool dualWallValid = leftWallTrackable && rightWallTrackable;
     const bool forceLeft = _straightTrackMode == TRACK_LEFT;
     const bool forceRight = _straightTrackMode == TRACK_RIGHT;
     const bool forceDual = _straightTrackMode == TRACK_DUAL;
@@ -391,9 +393,9 @@ float MultiVL53L0X::computeError(float headingError) {
     }
 
     float singleErr = headingError;
-    if (leftValid && !rightValid) {
+    if (leftWallTrackable && !rightWallTrackable) {
         singleErr = _centerTargetLeft - (float)left;
-    } else if (rightValid && !leftValid) {
+    } else if (rightWallTrackable && !leftWallTrackable) {
         singleErr = (float)right - _centerTargetRight;
     }
 
@@ -434,23 +436,23 @@ float MultiVL53L0X::computeError(float headingError) {
     if (forceDual) {
         if (dualWallValid) {
             targetRawErr = dualErr;
-        } else if (leftValid) {
+        } else if (leftWallTrackable) {
             // Corridor transition: if dual tracking loses the right wall, keep following left.
             targetRawErr = _centerTargetLeft - (float)left;
-        } else if (rightValid) {
+        } else if (rightWallTrackable) {
             // Corridor transition: if dual tracking loses the left wall, keep following right.
             targetRawErr = (float)right - _centerTargetRight;
         } else {
             targetRawErr = headingError;
         }
     } else if (forceLeft) {
-        targetRawErr = leftValid ? (_centerTargetLeft - (float)left) : headingError;
+        targetRawErr = leftWallTrackable ? (_centerTargetLeft - (float)left) : headingError;
     } else if (forceRight) {
-        targetRawErr = rightValid ? ((float)right - _centerTargetRight) : headingError;
+        targetRawErr = rightWallTrackable ? ((float)right - _centerTargetRight) : headingError;
     } else if (!forceNone) {
         if (dualWallValid) {
             targetRawErr = dualErr;
-        } else if (leftValid || rightValid) {
+        } else if (leftWallTrackable || rightWallTrackable) {
             targetRawErr = (_dualWallBlend * _lastDualWallError) +
                            ((1.0f - _dualWallBlend) * singleErr);
         }
