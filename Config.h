@@ -264,6 +264,8 @@ extern const float CENTER_RAW_TAU_SEC;
 // Affects: wall approach safety and cell alignment.
 extern const float FRONT_STOP_MM;
 extern const float CORRIDOR_FRONT_STOP_MM;
+extern const float FRONT_APPROACH_START_FACTOR;
+extern const float FRONT_APPROACH_MIN_SPEED_TPS;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
@@ -391,6 +393,8 @@ inline MotionController::Config makeMotionConfig() {
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
+  cfg.frontApproachStartFactor = Motion::FRONT_APPROACH_START_FACTOR;
+  cfg.frontApproachMinSpeedTps = Motion::FRONT_APPROACH_MIN_SPEED_TPS;
   cfg.primitiveTimeoutMs = Motion::PRIMITIVE_TIMEOUT_MS;
   cfg.corridorTimeoutPerCellMs = Motion::CORRIDOR_TIMEOUT_PER_CELL_MS;
   cfg.stallTimeoutMs = Motion::STALL_TIMEOUT_MS;

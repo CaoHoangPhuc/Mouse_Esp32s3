@@ -34,6 +34,8 @@ public:
     float corridorCenteringGain = 1.6f;
     float frontStopMm = 55.0f;
     float corridorFrontStopMm = 55.0f;
+    float frontApproachStartFactor = 1.5f;
+    float frontApproachMinSpeedTps = 180.0f;
     uint32_t primitiveTimeoutMs = 3000;
     uint32_t corridorTimeoutPerCellMs = 1000;
     uint32_t stallTimeoutMs = 700;

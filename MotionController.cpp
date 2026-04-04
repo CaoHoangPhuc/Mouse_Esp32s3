@@ -261,6 +261,19 @@ void MotionController::update(RobotState& state) {
     return;
   }
 
+  auto approachSpeedTps = [&](float baseSpeedTps, float stopMm, const WallObservation& walls) {
+    if (!walls.frontValid || walls.frontMm == 0) return baseSpeedTps;
+    const float startFactor = max(1.0f, cfg_.frontApproachStartFactor);
+    const float startMm = stopMm * startFactor;
+    const float minSpeed = max(1.0f, min(baseSpeedTps, cfg_.frontApproachMinSpeedTps));
+    const float frontMm = (float)walls.frontMm;
+    if (frontMm >= startMm) return baseSpeedTps;
+    if (frontMm <= stopMm) return minSpeed;
+    const float span = max(1.0f, startMm - stopMm);
+    const float t = (frontMm - stopMm) / span;  // 1 at start, 0 at stop
+    return minSpeed + t * (baseSpeedTps - minSpeed);
+  };
+
   if (primitive_ == MOTION_MOVE_ONE_CELL) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;
@@ -279,8 +292,9 @@ void MotionController::update(RobotState& state) {
       correction = tof_->computeError(0.0f) * cfg_.centeringGain;
     }
 
-    left_->setSpeedTPS(cfg_.moveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.moveSpeedTps - correction);
+    const float cmdSpeed = approachSpeedTps(cfg_.moveSpeedTps, cfg_.frontStopMm, walls);
+    left_->setSpeedTPS(cmdSpeed + correction);
+    right_->setSpeedTPS(cmdSpeed - correction);
 
     if (progressMm >= cfg_.cellDistanceMm || shouldFrontStop) {
       markDone_(MOTION_COMPLETED);
@@ -314,8 +328,12 @@ void MotionController::update(RobotState& state) {
       correction = tof_->computeError(0.0f) * cfg_.corridorCenteringGain;
     }
 
-    left_->setSpeedTPS(cfg_.corridorMoveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.corridorMoveSpeedTps - correction);
+    float cmdSpeed = cfg_.corridorMoveSpeedTps;
+    if (inFinalCell) {
+      cmdSpeed = approachSpeedTps(cfg_.corridorMoveSpeedTps, frontStopThresholdMm, walls);
+    }
+    left_->setSpeedTPS(cmdSpeed + correction);
+    right_->setSpeedTPS(cmdSpeed - correction);
 
     const bool reachedDistanceTarget = progressMm >= targetDistanceMm;
     const bool shouldComplete = moveEndsAtKnownWall_
