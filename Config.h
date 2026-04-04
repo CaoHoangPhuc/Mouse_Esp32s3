@@ -210,13 +210,13 @@ namespace Motion {
 // One of the most important hardware tuning values.
 static constexpr float CELL_DISTANCE_MM = 180.0f;
 
-// Encoder differential ticks needed for a 90-degree turn.
-// Affects: turnLeft90() / turnRight90() completion.
-// One of the most important hardware tuning values.
-static constexpr int32_t TURN_TICKS_90 = 190;
-// Encoder differential ticks needed for a 180-degree turn.
+// Differential wheel travel (mm) needed for turn completion.
+// Affects: turnLeft90() / turnRight90() / turn180() completion.
+// Tune left/right independently to compensate turn asymmetry.
+static constexpr float TURN_LEFT_90_MM = 102.6f;
+static constexpr float TURN_RIGHT_90_MM = 102.6f;
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr int32_t TURN_TICKS_180 = 420;
+static constexpr float TURN_180_MM = 226.8f;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
@@ -283,7 +283,7 @@ static constexpr MotionController::StopMode COMPLETION_STOP_MODE =
 // Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
 // Tune left/right independently to reduce long straight drift.
-static constexpr float LEFT_MM_PER_TICK = 0.54f;
+static constexpr float LEFT_MM_PER_TICK = 0.535f;
 static constexpr float RIGHT_MM_PER_TICK = 0.54f;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;

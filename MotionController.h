@@ -17,8 +17,9 @@ public:
 
   struct Config {
     float cellDistanceMm = 180.0f;
-    int32_t turnTicks90 = 300;
-    int32_t turnTicks180 = 600;
+    float turnLeft90Mm = 113.0f;
+    float turnRight90Mm = 113.0f;
+    float turn180Mm = 232.0f;
     float moveSpeedTps = 320.0f;
     float corridorMoveSpeedTps = 320.0f;
     float shortForwardDistanceMm = 90.0f;
@@ -77,7 +78,7 @@ private:
   MultiVL53L0X::StraightTrackMode chooseStraightTrackMode_(const WallObservation& walls) const;
   float averageProgressMm_() const;
   float absoluteAverageProgressMm_() const;
-  int32_t differentialTicks_() const;
+  float differentialProgressMm_() const;
   void applyStopMode_(StopMode mode);
   void resetSnapState_();
   bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);

@@ -220,10 +220,12 @@ float MotionController::absoluteAverageProgressMm_() const {
   return fabsf(averageProgressMm_());
 }
 
-int32_t MotionController::differentialTicks_() const {
+float MotionController::differentialProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
-  return rightDelta - leftDelta;
+  const float leftMm = leftDelta * cfg_.leftMmPerTick;
+  const float rightMm = rightDelta * cfg_.rightMmPerTick;
+  return rightMm - leftMm;
 }
 
 void MotionController::markDone_(MotionStatus status, const String& reason) {
@@ -405,12 +407,17 @@ void MotionController::update(RobotState& state) {
   } else if (primitive_ == MOTION_TURN_LEFT_90 ||
              primitive_ == MOTION_TURN_RIGHT_90 ||
              primitive_ == MOTION_TURN_180) {
-    const int32_t turnTarget = (primitive_ == MOTION_TURN_180)
-      ? ((cfg_.turnTicks180 > 0) ? cfg_.turnTicks180 : max<int32_t>(1, cfg_.turnTicks90 * 2))
-      : ((cfg_.turnTicks90 > 0) ? cfg_.turnTicks90 : 1);
-    const int32_t diffTicks = abs(differentialTicks_());
+    float turnTargetMm = 1.0f;
+    if (primitive_ == MOTION_TURN_LEFT_90) {
+      turnTargetMm = (cfg_.turnLeft90Mm > 0.0f) ? cfg_.turnLeft90Mm : 1.0f;
+    } else if (primitive_ == MOTION_TURN_RIGHT_90) {
+      turnTargetMm = (cfg_.turnRight90Mm > 0.0f) ? cfg_.turnRight90Mm : 1.0f;
+    } else {
+      turnTargetMm = (cfg_.turn180Mm > 0.0f) ? cfg_.turn180Mm : max(1.0f, 2.0f * cfg_.turnLeft90Mm);
+    }
+    const float diffMm = fabsf(differentialProgressMm_());
     const float turnDegrees = (primitive_ == MOTION_TURN_180) ? 180.0f : 90.0f;
-    const float turnRatio = (float)diffTicks / (float)turnTarget;
+    const float turnRatio = diffMm / turnTargetMm;
     state.pose.turnProgressDeg = min(turnDegrees, turnRatio * turnDegrees);
 
     const float slowdownStartRatio = constrain(cfg_.turnSlowdownStartRatio, 0.0f, 1.0f);
@@ -427,7 +434,7 @@ void MotionController::update(RobotState& state) {
       right_->setSpeedTPS(-turnCmdTps);
     }
 
-    if (diffTicks >= turnTarget) {
+    if (diffMm >= turnTargetMm) {
       markDone_(MOTION_COMPLETED);
       return;
     }
