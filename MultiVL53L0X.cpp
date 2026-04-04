@@ -1,6 +1,8 @@
 #include "Config.h"
 #include "MultiVL53L0X.h"
 
+static uint32_t sCenterPidTraceCounter = 0;
+
 uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
     if (index >= _numSensors) return 255;
     if (!_initialized[index]) return 3;
@@ -468,9 +470,10 @@ float MultiVL53L0X::computeError(float headingError) {
         derivative = (rawErr - _centerPrevError) / dt;
     }
 
-    float out = (_centerKp * rawErr) +
-                (_centerKi * _centerIntegral) +
-                (_centerKd * derivative);
+    const float pTerm = _centerKp * rawErr;
+    const float iTerm = _centerKi * _centerIntegral;
+    const float dTerm = _centerKd * derivative;
+    float out = pTerm + iTerm + dTerm;
 
     if (out > _centerOutLimit) out = _centerOutLimit;
     if (out < -_centerOutLimit) out = -_centerOutLimit;
@@ -478,6 +481,32 @@ float MultiVL53L0X::computeError(float headingError) {
     _centerPrevError = rawErr;
     _centerPrevMs = now;
     error = out;
+
+    if (AppConfig::Debug::CENTER_PID_TRACE && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+        const uint8_t everyN = (AppConfig::Debug::CENTER_PID_TRACE_EVERY_N == 0)
+                             ? 1
+                             : AppConfig::Debug::CENTER_PID_TRACE_EVERY_N;
+        sCenterPidTraceCounter++;
+        if ((sCenterPidTraceCounter % everyN) == 0) {
+            const char* mode = "none";
+            switch (_straightTrackMode) {
+                case TRACK_LEFT: mode = "left"; break;
+                case TRACK_RIGHT: mode = "right"; break;
+                case TRACK_DUAL: mode = "dual"; break;
+                case TRACK_NONE:
+                default: mode = "none"; break;
+            }
+            char buf[220];
+            snprintf(buf, sizeof(buf),
+                     "CPID mode=%s L=%u(%u) R=%u(%u) raw=%.3f tgt=%.3f h=%.3f P=%.3f I=%.3f D=%.3f out=%.3f",
+                     mode,
+                     (unsigned)left, (unsigned)leftState,
+                     (unsigned)right, (unsigned)rightState,
+                     rawErr, targetRawErr, headingError,
+                     pTerm, iTerm, dTerm, out);
+            Serial.println(buf);
+        }
+    }
 
     return out;
 }

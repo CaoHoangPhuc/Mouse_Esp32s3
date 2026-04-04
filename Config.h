@@ -213,10 +213,10 @@ static constexpr float CELL_DISTANCE_MM = 180.0f;
 // Differential wheel travel (mm) needed for turn completion.
 // Affects: turnLeft90() / turnRight90() / turn180() completion.
 // Tune left/right independently to compensate turn asymmetry.
-static constexpr float TURN_LEFT_90_MM = 102.6f;
-static constexpr float TURN_RIGHT_90_MM = 102.6f;
+static constexpr float TURN_LEFT_90_MM = 100.0f;
+static constexpr float TURN_RIGHT_90_MM = 102.0f;
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr float TURN_180_MM = 226.8f;
+static constexpr float TURN_180_MM = 230.0f;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
@@ -235,8 +235,8 @@ static constexpr float TURN_SPEED_TPS = 350.0f;
 // Turn slowdown profile to reduce overshoot near 90/180 target ticks.
 // Once progress reaches TURN_SLOWDOWN_START_RATIO of target ticks, reduce to
 // TURN_MIN_SPEED_TPS for final approach.
-static constexpr float TURN_MIN_SPEED_TPS = 140.0f;
-static constexpr float TURN_SLOWDOWN_START_RATIO = 0.75f;
+static constexpr float TURN_MIN_SPEED_TPS = 200.0f;
+static constexpr float TURN_SLOWDOWN_START_RATIO = 0.8f;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
@@ -283,7 +283,7 @@ static constexpr MotionController::StopMode COMPLETION_STOP_MODE =
 // Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
 // Tune left/right independently to reduce long straight drift.
-static constexpr float LEFT_MM_PER_TICK = 0.535f;
+static constexpr float LEFT_MM_PER_TICK = 0.54f;
 static constexpr float RIGHT_MM_PER_TICK = 0.54f;
 // Print known maze as ASCII after exploration updates the map.
 static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
@@ -348,6 +348,10 @@ namespace Debug {
   // Affects: extra serial/TCP debug output only; no behavior changes.
   static constexpr bool DEBUG_MOTION_FLOW = true;
   static constexpr bool DEBUG_WALL_APPLY = true;
+  // High-rate center PID trace from MultiVL53L0X::computeError().
+  static constexpr bool CENTER_PID_TRACE = false;
+  // Print every N center-PID updates (1 = every update).
+  static constexpr uint8_t CENTER_PID_TRACE_EVERY_N = 1;
   // High-rate motor PID trace from DcMotor::update().
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
   static constexpr bool MOTOR_PID_TRACE = false;
