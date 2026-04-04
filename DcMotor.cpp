@@ -8,6 +8,9 @@
 #endif
 
 DcMotor* DcMotor::_instances[4] = {nullptr, nullptr, nullptr, nullptr};
+static portMUX_TYPE sMotorPidTraceMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t sMotorPidTraceCounterL = 0;
+static uint32_t sMotorPidTraceCounterR = 0;
 
 DcMotor::DcMotor() {}
 
@@ -261,6 +264,43 @@ void DcMotor::update() {
   _lastOut = out;
 
   int32_t duty = (int32_t)(out * (float)_pwmMax + (out >= 0 ? 0.5f : -0.5f));
+  if (_targetTPS == 0.0f && AppConfig::Motors::ZERO_TPS_ACTIVE_BRAKE) {
+    if (fabsf(_tps) > AppConfig::Motors::ZERO_TPS_BRAKE_MIN_TPS) {
+      const int32_t minBrakeDuty = (AppConfig::Motors::ZERO_TPS_BRAKE_MIN_DUTY > 0)
+                                   ? AppConfig::Motors::ZERO_TPS_BRAKE_MIN_DUTY
+                                   : 0;
+      if (_tps > 0.0f && duty > -minBrakeDuty) duty = -minBrakeDuty;
+      if (_tps < 0.0f && duty < minBrakeDuty) duty = minBrakeDuty;
+    }
+  }
+  if (AppConfig::Debug::MOTOR_PID_TRACE && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+    const char* side = "?";
+    uint32_t* ctr = nullptr;
+    if (_pwmCh == AppConfig::Motors::LEFT_PWM_CHANNEL) {
+      side = "L";
+      ctr = &sMotorPidTraceCounterL;
+    } else if (_pwmCh == AppConfig::Motors::RIGHT_PWM_CHANNEL) {
+      side = "R";
+      ctr = &sMotorPidTraceCounterR;
+    }
+    const uint8_t everyN = (AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N == 0)
+                           ? 1
+                           : AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N;
+    bool shouldPrint = true;
+    if (ctr != nullptr) {
+      (*ctr)++;
+      shouldPrint = ((*ctr % everyN) == 0);
+    }
+    if (shouldPrint) {
+      char buf[180];
+      snprintf(buf, sizeof(buf),
+               "PID %s tgt=%.1f tps=%.1f err=%.2f P=%.4f I=%.4f D=%.4f out=%.4f duty=%ld",
+               side, _targetTPS, _tps, err, pTerm, _iTerm, dTerm, out, (long)duty);
+      portENTER_CRITICAL(&sMotorPidTraceMux);
+      Serial.println(buf);
+      portEXIT_CRITICAL(&sMotorPidTraceMux);
+    }
+  }
   applyDuty(duty);
 }
 

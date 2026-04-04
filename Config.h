@@ -188,17 +188,23 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0040f;
+static constexpr float PID_KP = 0.0038f;
 static constexpr float PID_KI = 0.0008f;
-static constexpr float PID_KD = 0.0002f;
+static constexpr float PID_KD = 0.0005f;
 static constexpr float PID_OUT_LIMIT = 1.00f;
-static constexpr float PID_I_LIMIT = 0.50f;
-static constexpr float PID_D_FILTER_HZ = 12.0f;
-static constexpr float PID_SLEW_RATE = 6.0f;
+static constexpr float PID_I_LIMIT = 1.0f;
+static constexpr float PID_D_FILTER_HZ = 25.0f;
+static constexpr float PID_SLEW_RATE = 1.0f;
+// Active braking assist when speed-control target is exactly zero.
+// If wheel is still moving faster than ZERO_TPS_BRAKE_MIN_TPS, force at least
+// ZERO_TPS_BRAKE_MIN_DUTY in the opposite direction to settle to zero quicker.
+static constexpr bool ZERO_TPS_ACTIVE_BRAKE = true;
+static constexpr float ZERO_TPS_BRAKE_MIN_TPS = 20.0f;
+static constexpr int32_t ZERO_TPS_BRAKE_MIN_DUTY = 30;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)
-static constexpr float TPS_LPF_ALPHA = 0.12f;
+static constexpr float TPS_LPF_ALPHA = 0.2f;
 // Window for period-based TPS estimate (ticks accumulated across this time).
 // Larger = smoother/noisier tradeoff.
 static constexpr uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
@@ -342,7 +348,7 @@ namespace Debug {
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
   static constexpr bool MOTOR_PID_TRACE = true;
   // Print every N motor updates (1 = every update).
-  static constexpr uint8_t MOTOR_PID_TRACE_EVERY_N = 10;
+  static constexpr uint8_t MOTOR_PID_TRACE_EVERY_N = 100;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
   static constexpr bool ENABLE_LOOP_WATCHDOG = true;
