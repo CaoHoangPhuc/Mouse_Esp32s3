@@ -188,11 +188,11 @@ static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0032f;
+static constexpr float PID_KP = 0.0040f;
 static constexpr float PID_KI = 0.0008f;
 static constexpr float PID_KD = 0.0002f;
-static constexpr float PID_OUT_LIMIT = 0.90f;
-static constexpr float PID_I_LIMIT = 0.30f;
+static constexpr float PID_OUT_LIMIT = 1.00f;
+static constexpr float PID_I_LIMIT = 0.50f;
 static constexpr float PID_D_FILTER_HZ = 12.0f;
 static constexpr float PID_SLEW_RATE = 6.0f;
 
