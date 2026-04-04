@@ -269,6 +269,16 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
         bool frValid = isObservable(3);
         bool flFar = flState == 2;
         bool frFar = frState == 2;
+        // V2 compatibility mode: S3 (front-right) is only trusted when
+        // S0 (front-left) is observable. If S0 is far, force S3 to far too.
+        if (!flValid) {
+            frValid = false;
+            frFar = false;
+        } else if (flFar) {
+            frValid = true;
+            frFar = true;
+            fr = AppConfig::Tof::DIST_FAR_MM;
+        }
         s.leftValid  = isObservable(1);
         s.rightValid = isObservable(2);
         s.frontValid = flValid || frValid || (flFar && frFar);
