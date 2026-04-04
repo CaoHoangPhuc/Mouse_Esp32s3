@@ -365,8 +365,9 @@ namespace Debug {
 inline MotionController::Config makeMotionConfig() {
   MotionController::Config cfg;
   cfg.cellDistanceMm = Motion::CELL_DISTANCE_MM;
-  cfg.turnTicks90 = Motion::TURN_TICKS_90;
-  cfg.turnTicks180 = Motion::TURN_TICKS_180;
+  cfg.turnLeft90Mm = Motion::TURN_LEFT_90_MM;
+  cfg.turnRight90Mm = Motion::TURN_RIGHT_90_MM;
+  cfg.turn180Mm = Motion::TURN_180_MM;
   cfg.moveSpeedTps = Motion::MOVE_SPEED_TPS;
   cfg.corridorMoveSpeedTps = Motion::CORRIDOR_MOVE_SPEED_TPS;
   cfg.shortForwardDistanceMm = Motion::SHORT_FORWARD_DISTANCE_MM;
