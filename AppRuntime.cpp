@@ -1779,10 +1779,10 @@ void plannerTaskBody(void* arg) {
     if ((robotState.mode == ROBOT_MODE_EXPLORE || robotState.mode == ROBOT_MODE_SPEED_RUN) &&
         explorer.isRunning() &&
         !motionController.isBusy()) {
+      updateRobotState();
       if (!robotState.readyForMotion) {
         enterFaultMode("robot not ready for motion");
       } else {
-        updateRobotState();
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
         FloodFillExplorer::Action act = FloodFillExplorer::ACT_NONE;
         if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
