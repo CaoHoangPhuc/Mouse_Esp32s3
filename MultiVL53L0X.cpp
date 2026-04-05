@@ -404,12 +404,6 @@ float MultiVL53L0X::computeError(float headingError) {
     const uint32_t fallbackUs = max(1000UL, (uint32_t)AppConfig::Tof::UPDATE_INTERVAL_MS * 1000UL);
     uint32_t elapsedUs = (_centerPrevUs == 0) ? fallbackUs : (nowUs - _centerPrevUs);
     if (elapsedUs == 0) elapsedUs = 1;
-    // If computeError() is called faster than sensor update cadence, reuse
-    // last output to avoid repeatedly re-applying P on near-identical data.
-    const uint32_t minUpdateUs = max(1000UL, (uint32_t)AppConfig::Tof::UPDATE_INTERVAL_MS * 1000UL);
-    if (_centerPidPrimed && elapsedUs < minUpdateUs) {
-        return error;
-    }
     float dt = max(0.0005f, elapsedUs / 1e6f);
 
     if (!_centerPidPrimed) {
