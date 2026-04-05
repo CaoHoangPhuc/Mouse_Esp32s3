@@ -385,8 +385,8 @@ float MultiVL53L0X::computeError(float headingError) {
     if (dualWallValid) {
         if (shouldCaptureTargets &&
             fabsf((float)left - (float)right) <= AppConfig::Motion::CENTER_TARGET_CAPTURE_WINDOW_MM) {
-            _centerTargetLeft = 0.5f * _centerTargetLeft + 0.5f * (float)left;
-            _centerTargetRight = 0.5f * _centerTargetRight + 0.5f * (float)right;
+            _centerTargetLeft = 0.8f * _centerTargetLeft + 0.2f * (float)left;
+            _centerTargetRight = 0.8f * _centerTargetRight + 0.2f * (float)right;
         }
         dualErr = 0.5f * ((_centerTargetLeft - (float)left) +
                           ((float)right - _centerTargetRight));

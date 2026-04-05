@@ -94,7 +94,7 @@ const float SENSOR_SCALE[8] = {
 const int16_t SENSOR_OFFSET_MM[8] = {
   0, -16, 16, 0, 0, 0, 0, 0
 };
-const float DIST_LPF_PREV_WEIGHT = 0.5f;
+const float DIST_LPF_PREV_WEIGHT = 0.75f;
 const float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 }
 
@@ -130,14 +130,14 @@ const float PID_KD = 0.0005f;
 const float PID_OUT_LIMIT = 1.00f;
 const float PID_I_LIMIT = 1.0f;
 const float PID_D_FILTER_HZ = 25.0f;
-const float PID_SLEW_RATE = 2.0f;
+const float PID_SLEW_RATE = 1.5f;
 const float TPS_LPF_ALPHA = 0.2f;
 const uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
 }
 
 namespace Motion {
 const float CELL_DISTANCE_MM = 180.0f;
-const float TURN_LEFT_90_MM = 100.0f;
+const float TURN_LEFT_90_MM = 102.0f;
 const float TURN_RIGHT_90_MM = 105.0f;
 const float TURN_180_MM = 235.0f;
 const float MOVE_SPEED_TPS = 400.0f;
@@ -152,8 +152,8 @@ const float TURN_MIN_SPEED_TPS = 200.0f;
 const float TURN_SLOWDOWN_START_RATIO = 0.8f;
 const float CENTERING_GAIN = 1.0f;
 const float CORRIDOR_CENTERING_GAIN = 1.0f;
-const float CENTER_TARGET_LEFT_MM = 96.0f;
-const float CENTER_TARGET_RIGHT_MM = 96.0f;
+const float CENTER_TARGET_LEFT_MM = 99.0f;
+const float CENTER_TARGET_RIGHT_MM = 99.0f;
 const float CENTER_TARGET_CAPTURE_WINDOW_MM = 4.0f;
 const float CENTER_PID_KP = 1.8f;
 const float CENTER_PID_KI = 0.01f;
@@ -176,8 +176,8 @@ const uint8_t CORRIDOR_MAX_CELLS = 4;
 const float STOP_TPS = 20.0f;
 const float MIN_PROGRESS_MM = 12.0f;
 const MotionController::StopMode COMPLETION_STOP_MODE = MotionController::StopMode::BRAKE;
-const float LEFT_MM_PER_TICK = 0.52f;
-const float RIGHT_MM_PER_TICK = 0.52f;
+const float LEFT_MM_PER_TICK = 0.53f;
+const float RIGHT_MM_PER_TICK = 0.53f;
 const bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 const uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
 }
