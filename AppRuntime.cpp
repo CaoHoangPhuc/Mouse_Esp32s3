@@ -214,6 +214,12 @@ static void logToDbg(const String& s) {
   debugPrintln(s);
 }
 
+static void logMotorPidToTelnet(const String& s) {
+  if (debugClientConnected()) {
+    debugClient.println(s);
+  }
+}
+
 static bool debugClientConnected() {
   return debugClient && debugClient.connected();
 }
@@ -1641,6 +1647,8 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
                               AppConfig::Motors::PWM_FREQ,
                               AppConfig::Motors::PWM_RESOLUTION_BITS);
   if (motorsOk) {
+    leftMotor.setLog(logMotorPidToTelnet);
+    rightMotor.setLog(logMotorPidToTelnet);
     leftMotor.setSpeedPID(AppConfig::Motors::PID_KP, AppConfig::Motors::PID_KI,
                           AppConfig::Motors::PID_KD, AppConfig::Motors::PID_OUT_LIMIT,
                           AppConfig::Motors::PID_I_LIMIT, AppConfig::Motors::PID_D_FILTER_HZ,

@@ -261,7 +261,7 @@ void DcMotor::update() {
   _lastOut = out;
 
   int32_t duty = (int32_t)(out * (float)_pwmMax + (out >= 0 ? 0.5f : -0.5f));
-  if (AppConfig::Debug::MOTOR_PID_TRACE && AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+  if (AppConfig::Debug::MOTOR_PID_TRACE) {
     const char* side = "?";
     uint32_t* ctr = nullptr;
     if (_pwmCh == AppConfig::Motors::LEFT_PWM_CHANNEL) {
@@ -284,9 +284,13 @@ void DcMotor::update() {
       snprintf(buf, sizeof(buf),
                "PID %s tgt=%.1f tps=%.1f err=%.2f P=%.4f I=%.4f D=%.4f out=%.4f duty=%ld",
                side, _targetTPS, _tps, err, pTerm, _iTerm, dTerm, out, (long)duty);
-      portENTER_CRITICAL(&sMotorPidTraceMux);
-      Serial.println(buf);
-      portEXIT_CRITICAL(&sMotorPidTraceMux);
+      if (_logFn != nullptr) {
+        _logFn(String(buf));
+      } else if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+        portENTER_CRITICAL(&sMotorPidTraceMux);
+        Serial.println(buf);
+        portEXIT_CRITICAL(&sMotorPidTraceMux);
+      }
     }
   }
   applyDuty(duty);

@@ -4,6 +4,8 @@
 
 class DcMotor {
 public:
+  using LogFn = void (*)(const String&);
+
   struct Pins {
     uint8_t in1;
     uint8_t in2;
@@ -42,6 +44,7 @@ public:
                    float iLimit = 0.6f,
                    float dFilterHz = 30.0f,
                    float slewRatePerSec = 0.0f);
+  void setLog(LogFn fn) { _logFn = fn; }
 
   void resetPID();
 
@@ -98,6 +101,7 @@ private:
   float _dMeas = 0.0f;       // filtered derivative of measurement (tps/s)
   float _lastTPSForD = 0.0f;
   float _lastOut = 0.0f;
+  LogFn _logFn = nullptr;
 
   // ISR glue (encA only, max 4 motors)
   static void isrEncA0();
