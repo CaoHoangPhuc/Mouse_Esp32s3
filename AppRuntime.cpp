@@ -57,6 +57,16 @@ static TestLoopMode testLoopMode = TEST_LOOP_NONE;
 static bool motorBothFlipTestEnabled = false;
 static uint32_t motorFlipLastToggleMs = 0;
 static float motorFlipPower = 1.0f;
+enum CenterTrackTestMode : uint8_t {
+  CENTER_TEST_OFF = 0,
+  CENTER_TEST_LEFT,
+  CENTER_TEST_RIGHT,
+  CENTER_TEST_DUAL
+};
+static CenterTrackTestMode centerTrackTestMode = CENTER_TEST_OFF;
+static float centerTrackTestBaseTps = 220.0f;
+static float centerTrackTestLastCorrection = 0.0f;
+static uint32_t centerTrackTestLastPrintMs = 0;
 static bool bootButtonRawPressed = false;
 static bool bootButtonStablePressed = false;
 static uint32_t bootButtonLastEdgeMs = 0;
@@ -102,6 +112,7 @@ static void battery_debug_s();
 static void serviceDebugConsole();
 static void serviceDebugServerState();
 static void serviceMotorBothFlipTest();
+static void serviceCenterTrackTest();
 static void serviceBootButtonLauncher();
 static bool readBootButtonPressed();
 static void dispatchBootButtonAction(uint8_t pressCount);
@@ -119,6 +130,7 @@ static bool onWebTelnetReconnect();
 static String onWebHealthJson();
 static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
+static const char* centerTrackTestModeName(CenterTrackTestMode mode);
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void beginSpeedRun(uint8_t phase = 1);
 static uint8_t speedRunBasePhase(uint8_t phase);
@@ -629,6 +641,53 @@ static void serviceMotorBothFlipTest() {
   debugPrintln(String("[TEST] both motors power=") + (motorFlipPower > 0.0f ? "+100%" : "-100%"));
 }
 
+static const char* centerTrackTestModeName(CenterTrackTestMode mode) {
+  switch (mode) {
+    case CENTER_TEST_LEFT: return "left";
+    case CENTER_TEST_RIGHT: return "right";
+    case CENTER_TEST_DUAL: return "dual";
+    case CENTER_TEST_OFF:
+    default: return "off";
+  }
+}
+
+static void serviceCenterTrackTest() {
+  if (centerTrackTestMode == CENTER_TEST_OFF) return;
+  if (robotState.mode != ROBOT_MODE_MANUAL_TEST) return;
+  if (motionController.isBusy()) return;
+  if (motorBothFlipTestEnabled) return;
+
+  MultiVL53L0X::StraightTrackMode mode = MultiVL53L0X::TRACK_NONE;
+  switch (centerTrackTestMode) {
+    case CENTER_TEST_LEFT: mode = MultiVL53L0X::TRACK_LEFT; break;
+    case CENTER_TEST_RIGHT: mode = MultiVL53L0X::TRACK_RIGHT; break;
+    case CENTER_TEST_DUAL: mode = MultiVL53L0X::TRACK_DUAL; break;
+    case CENTER_TEST_OFF:
+    default: mode = MultiVL53L0X::TRACK_NONE; break;
+  }
+
+  tofArray.setStraightTrackMode(mode);
+  const float correction = tofArray.computeError(0.0f) * AppConfig::Motion::CENTERING_GAIN;
+  centerTrackTestLastCorrection = correction;
+
+  const float lCmd = centerTrackTestBaseTps + correction;
+  const float rCmd = centerTrackTestBaseTps - correction;
+  leftMotor.setSpeedTPS(lCmd);
+  rightMotor.setSpeedTPS(rCmd);
+
+  const uint32_t now = millis();
+  if ((uint32_t)(now - centerTrackTestLastPrintMs) >= 250) {
+    centerTrackTestLastPrintMs = now;
+    char buf[180];
+    snprintf(buf, sizeof(buf),
+             "[TEST CENTER] mode=%s base=%.1f corr=%.2f cmdL=%.1f cmdR=%.1f tpsL=%.1f tpsR=%.1f",
+             centerTrackTestModeName(centerTrackTestMode), centerTrackTestBaseTps,
+             centerTrackTestLastCorrection, lCmd, rCmd,
+             leftMotor.getTicksPerSecond(), rightMotor.getTicksPerSecond());
+    debugPrintln(String(buf));
+  }
+}
+
 static bool readBootButtonPressed() {
   if (!AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) return false;
   const int level = digitalRead(AppConfig::Inputs::BOOT_BUTTON_PIN);
@@ -755,6 +814,9 @@ static void resetCommonModeState() {
   speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
   speedRunPreAlignHasSideSnap = false;
   motorBothFlipTestEnabled = false;
+  centerTrackTestMode = CENTER_TEST_OFF;
+  centerTrackTestLastCorrection = 0.0f;
+  tofArray.setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
   explorer.setRunning(false);
 }
 
@@ -1738,6 +1800,7 @@ void userTaskBody(void* arg) {
     updateRobotState();
     motionController.update(robotState);
     serviceMotorBothFlipTest();
+    serviceCenterTrackTest();
     serviceBootButtonLauncher();
     serviceDebugServerState();
     serviceDebugConsole();
@@ -1937,6 +2000,7 @@ static void printStartupSummary() {
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
   debugPrintln("[CMD] test battery|sensors|sensorsraw|motorl [tps]|motorr [tps]|motor both [tps]|encoders");
+  debugPrintln("[CMD] test center left|right|dual [tps] | test center off");
   if (AppConfig::Inputs::ENABLE_BOOT_BUTTON_LAUNCH) {
     debugPrintln("[BOOT BTN] 1=explore 2=speedrun1 3=speedrun2 4=speedrun3 5=speedrun4 (5s timeout)");
   }
@@ -2294,6 +2358,71 @@ static void handleSerialCommand(const String& rawLine) {
   }
   if (line == "test encoders") {
     motor_debug_s();
+    return;
+  }
+  if (line == "test center off") {
+    centerTrackTestMode = CENTER_TEST_OFF;
+    centerTrackTestLastCorrection = 0.0f;
+    tofArray.setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
+    leftMotor.coastStop();
+    rightMotor.coastStop();
+    debugPrintln("[TEST CENTER] off");
+    return;
+  }
+  if (line.startsWith("test center ")) {
+    String args = line.substring(12);
+    args.trim();
+
+    float tps = centerTrackTestBaseTps;
+    if (args.startsWith("left")) {
+      centerTrackTestMode = CENTER_TEST_LEFT;
+      String rest = args.substring(4);
+      rest.trim();
+      if (rest.length() > 0) {
+        float parsed = rest.toFloat();
+        if (parsed == 0.0f) {
+          debugPrintln("[CMD] usage: test center left [tps]");
+          return;
+        }
+        tps = parsed;
+      }
+    } else if (args.startsWith("right")) {
+      centerTrackTestMode = CENTER_TEST_RIGHT;
+      String rest = args.substring(5);
+      rest.trim();
+      if (rest.length() > 0) {
+        float parsed = rest.toFloat();
+        if (parsed == 0.0f) {
+          debugPrintln("[CMD] usage: test center right [tps]");
+          return;
+        }
+        tps = parsed;
+      }
+    } else if (args.startsWith("dual")) {
+      centerTrackTestMode = CENTER_TEST_DUAL;
+      String rest = args.substring(4);
+      rest.trim();
+      if (rest.length() > 0) {
+        float parsed = rest.toFloat();
+        if (parsed == 0.0f) {
+          debugPrintln("[CMD] usage: test center dual [tps]");
+          return;
+        }
+        tps = parsed;
+      }
+    } else {
+      debugPrintln("[CMD] usage: test center left|right|dual [tps] | test center off");
+      return;
+    }
+
+    robotState.mode = ROBOT_MODE_MANUAL_TEST;
+    motorBothFlipTestEnabled = false;
+    centerTrackTestBaseTps = tps;
+    centerTrackTestLastCorrection = 0.0f;
+    centerTrackTestLastPrintMs = 0;
+    tofArray.resetCenterPid();
+    debugPrintln("[TEST CENTER] mode=" + String(centerTrackTestModeName(centerTrackTestMode)) +
+                 " base tps=" + String(centerTrackTestBaseTps, 1));
     return;
   }
 
