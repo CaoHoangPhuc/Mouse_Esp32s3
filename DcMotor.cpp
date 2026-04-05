@@ -180,10 +180,12 @@ void DcMotor::resetPID() {
 
 void DcMotor::update() {
   uint32_t now = micros();
-  const uint32_t loopUs = (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS > 0)
-                          ? (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS * 1000UL)
-                          : 5000UL;
-  const float dt = loopUs / 1e6f;
+  const uint32_t fallbackUs = (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS > 0)
+                              ? (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS * 1000UL)
+                              : 5000UL;
+  uint32_t elapsedUs = (_lastMicros == 0) ? fallbackUs : (now - _lastMicros);
+  if (elapsedUs == 0) elapsedUs = 1;
+  const float dt = elapsedUs / 1e6f;
 
   // Always update speed estimate even if very fast
   int32_t ticksNow;
@@ -196,7 +198,7 @@ void DcMotor::update() {
                             ? (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS * 1000UL)
                             : 5000UL;
   _speedAccumTicks += dTicks;
-  _speedAccumUs += loopUs;
+  _speedAccumUs += elapsedUs;
   if (_speedAccumUs >= windowUs) {
     float tpsInstant = _speedAccumTicks / (_speedAccumUs / 1e6f);
     const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
