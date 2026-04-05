@@ -678,12 +678,15 @@ static void serviceCenterTrackTest() {
   const uint32_t now = millis();
   if ((uint32_t)(now - centerTrackTestLastPrintMs) >= 250) {
     centerTrackTestLastPrintMs = now;
-    char buf[180];
+    MultiVL53L0X::SensorState ss = tofArray.getSensorState();
+    char buf[260];
     snprintf(buf, sizeof(buf),
-             "[TEST CENTER] mode=%s base=%.1f corr=%.2f cmdL=%.1f cmdR=%.1f tpsL=%.1f tpsR=%.1f",
+             "[TEST CENTER] mode=%s base=%.1f corr=%.2f cmdL=%.1f cmdR=%.1f tpsL=%.1f tpsR=%.1f dist L/F/R=%u/%u/%u valid=%u/%u/%u",
              centerTrackTestModeName(centerTrackTestMode), centerTrackTestBaseTps,
              centerTrackTestLastCorrection, lCmd, rCmd,
-             leftMotor.getTicksPerSecond(), rightMotor.getTicksPerSecond());
+             leftMotor.getTicksPerSecond(), rightMotor.getTicksPerSecond(),
+             (unsigned)ss.leftMm, (unsigned)ss.frontMm, (unsigned)ss.rightMm,
+             ss.leftValid ? 1 : 0, ss.frontValid ? 1 : 0, ss.rightValid ? 1 : 0);
     debugPrintln(String(buf));
   }
 }
