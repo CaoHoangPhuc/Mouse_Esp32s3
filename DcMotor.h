@@ -48,7 +48,7 @@ public:
 
   void resetPID();
 
-  // Call periodically at the motor-task cadence (fixed-dt PID update).
+  // Call periodically; dt is measured from micros() inside update().
   void update();
 
   // Encoder / speed

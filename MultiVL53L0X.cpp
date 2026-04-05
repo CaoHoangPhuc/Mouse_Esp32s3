@@ -36,7 +36,7 @@ void MultiVL53L0X::resetCenterPid() {
     _dualWallBlend = 0.0f;
     _captureCenterTargetsOnFirstSample = true;
     _straightTrackMode = TRACK_NONE;
-    _centerPrevMs = 0;
+    _centerPrevUs = 0;
     _centerPidPrimed = false;
     _sweepReadyForCompute = false;
     error = 0.0f;
@@ -400,12 +400,11 @@ float MultiVL53L0X::computeError(float headingError) {
         singleErr = (float)right - _centerTargetRight;
     }
 
-    const uint32_t now = millis();
-    float dt = 0.02f;
-    if (_centerPidPrimed && _centerPrevMs > 0) {
-        const uint32_t deltaMs = now - _centerPrevMs;
-        if (deltaMs > 0) dt = max(0.001f, deltaMs / 1000.0f);
-    }
+    const uint32_t nowUs = micros();
+    const uint32_t fallbackUs = max(1000UL, (uint32_t)AppConfig::Tof::UPDATE_INTERVAL_MS * 1000UL);
+    uint32_t elapsedUs = (_centerPrevUs == 0) ? fallbackUs : (nowUs - _centerPrevUs);
+    if (elapsedUs == 0) elapsedUs = 1;
+    float dt = max(0.0005f, elapsedUs / 1e6f);
 
     if (!_centerPidPrimed) {
         _centerIntegral = 0.0f;
@@ -493,7 +492,7 @@ float MultiVL53L0X::computeError(float headingError) {
     if (out < -_centerOutLimit) out = -_centerOutLimit;
 
     _centerPrevError = rawErr;
-    _centerPrevMs = now;
+    _centerPrevUs = nowUs;
     error = out;
 
     if (AppConfig::Debug::CENTER_PID_TRACE && _logFn != nullptr) {

@@ -128,7 +128,7 @@ private:
     float _centerTargetRight = 100.0f;
     bool _captureCenterTargetsOnFirstSample = true;
     StraightTrackMode _straightTrackMode = TRACK_NONE;
-    uint32_t _centerPrevMs = 0;
+    uint32_t _centerPrevUs = 0;
     bool _centerPidPrimed = false;
     LogFn _logFn = nullptr;
     
