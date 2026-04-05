@@ -34,6 +34,8 @@ public:
     float corridorCenteringGain = 1.6f;
     float frontStopMm = 55.0f;
     float corridorFrontStopMm = 55.0f;
+    float distanceApproachStartRatio = 0.85f;
+    float distanceApproachMinSpeedTps = 180.0f;
     float frontApproachStartFactor = 1.5f;
     float frontApproachMinSpeedTps = 180.0f;
     uint32_t primitiveTimeoutMs = 3000;

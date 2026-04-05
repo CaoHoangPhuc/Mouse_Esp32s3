@@ -273,6 +273,10 @@ extern const float CENTER_RAW_TAU_SEC;
 // Affects: wall approach safety and cell alignment.
 extern const float FRONT_STOP_MM;
 extern const float CORRIDOR_FRONT_STOP_MM;
+// Distance-based slowdown near motion target distance.
+// Example: 0.85 means start slowing after 85% of target distance is reached.
+extern const float DISTANCE_APPROACH_START_RATIO;
+extern const float DISTANCE_APPROACH_MIN_SPEED_TPS;
 extern const float FRONT_APPROACH_START_FACTOR;
 extern const float FRONT_APPROACH_MIN_SPEED_TPS;
 
@@ -402,6 +406,8 @@ inline MotionController::Config makeMotionConfig() {
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
+  cfg.distanceApproachStartRatio = Motion::DISTANCE_APPROACH_START_RATIO;
+  cfg.distanceApproachMinSpeedTps = Motion::DISTANCE_APPROACH_MIN_SPEED_TPS;
   cfg.frontApproachStartFactor = Motion::FRONT_APPROACH_START_FACTOR;
   cfg.frontApproachMinSpeedTps = Motion::FRONT_APPROACH_MIN_SPEED_TPS;
   cfg.primitiveTimeoutMs = Motion::PRIMITIVE_TIMEOUT_MS;

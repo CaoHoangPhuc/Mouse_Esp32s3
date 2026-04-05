@@ -274,6 +274,17 @@ void MotionController::update(RobotState& state) {
     return minSpeed + t * (baseSpeedTps - minSpeed);
   };
 
+  auto distanceSpeedTps = [&](float baseSpeedTps, float targetMm, float progressMm) {
+    const float startRatio = constrain(cfg_.distanceApproachStartRatio, 0.0f, 1.0f);
+    const float startMm = targetMm * startRatio;
+    const float minSpeed = max(1.0f, min(baseSpeedTps, cfg_.distanceApproachMinSpeedTps));
+    if (progressMm <= startMm) return baseSpeedTps;
+    if (progressMm >= targetMm) return minSpeed;
+    const float span = max(1.0f, targetMm - startMm);
+    const float t = (progressMm - startMm) / span;  // 0 at start, 1 at target
+    return baseSpeedTps - t * (baseSpeedTps - minSpeed);
+  };
+
   if (primitive_ == MOTION_MOVE_ONE_CELL) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;
@@ -292,7 +303,8 @@ void MotionController::update(RobotState& state) {
       correction = tof_->computeError(0.0f) * cfg_.centeringGain;
     }
 
-    const float cmdSpeed = approachSpeedTps(cfg_.moveSpeedTps, cfg_.frontStopMm, walls);
+    float cmdSpeed = distanceSpeedTps(cfg_.moveSpeedTps, cfg_.cellDistanceMm, progressMm);
+    cmdSpeed = min(cmdSpeed, approachSpeedTps(cfg_.moveSpeedTps, cfg_.frontStopMm, walls));
     left_->setSpeedTPS(cmdSpeed + correction);
     right_->setSpeedTPS(cmdSpeed - correction);
 
@@ -328,9 +340,10 @@ void MotionController::update(RobotState& state) {
       correction = tof_->computeError(0.0f) * cfg_.corridorCenteringGain;
     }
 
-    float cmdSpeed = cfg_.corridorMoveSpeedTps;
+    float cmdSpeed = distanceSpeedTps(cfg_.corridorMoveSpeedTps, targetDistanceMm, progressMm);
     if (inFinalCell) {
-      cmdSpeed = approachSpeedTps(cfg_.corridorMoveSpeedTps, frontStopThresholdMm, walls);
+      cmdSpeed = min(cmdSpeed,
+                     approachSpeedTps(cfg_.corridorMoveSpeedTps, frontStopThresholdMm, walls));
     }
     left_->setSpeedTPS(cmdSpeed + correction);
     right_->setSpeedTPS(cmdSpeed - correction);
