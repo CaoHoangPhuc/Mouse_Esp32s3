@@ -462,8 +462,10 @@ float MultiVL53L0X::computeError(float headingError) {
     // when the opposite side is open/far.
     if (!dualWallValid && (leftWallTrackable || rightWallTrackable)) {
         const float lim = AppConfig::Motion::CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM;
-        if (targetRawErr > lim) targetRawErr = lim;
-        if (targetRawErr < -lim) targetRawErr = -lim;
+        if (lim > 0.0f) {
+            if (targetRawErr > lim) targetRawErr = lim;
+            if (targetRawErr < -lim) targetRawErr = -lim;
+        }
     }
 
     const float rawTauSec = AppConfig::Motion::CENTER_RAW_TAU_SEC;
