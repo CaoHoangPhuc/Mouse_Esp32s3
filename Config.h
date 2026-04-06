@@ -347,6 +347,10 @@ extern const bool QUEUE_ENABLE_SPEEDRUN1;
 extern const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE;
 extern const uint16_t QUEUE_CAPACITY;
 extern const bool QUEUE_DEBUG_PRINT;
+// Save known maze when a speedrun leg officially finishes.
+extern const bool SAVE_MAZE_ON_SPEEDRUN_FINISH;
+// Reboot after speedrun finish handling completes.
+extern const bool RESTART_ON_SPEEDRUN_FINISH;
 }
 
 namespace SpeedRun2 {

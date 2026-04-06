@@ -205,6 +205,8 @@ const bool QUEUE_ENABLE_SPEEDRUN1 = true;
 const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE = true;
 const uint16_t QUEUE_CAPACITY = 128;
 const bool QUEUE_DEBUG_PRINT = true;
+const bool SAVE_MAZE_ON_SPEEDRUN_FINISH = true;
+const bool RESTART_ON_SPEEDRUN_FINISH = true;
 }
 
 namespace SpeedRun2 {
