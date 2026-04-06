@@ -201,6 +201,9 @@ extern const float PID_OUT_LIMIT;
 extern const float PID_I_LIMIT;
 extern const float PID_D_FILTER_HZ;
 extern const float PID_SLEW_RATE;
+// Minimum absolute PWM duty used by speed PID when target TPS is non-zero.
+// Helps avoid weak-duty region where one motor starts later than the other.
+extern const uint16_t PID_MIN_DRIVE_DUTY;
 
 // Low-pass smoothing for encoder speed estimate in DcMotor::update().
 // _tps += TPS_LPF_ALPHA * (instant - _tps)

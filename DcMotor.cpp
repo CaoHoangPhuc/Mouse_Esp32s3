@@ -263,6 +263,13 @@ void DcMotor::update() {
   _lastOut = out;
 
   int32_t duty = (int32_t)(out * (float)_pwmMax + (out >= 0 ? 0.5f : -0.5f));
+  if (_targetTPS != 0.0f && duty != 0) {
+    const int32_t minDuty = (int32_t)AppConfig::Motors::PID_MIN_DRIVE_DUTY;
+    const int32_t absDuty = (duty >= 0) ? duty : -duty;
+    if (absDuty < minDuty) {
+      duty = (duty > 0) ? minDuty : -minDuty;
+    }
+  }
   if (AppConfig::Debug::MOTOR_PID_TRACE) {
     const char* side = "?";
     uint32_t* ctr = nullptr;
