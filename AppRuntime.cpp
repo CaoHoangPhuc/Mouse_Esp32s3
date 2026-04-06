@@ -1964,6 +1964,28 @@ static void handleMotionCompletion() {
     }
 
     if (isTurnPrimitive &&
+        robotState.mode == ROBOT_MODE_EXPLORE &&
+        queueModeEnabledForCurrentMode() &&
+        primitive == MOTION_TURN_180) {
+      updateRobotState();
+      if (shouldSnapCenterFromKnownBackWall()) {
+        if (!motionController.snapCenter()) {
+          enterFaultMode("failed to start queue post-uturn snapcenter");
+          return;
+        }
+        debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         "source=queue-post-uturn");
+        debugPrintln("[SNAP] queue post-uturn snapcenter");
+        return;
+      }
+      if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+        debugPrintln("[SNAP] skip queue post-uturn snapcenter (need known back wall)");
+      }
+    }
+
+    if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
         robotState.mode == ROBOT_MODE_EXPLORE &&
         !queueModeEnabledForCurrentMode()) {
