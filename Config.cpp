@@ -133,7 +133,7 @@ const float PID_D_FILTER_HZ = 25.0f;
 const float PID_SLEW_RATE = 2.0f;
 const float PID_SLEW_RATE_LEFT = PID_SLEW_RATE;
 const float PID_SLEW_RATE_RIGHT = PID_SLEW_RATE;
-const uint16_t PID_MIN_DRIVE_DUTY = 50;
+const uint16_t PID_MIN_DRIVE_DUTY = 40;
 const float TPS_LPF_ALPHA = 0.2f; // apply new
 const uint32_t TPS_ESTIMATE_WINDOW_MS = 20;
 }
@@ -178,7 +178,7 @@ const float FRONT_APPROACH_START_FACTOR = 1.4f;
 const float FRONT_APPROACH_MIN_SPEED_TPS = 300.0f;
 const uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
 const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
-const uint32_t STALL_TIMEOUT_MS = 700;
+const uint32_t STALL_TIMEOUT_MS = 1200;
 const uint8_t CORRIDOR_MAX_CELLS = 4;
 const float STOP_TPS = 20.0f;
 const float MIN_PROGRESS_MM = 12.0f;
