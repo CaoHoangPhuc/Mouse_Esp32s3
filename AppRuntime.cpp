@@ -1416,12 +1416,20 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
 static bool enqueueExplorePlannerAction() {
   if (plannerQueueCount > 0 || plannerQueueItemInFlight) return true;
 
+  debugWallApplyEvent("[WALL APPLY]", "queue_explore_idle");
+  applyWallsToExplorer();
+  debugWallApplyEvent("[WALL APPLIED]", "queue_explore_idle");
+
   PlannerQueueItem item;
   item.primitive = MOTION_NONE;
   item.forwardCells = 1;
   item.endsAtKnownWall = false;
   const FloodFillExplorer::Action act = explorer.requestNextActionNoAck();
   if (act == FloodFillExplorer::ACT_NONE) {
+    if (!explorer.atGoal()) {
+      enterFaultMode("explore queue has no action (dead-end known map)");
+      return false;
+    }
     return true;
   }
   if (act == FloodFillExplorer::ACT_MOVE_F) {
