@@ -170,6 +170,7 @@ static bool queueSuppressWallRegistration();
 static const char* queueItemName(MotionPrimitiveType primitive);
 static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* actions, uint16_t count);
 static void debugPrintSpeedRunQueuePreview(const char* tag);
+static void servicePendingPersistence();
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 static void resetLapHistory();
@@ -216,6 +217,7 @@ static bool plannerQueueItemInFlight = false;
 static PlannerQueueItem plannerQueueInFlightItem{};
 static bool speedRunQueueNeedsBuild = false;
 static bool speedRunGoalSnapPending = false;
+static bool mazeSavePending = false;
 enum SpeedRunHomePrepStage : uint8_t {
   SPEEDRUN_HOME_PREP_NONE = 0,
   SPEEDRUN_HOME_PREP_AFTER_TURN,
@@ -1660,7 +1662,8 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
         robotState.speedRunReady = true;
         debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
         debugPrintSpeedRunQueuePreview("[EXPLORE]");
-        PersistenceStore::saveMaze(explorer);
+        mazeSavePending = true;
+        debugPrintln("[SPIFFS] save queued");
         clearForwardActionTracking();
         enterIdleMode("shortest path known");
         return false;
@@ -2445,6 +2448,7 @@ void userTaskBody(void* arg) {
 
     updateRobotState();
     motionController.update(robotState);
+    servicePendingPersistence();
     serviceMotorBothFlipTest();
     serviceCenterTrackTest();
     serviceBootButtonLauncher();
@@ -2591,6 +2595,14 @@ static void motorTask(void* arg) {
     }
     leftMotor.update();
     rightMotor.update();
+  }
+}
+
+static void servicePendingPersistence() {
+  if (!mazeSavePending) return;
+  mazeSavePending = false;
+  if (!PersistenceStore::saveMaze(explorer)) {
+    debugPrintln("[SPIFFS] save failed");
   }
 }
 
