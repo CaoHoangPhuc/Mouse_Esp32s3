@@ -438,7 +438,7 @@ void MotionController::update(RobotState& state) {
     } else {
       const float progressMm = averageProgressMm_();
       state.pose.forwardProgressMm = progressMm;
-      RobotWalls walls = tof_->getWalls();
+      WallObservation walls = tof_->getWalls();
       tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
       float correction = 0.0f;
       if (walls.leftValid || walls.rightValid) {
