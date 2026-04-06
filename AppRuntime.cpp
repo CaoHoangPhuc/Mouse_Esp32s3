@@ -1890,11 +1890,11 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
     leftMotor.setSpeedPID(AppConfig::Motors::PID_KP, AppConfig::Motors::PID_KI,
                           AppConfig::Motors::PID_KD, AppConfig::Motors::PID_OUT_LIMIT,
                           AppConfig::Motors::PID_I_LIMIT, AppConfig::Motors::PID_D_FILTER_HZ,
-                          AppConfig::Motors::PID_SLEW_RATE);
+                          AppConfig::Motors::PID_SLEW_RATE_LEFT);
     rightMotor.setSpeedPID(AppConfig::Motors::PID_KP, AppConfig::Motors::PID_KI,
                            AppConfig::Motors::PID_KD, AppConfig::Motors::PID_OUT_LIMIT,
                            AppConfig::Motors::PID_I_LIMIT, AppConfig::Motors::PID_D_FILTER_HZ,
-                           AppConfig::Motors::PID_SLEW_RATE);
+                           AppConfig::Motors::PID_SLEW_RATE_RIGHT);
   }
 
   tofArray.setWallThreshold(AppConfig::Tof::WALL_THRESHOLD_MM);
