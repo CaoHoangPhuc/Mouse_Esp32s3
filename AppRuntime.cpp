@@ -160,6 +160,16 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
 static bool handleReachedGoal(bool& skipPostMotionHold);
 static void clearForwardActionTracking();
 static bool shouldStopCorridorAfterCommittedCell();
+static bool queueModeEnabledForCurrentMode();
+static bool queueIsActive();
+static void clearPlannerQueue();
+static bool enqueueExplorePlannerAction();
+static bool buildAndEnqueueSpeedRunQueue();
+static bool startNextQueuedAction();
+static bool queueSuppressWallRegistration();
+static const char* queueItemName(MotionPrimitiveType primitive);
+static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* actions, uint16_t count);
+static void debugPrintSpeedRunQueuePreview(const char* tag);
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 static void resetLapHistory();
@@ -191,6 +201,21 @@ static bool serialOutputTemporarilyMuted = false;
 static bool debugServerStarted = false;
 static uint8_t activeForwardActionCellsRequested = 0;
 static uint8_t activeForwardActionCellsCommitted = 0;
+struct PlannerQueueItem {
+  MotionPrimitiveType primitive = MOTION_NONE;
+  uint8_t forwardCells = 1;
+  bool endsAtKnownWall = false;
+};
+static constexpr uint16_t kPlannerQueueStorageCapacity = 256;
+static PlannerQueueItem plannerQueueBuffer[kPlannerQueueStorageCapacity];
+static uint16_t plannerQueueHead = 0;
+static uint16_t plannerQueueTail = 0;
+static uint16_t plannerQueueCount = 0;
+static uint16_t plannerQueueTotalBuilt = 0;
+static bool plannerQueueItemInFlight = false;
+static PlannerQueueItem plannerQueueInFlightItem{};
+static bool speedRunQueueNeedsBuild = false;
+static bool speedRunGoalSnapPending = false;
 enum SpeedRunPreAlignStage : uint8_t {
   SPEEDRUN_PREALIGN_NONE = 0,
   SPEEDRUN_PREALIGN_AFTER_SIDE_TURN,
@@ -834,6 +859,102 @@ static const char* centerTrackTestModeName(CenterTrackTestMode mode) {
   }
 }
 
+static const char* queueItemName(MotionPrimitiveType primitive) {
+  return primitiveName(primitive);
+}
+
+static bool queueModeEnabledForCurrentMode() {
+  if (robotState.mode == ROBOT_MODE_EXPLORE) {
+    return AppConfig::Explorer::QUEUE_ENABLE_EXPLORE;
+  }
+  if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+    return AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1 &&
+           robotState.speedRunPhase == 1;
+  }
+  return false;
+}
+
+static uint16_t plannerQueueCapacity() {
+  const uint16_t cfgCap = AppConfig::Explorer::QUEUE_CAPACITY;
+  if (cfgCap == 0) return 1;
+  return (cfgCap < kPlannerQueueStorageCapacity) ? cfgCap : kPlannerQueueStorageCapacity;
+}
+
+static void clearPlannerQueue() {
+  plannerQueueHead = 0;
+  plannerQueueTail = 0;
+  plannerQueueCount = 0;
+  plannerQueueTotalBuilt = 0;
+  plannerQueueItemInFlight = false;
+  plannerQueueInFlightItem = PlannerQueueItem{};
+  speedRunQueueNeedsBuild = false;
+  speedRunGoalSnapPending = false;
+}
+
+static bool plannerQueuePush(const PlannerQueueItem& item) {
+  const uint16_t cap = plannerQueueCapacity();
+  if (plannerQueueCount >= cap) return false;
+  plannerQueueBuffer[plannerQueueTail] = item;
+  plannerQueueTail = (uint16_t)((plannerQueueTail + 1U) % cap);
+  plannerQueueCount++;
+  return true;
+}
+
+static bool plannerQueuePeek(PlannerQueueItem& item) {
+  if (plannerQueueCount == 0) return false;
+  item = plannerQueueBuffer[plannerQueueHead];
+  return true;
+}
+
+static bool plannerQueuePop() {
+  if (plannerQueueCount == 0) return false;
+  const uint16_t cap = plannerQueueCapacity();
+  plannerQueueHead = (uint16_t)((plannerQueueHead + 1U) % cap);
+  plannerQueueCount--;
+  return true;
+}
+
+static bool queueIsActive() {
+  return queueModeEnabledForCurrentMode() &&
+         (plannerQueueCount > 0 || plannerQueueItemInFlight || speedRunGoalSnapPending);
+}
+
+static bool queueSuppressWallRegistration() {
+  return AppConfig::Explorer::QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE && queueIsActive();
+}
+
+static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* actions, uint16_t count) {
+  String out;
+  for (uint16_t i = 0; i < count; ++i) {
+    if (i > 0) out += ",";
+    const auto& a = actions[i];
+    if (a.action == FloodFillExplorer::ACT_MOVE_F) {
+      out += "M";
+      out += String(a.forwardCells > 0 ? a.forwardCells : 1);
+    } else if (a.action == FloodFillExplorer::ACT_TURN_L) {
+      out += "L";
+    } else if (a.action == FloodFillExplorer::ACT_TURN_R) {
+      out += "R";
+    } else if (a.action == FloodFillExplorer::ACT_TURN_180) {
+      out += "U";
+    } else {
+      out += "?";
+    }
+  }
+  return out;
+}
+
+static void debugPrintSpeedRunQueuePreview(const char* tag) {
+  FloodFillExplorer::QueuedAction actions[kPlannerQueueStorageCapacity];
+  uint16_t count = 0;
+  if (!explorer.buildQueuedActionsFromCurrentPose(actions, plannerQueueCapacity(), count)) {
+    debugPrintln(String(tag) + " queue build failed");
+    return;
+  }
+  debugPrintln(String(tag) + " queue count=" + String(count));
+  debugPrintln(String(tag) + " queue seq=" + plannerQueueSequenceString(actions, count));
+}
+
 static void serviceCenterTrackTest() {
   if (centerTrackTestMode == CENTER_TEST_OFF) return;
   if (robotState.mode != ROBOT_MODE_MANUAL_TEST) return;
@@ -1013,6 +1134,7 @@ static void resetCommonModeState() {
   centerTrackTestLastCorrection = 0.0f;
   tofArray.setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
   explorer.setRunning(false);
+  clearPlannerQueue();
 }
 
 static void enterIdleMode(const String& reason) {
@@ -1044,6 +1166,7 @@ static void updateOtaSafeMode() {
     runStartSnapPending = false;
     deferPlannerAckUntilSnapCenter = false;
     runStartSnapMode = ROBOT_MODE_IDLE;
+    clearPlannerQueue();
     explorer.setRunning(false);
     motionController.stop();
     robotState.mode = ROBOT_MODE_IDLE;
@@ -1127,6 +1250,7 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   updateRobotLed();
+  clearPlannerQueue();
   debugPrintln("[MODE] EXPLORE");
   if (exploreStepBudget >= 0) {
     debugPrintln("[EXPLORE] step budget=" + String(exploreStepBudget));
@@ -1159,6 +1283,8 @@ static void beginSpeedRun(uint8_t phase) {
   applyRuntimeGoalRect();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   explorer.setRunning(false);
+  clearPlannerQueue();
+  speedRunQueueNeedsBuild = AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1 && phase == 1;
   updateRobotLed();
   debugPrintln("[MODE] SPEED RUN " + String((int)phase));
   if (phase == 1) {
@@ -1273,6 +1399,138 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
   return true;
 }
 
+static bool enqueueExplorePlannerAction() {
+  if (plannerQueueCount > 0 || plannerQueueItemInFlight) return true;
+
+  debugWallApplyEvent("[WALL APPLY]", "planner_idle");
+  applyWallsToExplorer();
+  debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
+
+  const FloodFillExplorer::Action act = explorer.requestNextAction();
+  if (act == FloodFillExplorer::ACT_NONE) {
+    return true;
+  }
+
+  PlannerQueueItem item;
+  item.primitive = MOTION_NONE;
+  item.forwardCells = 1;
+  item.endsAtKnownWall = false;
+  if (act == FloodFillExplorer::ACT_MOVE_F) {
+    item.forwardCells = explorer.lastActionForwardCells();
+    if (item.forwardCells == 0) item.forwardCells = 1;
+    item.endsAtKnownWall = explorer.lastActionEndsAtKnownWall();
+    item.primitive = (item.forwardCells <= 1) ? MOTION_MOVE_ONE_CELL : MOTION_MOVE_MULTI_CELL;
+  } else if (act == FloodFillExplorer::ACT_TURN_L) {
+    item.primitive = MOTION_TURN_LEFT_90;
+  } else if (act == FloodFillExplorer::ACT_TURN_R) {
+    item.primitive = MOTION_TURN_RIGHT_90;
+  } else if (act == FloodFillExplorer::ACT_TURN_180) {
+    item.primitive = MOTION_TURN_180;
+  } else {
+    return true;
+  }
+
+  if (!plannerQueuePush(item)) {
+    enterFaultMode("planner queue overflow (explore)");
+    return false;
+  }
+  plannerQueueTotalBuilt = plannerQueueCount;
+  if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+    debugPrintln("[QUEUE] explore enqueue " + String(queueItemName(item.primitive)) +
+                 (item.primitive == MOTION_MOVE_MULTI_CELL
+                    ? (" cells=" + String((int)item.forwardCells))
+                    : ""));
+  }
+  return true;
+}
+
+static bool buildAndEnqueueSpeedRunQueue() {
+  FloodFillExplorer::QueuedAction actions[kPlannerQueueStorageCapacity];
+  uint16_t actionCount = 0;
+  const uint16_t cap = plannerQueueCapacity();
+  if (!explorer.buildQueuedActionsFromCurrentPose(actions, cap, actionCount)) {
+    enterFaultMode("speedrun queue build failed");
+    return false;
+  }
+
+  clearPlannerQueue();
+  for (uint16_t i = 0; i < actionCount; ++i) {
+    PlannerQueueItem item;
+    item.forwardCells = actions[i].forwardCells > 0 ? actions[i].forwardCells : 1;
+    item.endsAtKnownWall = actions[i].endsAtKnownWall;
+    if (actions[i].action == FloodFillExplorer::ACT_MOVE_F) {
+      item.primitive = (item.forwardCells <= 1) ? MOTION_MOVE_ONE_CELL : MOTION_MOVE_MULTI_CELL;
+    } else if (actions[i].action == FloodFillExplorer::ACT_TURN_L) {
+      item.primitive = MOTION_TURN_LEFT_90;
+    } else if (actions[i].action == FloodFillExplorer::ACT_TURN_R) {
+      item.primitive = MOTION_TURN_RIGHT_90;
+    } else if (actions[i].action == FloodFillExplorer::ACT_TURN_180) {
+      item.primitive = MOTION_TURN_180;
+    } else {
+      continue;
+    }
+    if (!plannerQueuePush(item)) {
+      enterFaultMode("planner queue overflow (speedrun)");
+      return false;
+    }
+  }
+
+  plannerQueueTotalBuilt = plannerQueueCount;
+  speedRunQueueNeedsBuild = false;
+  if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+    debugPrintln("[QUEUE] speedrun built count=" + String(plannerQueueCount));
+    debugPrintln("[QUEUE] speedrun seq=" + plannerQueueSequenceString(actions, actionCount));
+  }
+  return true;
+}
+
+static bool startNextQueuedAction() {
+  if (plannerQueueItemInFlight || plannerQueueCount == 0) return true;
+
+  PlannerQueueItem item;
+  if (!plannerQueuePeek(item)) {
+    enterFaultMode("planner queue underflow");
+    return false;
+  }
+
+  bool ok = false;
+  if (item.primitive == MOTION_MOVE_ONE_CELL) {
+    ok = motionController.moveOneCell();
+  } else if (item.primitive == MOTION_MOVE_MULTI_CELL) {
+    ok = motionController.moveCells(item.forwardCells > 0 ? item.forwardCells : 1, item.endsAtKnownWall);
+  } else if (item.primitive == MOTION_TURN_LEFT_90) {
+    ok = motionController.turnLeft90();
+  } else if (item.primitive == MOTION_TURN_RIGHT_90) {
+    ok = motionController.turnRight90();
+  } else if (item.primitive == MOTION_TURN_180) {
+    ok = motionController.turn180();
+  } else {
+    enterFaultMode("invalid queue primitive");
+    return false;
+  }
+
+  if (!ok) {
+    enterFaultMode("failed to start queued primitive");
+    return false;
+  }
+
+  if (item.primitive == MOTION_MOVE_ONE_CELL || item.primitive == MOTION_MOVE_MULTI_CELL) {
+    activeForwardActionCellsRequested = (item.forwardCells > 0) ? item.forwardCells : 1;
+    activeForwardActionCellsCommitted = 0;
+  } else {
+    clearForwardActionTracking();
+  }
+
+  plannerQueueItemInFlight = true;
+  plannerQueueInFlightItem = item;
+  if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+    const uint16_t done = (plannerQueueTotalBuilt >= plannerQueueCount) ? (plannerQueueTotalBuilt - plannerQueueCount) : 0;
+    debugPrintln("[QUEUE] start " + String(queueItemName(item.primitive)) +
+                 " idx=" + String((int)(done + 1)) + "/" + String((int)plannerQueueTotalBuilt));
+  }
+  return true;
+}
+
 static void clearForwardActionTracking() {
   activeForwardActionCellsRequested = 0;
   activeForwardActionCellsCommitted = 0;
@@ -1315,6 +1573,10 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
       startLapTimer("GH");
       explorer.advanceTargetAfterReach();
       explorer.setRunning(true);
+      if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
+        clearPlannerQueue();
+        speedRunQueueNeedsBuild = true;
+      }
       robotState.goalReached = false;
       robotState.speedRunReady = true;
       skipPostMotionHold = true;
@@ -1371,6 +1633,7 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
           stableRoundTripCount >= AppConfig::Explorer::SHORTEST_PATH_STABLE_ROUND_TRIPS) {
         robotState.speedRunReady = true;
         debugPrintln("[EXPLORE] shortest path known cost=" + String(bestCost));
+        debugPrintSpeedRunQueuePreview("[EXPLORE]");
         PersistenceStore::saveMaze(explorer);
         clearForwardActionTracking();
         enterIdleMode("shortest path known");
@@ -1482,6 +1745,35 @@ static void handleMotionCompletion() {
     speedRunPreAlignStage == SPEEDRUN_PREALIGN_NONE;
   bool skipPostMotionHold = false;
   bool stepBudgetReached = false;
+
+  if (status == MOTION_COMPLETED) {
+    if (plannerQueueItemInFlight) {
+      if (primitive != plannerQueueInFlightItem.primitive) {
+        clearPlannerQueue();
+        enterFaultMode("queue primitive mismatch");
+        return;
+      }
+      if (!plannerQueuePop()) {
+        clearPlannerQueue();
+        enterFaultMode("queue pop failed");
+        return;
+      }
+      plannerQueueItemInFlight = false;
+      if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+        const uint16_t done = (plannerQueueTotalBuilt >= plannerQueueCount)
+                                ? (plannerQueueTotalBuilt - plannerQueueCount)
+                                : 0;
+        debugPrintln("[QUEUE] done " + String(queueItemName(primitive)) +
+                     " idx=" + String((int)done) + "/" + String((int)plannerQueueTotalBuilt));
+      }
+    } else if (queueModeEnabledForCurrentMode() &&
+               explorer.isRunning() &&
+               primitive != MOTION_SNAP_CENTER) {
+      clearPlannerQueue();
+      enterFaultMode("queued completion without inflight item");
+      return;
+    }
+  }
 
   if (status == MOTION_COMPLETED) {
     bool reachedGoal = false;
@@ -1628,6 +1920,40 @@ static void handleMotionCompletion() {
     }
 
     updateRobotState();
+    if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+        robotState.speedRunPhase == 1 &&
+        AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1 &&
+        explorer.isRunning()) {
+      if (speedRunGoalSnapPending && primitive == MOTION_SNAP_CENTER) {
+        speedRunGoalSnapPending = false;
+        if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+          debugPrintln("[QUEUE] goal snapcenter complete");
+        }
+      } else if (!speedRunGoalSnapPending &&
+                 plannerQueueCount == 0 &&
+                 !plannerQueueItemInFlight &&
+                 primitive != MOTION_SNAP_CENTER) {
+        explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+        if (!explorer.atGoal()) {
+          clearPlannerQueue();
+          enterFaultMode("speedrun queue exhausted before goal");
+          return;
+        }
+        if (!motionController.snapCenter()) {
+          clearPlannerQueue();
+          enterFaultMode("failed to start speedrun goal snapcenter");
+          return;
+        }
+        speedRunGoalSnapPending = true;
+        debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                         "source=speedrun-goal");
+        debugPrintln("[SNAP] speedrun goal snapcenter");
+        return;
+      }
+    }
+
     if (!forwardAlreadyCommitted && robotState.mode != ROBOT_MODE_SPEED_RUN) {
       debugWallApplyEvent("[WALL APPLY]", "motion_complete");
       applyWallsToExplorer();
@@ -1773,6 +2099,9 @@ static void updateRobotState() {
 }
 
 static void applyWallsToExplorer() {
+  if (queueSuppressWallRegistration()) {
+    return;
+  }
   explorer.observeRelativeWalls(
     robotState.pose.cellX,
     robotState.pose.cellY,
@@ -1800,6 +2129,13 @@ static void finishSpeedRunStart() {
   serialOutputTemporarilyMuted = (robotState.speedRunPhase == 1);
   startLapTimer("HG");
   explorer.setRunning(true);
+  if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1 && robotState.speedRunPhase == 1) {
+    clearPlannerQueue();
+    speedRunQueueNeedsBuild = true;
+    if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
+      debugPrintln("[QUEUE] speedrun queue build requested");
+    }
+  }
   updateRobotLed();
 }
 
@@ -2057,28 +2393,69 @@ void plannerTaskBody(void* arg) {
         enterFaultMode("robot not ready for motion");
       } else {
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
-        FloodFillExplorer::Action act = FloodFillExplorer::ACT_NONE;
-        if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-          act = explorer.requestNextActionNoAck();
-        } else {
-          debugWallApplyEvent("[WALL APPLY]", "planner_idle");
-          applyWallsToExplorer();
-          debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
-          act = explorer.requestNextAction();
-        }
-        if (act == FloodFillExplorer::ACT_NONE) {
-          if (robotState.mode == ROBOT_MODE_EXPLORE && explorer.atGoal()) {
-            robotState.goalReached = true;
-            robotState.speedRunReady = true;
-            updateRobotLed();
-            enterIdleMode("explore finished");
-          } else if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-            robotState.goalReached = true;
-            updateRobotLed();
-            enterIdleMode("speed run finished");
+        if (queueModeEnabledForCurrentMode()) {
+          if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+              robotState.speedRunPhase == 1 &&
+              speedRunQueueNeedsBuild &&
+              plannerQueueCount == 0 &&
+              !plannerQueueItemInFlight) {
+            if (!buildAndEnqueueSpeedRunQueue()) {
+              vTaskDelayUntil(&last, period);
+              continue;
+            }
+          } else if (robotState.mode == ROBOT_MODE_EXPLORE &&
+                     plannerQueueCount == 0 &&
+                     !plannerQueueItemInFlight) {
+            if (!enqueueExplorePlannerAction()) {
+              vTaskDelayUntil(&last, period);
+              continue;
+            }
+          }
+
+          if (!plannerQueueItemInFlight && plannerQueueCount > 0) {
+            if (!startNextQueuedAction()) {
+              vTaskDelayUntil(&last, period);
+              continue;
+            }
+          } else if (!plannerQueueItemInFlight &&
+                     plannerQueueCount == 0 &&
+                     !speedRunGoalSnapPending) {
+            if (robotState.mode == ROBOT_MODE_EXPLORE && explorer.atGoal()) {
+              robotState.goalReached = true;
+              robotState.speedRunReady = true;
+              updateRobotLed();
+              enterIdleMode("explore finished");
+            } else if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+                       robotState.speedRunPhase == 1 &&
+                       explorer.atGoal()) {
+              bool skip = false;
+              handleReachedGoal(skip);
+            }
           }
         } else {
-          executePlannerAction(act);
+          FloodFillExplorer::Action act = FloodFillExplorer::ACT_NONE;
+          if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+            act = explorer.requestNextActionNoAck();
+          } else {
+            debugWallApplyEvent("[WALL APPLY]", "planner_idle");
+            applyWallsToExplorer();
+            debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
+            act = explorer.requestNextAction();
+          }
+          if (act == FloodFillExplorer::ACT_NONE) {
+            if (robotState.mode == ROBOT_MODE_EXPLORE && explorer.atGoal()) {
+              robotState.goalReached = true;
+              robotState.speedRunReady = true;
+              updateRobotLed();
+              enterIdleMode("explore finished");
+            } else if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
+              robotState.goalReached = true;
+              updateRobotLed();
+              enterIdleMode("speed run finished");
+            }
+          } else {
+            executePlannerAction(act);
+          }
         }
       }
     }

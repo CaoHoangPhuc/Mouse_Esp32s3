@@ -473,6 +473,12 @@ bool FloodFillExplorer::atActiveTarget_() const{
   return mh_ == origSh_;
 }
 
+bool FloodFillExplorer::atActiveTargetPose_(uint8_t x, uint8_t y, Dir h) const {
+  if(!isGoal_(x, y)) return false;
+  if(!targetHome_) return true;
+  return h == origSh_;
+}
+
 bool FloodFillExplorer::isKnownOpen_(int x, int y, Dir d) const {
   if (!inBounds_(x, y)) return false;
   bool known = false;
@@ -1170,100 +1176,158 @@ FloodFillExplorer::Action FloodFillExplorer::chooseNextAction_(){
   lastActionForwardCells_ = 0;
   lastActionEndsAtKnownWall_ = false;
 
-  if(atActiveTarget_()) return ACT_NONE;
+  Action act = chooseNextActionForPose_(mx_, my_, mh_, lastActionForwardCells_, lastActionEndsAtKnownWall_);
+  return act;
+}
 
-  if(targetHome_ && isGoal_(mx_, my_) && mh_ != origSh_){
-    uint8_t curh = (uint8_t)mh_;
-    uint8_t tarh = (uint8_t)origSh_;
-    uint8_t diff = (tarh + 4 - curh) & 3;
-    lastActionForwardCells_ = 1;
-    lastActionEndsAtKnownWall_ = false;
-    if(diff == 1) return ACT_TURN_R;
-    if(diff == 3) return ACT_TURN_L;
+uint8_t FloodFillExplorer::chooseForwardCells_() const {
+  return chooseForwardCellsForPose_(mx_, my_, mh_);
+}
+
+FloodFillExplorer::Action FloodFillExplorer::chooseNextActionForPose_(uint8_t x, uint8_t y, Dir h,
+                                                                      uint8_t& forwardCells,
+                                                                      bool& endsAtKnownWall) const {
+  forwardCells = 0;
+  endsAtKnownWall = false;
+
+  if (atActiveTargetPose_(x, y, h)) return ACT_NONE;
+
+  if (targetHome_ && isGoal_(x, y) && h != origSh_) {
+    const uint8_t curh = (uint8_t)h;
+    const uint8_t tarh = (uint8_t)origSh_;
+    const uint8_t diff = (tarh + 4 - curh) & 3;
+    forwardCells = 1;
+    if (diff == 1) return ACT_TURN_R;
+    if (diff == 3) return ACT_TURN_L;
     return ACT_TURN_180;
   }
 
-  uint16_t cur = dist_[my_][mx_];
-  if(cur == 0xFFFF) return ACT_NONE;
+  const uint16_t cur = dist_[y][x];
+  if (cur == 0xFFFF) return ACT_NONE;
 
   Dir order[4];
-  order[0] = mh_;
-  order[1] = (Dir)((mh_ + 3) & 3);
-  order[2] = (Dir)((mh_ + 1) & 3);
-  order[3] = (Dir)((mh_ + 2) & 3);
+  order[0] = h;
+  order[1] = (Dir)((h + 3) & 3);
+  order[2] = (Dir)((h + 1) & 3);
+  order[3] = (Dir)((h + 2) & 3);
 
-  Dir best = mh_;
-  bool found=false;
-
-  for(int i=0;i<4;i++){
-    Dir d = order[i];
-    if(knownHasWall_(mx_, my_, d)) continue;
-    int nx = mx_ + dx4[(int)d];
-    int ny = my_ + dy4[(int)d];
-    if(!inBounds_(nx,ny)) continue;
-    uint16_t nd = dist_[ny][nx];
-    if(nd < cur){
+  Dir best = h;
+  bool found = false;
+  for (int i = 0; i < 4; i++) {
+    const Dir d = order[i];
+    if (knownHasWall_(x, y, d)) continue;
+    const int nx = x + dx4[(int)d];
+    const int ny = y + dy4[(int)d];
+    if (!inBounds_(nx, ny)) continue;
+    const uint16_t nd = dist_[ny][nx];
+    if (nd < cur) {
       best = d;
       found = true;
       break;
     }
   }
-  if(!found) return ACT_NONE;
+  if (!found) return ACT_NONE;
 
-  if(best == mh_) {
-    lastActionForwardCells_ = chooseForwardCells_();
+  if (best == h) {
+    forwardCells = chooseForwardCellsForPose_(x, y, h);
     bool known = false;
     bool wall = false;
-    uint8_t fx = mx_;
-    uint8_t fy = my_;
-    for (uint8_t i = 0; i < lastActionForwardCells_; ++i) {
-      fx = (uint8_t)(fx + dx4[(int)mh_]);
-      fy = (uint8_t)(fy + dy4[(int)mh_]);
+    uint8_t fx = x;
+    uint8_t fy = y;
+    for (uint8_t i = 0; i < forwardCells; ++i) {
+      fx = (uint8_t)(fx + dx4[(int)h]);
+      fy = (uint8_t)(fy + dy4[(int)h]);
     }
-    getKnownWall(fx, fy, mh_, known, wall);
-    lastActionEndsAtKnownWall_ = known && wall;
+    getKnownWall(fx, fy, h, known, wall);
+    endsAtKnownWall = known && wall;
     return ACT_MOVE_F;
   }
 
-  uint8_t curh = (uint8_t)mh_;
-  uint8_t tarh = (uint8_t)best;
-  uint8_t diff = (tarh + 4 - curh) & 3;
-
-  lastActionForwardCells_ = 1;
-  lastActionEndsAtKnownWall_ = false;
-  if(diff == 1) return ACT_TURN_R;
-  if(diff == 3) return ACT_TURN_L;
+  forwardCells = 1;
+  const uint8_t curh = (uint8_t)h;
+  const uint8_t tarh = (uint8_t)best;
+  const uint8_t diff = (tarh + 4 - curh) & 3;
+  if (diff == 1) return ACT_TURN_R;
+  if (diff == 3) return ACT_TURN_L;
   return ACT_TURN_180;
 }
 
-uint8_t FloodFillExplorer::chooseForwardCells_() const {
+uint8_t FloodFillExplorer::chooseForwardCellsForPose_(uint8_t x, uint8_t y, Dir h) const {
   uint8_t maxCells = cfg_.maxForwardCells;
   if (maxCells == 0) maxCells = 1;
 
-  uint8_t x = mx_;
-  uint8_t y = my_;
   uint16_t cur = dist_[y][x];
   uint8_t cells = 0;
-
   while (cells < maxCells) {
-    if (!isKnownOpen_(x, y, mh_)) break;
-
-    const int nx = x + dx4[(int)mh_];
-    const int ny = y + dy4[(int)mh_];
+    if (!isKnownOpen_(x, y, h)) break;
+    const int nx = x + dx4[(int)h];
+    const int ny = y + dy4[(int)h];
     if (!inBounds_(nx, ny)) break;
-
     const uint16_t nd = dist_[ny][nx];
     if (nd >= cur) break;
-
     x = (uint8_t)nx;
     y = (uint8_t)ny;
     cur = nd;
     cells++;
-
     if (isGoal_(x, y)) break;
   }
 
   return cells > 0 ? cells : 1;
+}
+
+bool FloodFillExplorer::buildQueuedActionsFromCurrentPose(QueuedAction* outActions,
+                                                          uint16_t capacity,
+                                                          uint16_t& outCount) {
+  outCount = 0;
+  if (outActions == nullptr || capacity == 0) return false;
+
+  if (!hardwareMode_) {
+    senseCell_(mx_, my_);
+  }
+  visited_[my_][mx_] = true;
+  computeFloodFill_();
+  computePlan_();
+
+  uint8_t x = mx_;
+  uint8_t y = my_;
+  Dir h = mh_;
+
+  while (!atActiveTargetPose_(x, y, h)) {
+    if (outCount >= capacity) {
+      return false;
+    }
+
+    uint8_t forwardCells = 0;
+    bool endsAtKnownWall = false;
+    const Action act = chooseNextActionForPose_(x, y, h, forwardCells, endsAtKnownWall);
+    if (act == ACT_NONE) {
+      return false;
+    }
+
+    QueuedAction& qa = outActions[outCount++];
+    qa.action = act;
+    qa.forwardCells = forwardCells > 0 ? forwardCells : 1;
+    qa.endsAtKnownWall = endsAtKnownWall;
+
+    if (act == ACT_MOVE_F) {
+      for (uint8_t i = 0; i < qa.forwardCells; ++i) {
+        if (knownHasWall_(x, y, h)) return false;
+        const int nx = x + dx4[(int)h];
+        const int ny = y + dy4[(int)h];
+        if (!inBounds_(nx, ny)) return false;
+        x = (uint8_t)nx;
+        y = (uint8_t)ny;
+      }
+    } else if (act == ACT_TURN_L) {
+      h = (Dir)(((uint8_t)h + 3) & 3);
+    } else if (act == ACT_TURN_R) {
+      h = (Dir)(((uint8_t)h + 1) & 3);
+    } else if (act == ACT_TURN_180) {
+      h = (Dir)(((uint8_t)h + 2) & 3);
+    }
+  }
+
+  return true;
 }
 
 void FloodFillExplorer::dispatchAction_(Action a){

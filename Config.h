@@ -341,6 +341,12 @@ extern const bool CONTINUE_AFTER_GOAL;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
 extern const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS;
+// Motion queue runtime behavior.
+extern const bool QUEUE_ENABLE_EXPLORE;
+extern const bool QUEUE_ENABLE_SPEEDRUN1;
+extern const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE;
+extern const uint16_t QUEUE_CAPACITY;
+extern const bool QUEUE_DEBUG_PRINT;
 }
 
 namespace SpeedRun2 {

@@ -200,6 +200,11 @@ const uint32_t ACK_TIMEOUT_MS = 2000;
 const bool PAUSE_ON_ACK_TIMEOUT = true;
 const bool CONTINUE_AFTER_GOAL = true;
 const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
+const bool QUEUE_ENABLE_EXPLORE = true;
+const bool QUEUE_ENABLE_SPEEDRUN1 = true;
+const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE = true;
+const uint16_t QUEUE_CAPACITY = 128;
+const bool QUEUE_DEBUG_PRINT = true;
 }
 
 namespace SpeedRun2 {
