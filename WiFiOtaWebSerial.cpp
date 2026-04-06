@@ -9,6 +9,7 @@
 #include <esp_err.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_wifi.h>
 
 // Wrapper to keep WebServer out of header
 class WiFiOtaWebSerial::WebServerWrapper {
@@ -606,6 +607,7 @@ void WiFiOtaWebSerial::configureSta_() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
   WiFi.setAutoReconnect(true);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
 }
