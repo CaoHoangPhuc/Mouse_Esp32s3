@@ -927,7 +927,11 @@ static bool queueIsActive() {
 }
 
 static bool queueSuppressWallRegistration() {
-  return AppConfig::Explorer::QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE && queueIsActive();
+  if (!AppConfig::Explorer::QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE) return false;
+  // Keep explore mapping stable; suppress map writes only during speedrun queue execution.
+  return queueIsActive() &&
+         robotState.mode == ROBOT_MODE_SPEED_RUN &&
+         robotState.speedRunPhase == 1;
 }
 
 static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* actions, uint16_t count) {
@@ -1721,10 +1725,18 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
                         String((int)activeForwardActionCellsRequested));
     applyWallsToExplorer();
     debugWallApplyEvent("[WALL APPLIED]", "forward_progress");
-    reachedGoal = explorer.ackPendingActionExternal(true,
-      robotState.pose.cellX,
-      robotState.pose.cellY,
-      headingDir());
+    if (queueModeEnabledForCurrentMode()) {
+      explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+      if (explorer.atGoal()) {
+        explorer.advanceTargetAfterReach();
+        reachedGoal = true;
+      }
+    } else {
+      reachedGoal = explorer.ackPendingActionExternal(true,
+        robotState.pose.cellX,
+        robotState.pose.cellY,
+        headingDir());
+    }
   } else {
     explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
     reachedGoal = explorer.atGoal();
@@ -2023,6 +2035,12 @@ static void handleMotionCompletion() {
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
         reachedGoal = explorer.atGoal();
+      } else if (queueModeEnabledForCurrentMode()) {
+        explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+        if (explorer.atGoal()) {
+          explorer.advanceTargetAfterReach();
+          reachedGoal = true;
+        }
       } else if (!queueModeEnabledForCurrentMode() && deferPlannerAckUntilSnapCenter) {
         deferPlannerAckUntilSnapCenter = false;
         reachedGoal = explorer.ackPendingActionExternal(true,
