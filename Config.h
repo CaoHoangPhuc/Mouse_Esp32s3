@@ -249,6 +249,9 @@ extern const float TURN_SLOWDOWN_START_RATIO;
 // Affects: corridor following stability.
 extern const float CENTERING_GAIN;
 extern const float CORRIDOR_CENTERING_GAIN;
+// Extra gain applied only on the side that should slow down from centering correction.
+// 1.0 = symmetric behavior, 2.0 = slowing side is reduced 2x.
+extern const float CENTERING_SLOW_SIDE_GAIN;
 extern const float CENTER_TARGET_LEFT_MM;
 extern const float CENTER_TARGET_RIGHT_MM;
 extern const float CENTER_TARGET_CAPTURE_WINDOW_MM;
@@ -376,7 +379,7 @@ namespace Debug {
   // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
   extern const bool MOTOR_PID_TRACE;
   // Print every N motor updates (1 = every update).
-  extern const uint8_t MOTOR_PID_TRACE_EVERY_N;
+  extern const uint16_t MOTOR_PID_TRACE_EVERY_N;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
   extern const bool ENABLE_LOOP_WATCHDOG;
@@ -404,6 +407,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.turnSlowdownStartRatio = Motion::TURN_SLOWDOWN_START_RATIO;
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
+  cfg.centeringSlowSideGain = Motion::CENTERING_SLOW_SIDE_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
   cfg.distanceApproachStartRatio = Motion::DISTANCE_APPROACH_START_RATIO;

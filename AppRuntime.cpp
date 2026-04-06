@@ -670,8 +670,14 @@ static void serviceCenterTrackTest() {
   const float correction = tofArray.computeError(0.0f) * AppConfig::Motion::CENTERING_GAIN;
   centerTrackTestLastCorrection = correction;
 
-  const float lCmd = centerTrackTestBaseTps + correction;
-  const float rCmd = centerTrackTestBaseTps - correction;
+  const float slowSideGain = max(1.0f, AppConfig::Motion::CENTERING_SLOW_SIDE_GAIN);
+  float lCmd = centerTrackTestBaseTps + correction;
+  float rCmd = centerTrackTestBaseTps - correction;
+  if (correction > 0.0f) {
+    rCmd = centerTrackTestBaseTps - correction * slowSideGain;
+  } else if (correction < 0.0f) {
+    lCmd = centerTrackTestBaseTps + correction * slowSideGain;
+  }
   leftMotor.setSpeedTPS(lCmd);
   rightMotor.setSpeedTPS(rCmd);
 

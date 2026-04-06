@@ -285,6 +285,21 @@ void MotionController::update(RobotState& state) {
     return baseSpeedTps - t * (baseSpeedTps - minSpeed);
   };
 
+  auto applyCenteredSpeed = [&](float baseSpeedTps, float correction) {
+    const float slowSideGain = max(1.0f, cfg_.centeringSlowSideGain);
+    float leftCmd = baseSpeedTps + correction;
+    float rightCmd = baseSpeedTps - correction;
+    if (correction > 0.0f) {
+      // Right side should slow down.
+      rightCmd = baseSpeedTps - correction * slowSideGain;
+    } else if (correction < 0.0f) {
+      // Left side should slow down.
+      leftCmd = baseSpeedTps + correction * slowSideGain;
+    }
+    left_->setSpeedTPS(leftCmd);
+    right_->setSpeedTPS(rightCmd);
+  };
+
   if (primitive_ == MOTION_MOVE_ONE_CELL) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;
@@ -305,8 +320,7 @@ void MotionController::update(RobotState& state) {
 
     float cmdSpeed = distanceSpeedTps(cfg_.moveSpeedTps, cfg_.cellDistanceMm, progressMm);
     cmdSpeed = min(cmdSpeed, approachSpeedTps(cfg_.moveSpeedTps, cfg_.frontStopMm, walls));
-    left_->setSpeedTPS(cmdSpeed + correction);
-    right_->setSpeedTPS(cmdSpeed - correction);
+    applyCenteredSpeed(cmdSpeed, correction);
 
     if (progressMm >= cfg_.cellDistanceMm || shouldFrontStop) {
       markDone_(MOTION_COMPLETED);
@@ -345,8 +359,7 @@ void MotionController::update(RobotState& state) {
       cmdSpeed = min(cmdSpeed,
                      approachSpeedTps(cfg_.corridorMoveSpeedTps, frontStopThresholdMm, walls));
     }
-    left_->setSpeedTPS(cmdSpeed + correction);
-    right_->setSpeedTPS(cmdSpeed - correction);
+    applyCenteredSpeed(cmdSpeed, correction);
 
     const bool reachedDistanceTarget = progressMm >= targetDistanceMm;
     const bool shouldComplete = moveEndsAtKnownWall_
