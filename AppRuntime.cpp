@@ -1412,23 +1412,18 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
 static bool enqueueExplorePlannerAction() {
   if (plannerQueueCount > 0 || plannerQueueItemInFlight) return true;
 
-  FloodFillExplorer::QueuedAction actions[1];
-  uint16_t actionCount = 0;
-  if (!explorer.buildQueuedActionsFromCurrentPose(actions, 1, actionCount)) {
-    if (explorer.atGoal()) return true;
-    enterFaultMode("explore queue build failed");
-    return false;
-  }
-  if (actionCount == 0) {
-    return true;
-  }
-
   PlannerQueueItem item;
   item.primitive = MOTION_NONE;
-  item.forwardCells = actions[0].forwardCells > 0 ? actions[0].forwardCells : 1;
-  item.endsAtKnownWall = actions[0].endsAtKnownWall;
-  const FloodFillExplorer::Action act = actions[0].action;
+  item.forwardCells = 1;
+  item.endsAtKnownWall = false;
+  const FloodFillExplorer::Action act = explorer.requestNextActionNoAck();
+  if (act == FloodFillExplorer::ACT_NONE) {
+    return true;
+  }
   if (act == FloodFillExplorer::ACT_MOVE_F) {
+    item.forwardCells = explorer.lastActionForwardCells();
+    if (item.forwardCells == 0) item.forwardCells = 1;
+    item.endsAtKnownWall = explorer.lastActionEndsAtKnownWall();
     item.primitive = (item.forwardCells <= 1) ? MOTION_MOVE_ONE_CELL : MOTION_MOVE_MULTI_CELL;
   } else if (act == FloodFillExplorer::ACT_TURN_L) {
     item.primitive = MOTION_TURN_LEFT_90;
