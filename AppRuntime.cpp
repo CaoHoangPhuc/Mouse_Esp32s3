@@ -166,9 +166,9 @@ static void stopLapTimer(bool record);
 static String explorerLapStateJson();
 static void resetLoopWatchdogState(struct LoopWatchdogState& state);
 static void serviceLoopWatchdog(struct LoopWatchdogState& state, uint32_t expectedMs);
-static bool IRAM_ATTR onRealtimeLoopTimer(gptimer_handle_t timer,
-                                          const gptimer_alarm_event_data_t* edata,
-                                          void* user_ctx);
+static bool onRealtimeLoopTimer(gptimer_handle_t timer,
+                                const gptimer_alarm_event_data_t* edata,
+                                void* user_ctx);
 static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
                                    TaskHandle_t targetTask,
                                    uint32_t periodMs,
