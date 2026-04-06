@@ -1620,23 +1620,11 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
     } else if (usesSpeedRun2Profile(robotState.speedRunPhase)) {
       debugPrintln("[SPEEDRUN] reached goal, finish one-way run");
     }
-    if (AppConfig::Explorer::SAVE_MAZE_ON_SPEEDRUN_FINISH) {
-      const bool saved = PersistenceStore::saveMaze(explorer);
-      debugPrintln(saved ? "[SPIFFS] saved maze memory (speedrun finish)"
-                         : "[SPIFFS] failed to save maze memory (speedrun finish)");
-    }
     robotState.goalReached = true;
     updateRobotLed();
     debugPrintln("[GOAL] Goal reached");
     robotState.speedRunReady = true;
     clearForwardActionTracking();
-    if (AppConfig::Explorer::RESTART_ON_SPEEDRUN_FINISH) {
-      debugPrintln("[SPEEDRUN] restarting after finish");
-      closeDebugConsole("[NET] disconnecting for restart");
-      vTaskDelay(pdMS_TO_TICKS(100));
-      ESP.restart();
-      return false;
-    }
     enterIdleMode("speed run finished");
     return false;
   }
