@@ -216,6 +216,12 @@ static bool plannerQueueItemInFlight = false;
 static PlannerQueueItem plannerQueueInFlightItem{};
 static bool speedRunQueueNeedsBuild = false;
 static bool speedRunGoalSnapPending = false;
+enum SpeedRunHomePrepStage : uint8_t {
+  SPEEDRUN_HOME_PREP_NONE = 0,
+  SPEEDRUN_HOME_PREP_AFTER_TURN,
+  SPEEDRUN_HOME_PREP_AFTER_SNAP
+};
+static SpeedRunHomePrepStage speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
 enum SpeedRunPreAlignStage : uint8_t {
   SPEEDRUN_PREALIGN_NONE = 0,
   SPEEDRUN_PREALIGN_AFTER_SIDE_TURN,
@@ -889,6 +895,7 @@ static void clearPlannerQueue() {
   plannerQueueInFlightItem = PlannerQueueItem{};
   speedRunQueueNeedsBuild = false;
   speedRunGoalSnapPending = false;
+  speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
 }
 
 static bool plannerQueuePush(const PlannerQueueItem& item) {
@@ -1572,7 +1579,17 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
         !atOriginalStart) {
       startLapTimer("GH");
       explorer.advanceTargetAfterReach();
-      explorer.setRunning(true);
+      explorer.setRunning(false);
+      if (!motionController.turn180()) {
+        enterFaultMode("failed to start speedrun goal->home turn180");
+        return false;
+      }
+      speedRunHomePrepStage = SPEEDRUN_HOME_PREP_AFTER_TURN;
+      debugMotionEvent("[MOTION START]", MOTION_TURN_180, motionController.status(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                       "source=speedrun-goal-home-prep");
+      debugPrintln("[SPEEDRUN] reached goal, turn180 before home leg");
       if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
         clearPlannerQueue();
         speedRunQueueNeedsBuild = true;
@@ -1581,7 +1598,6 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
       robotState.speedRunReady = true;
       skipPostMotionHold = true;
       updateRobotLed();
-      debugPrintln("[SPEEDRUN] reached goal, flip target and return home");
       clearForwardActionTracking();
       motionController.clearCompletionState();
       return false;
@@ -1889,6 +1905,50 @@ static void handleMotionCompletion() {
         finishSpeedRunStart();
         clearForwardActionTracking();
         motionController.stop();
+        return;
+      }
+    }
+
+    if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
+        robotState.speedRunPhase == 1 &&
+        speedRunHomePrepStage != SPEEDRUN_HOME_PREP_NONE) {
+      if (speedRunHomePrepStage == SPEEDRUN_HOME_PREP_AFTER_TURN) {
+        updateRobotState();
+        if (shouldSnapCenterFromKnownBackWall()) {
+          if (!motionController.snapCenter()) {
+            enterFaultMode("failed to start speedrun goal->home snapcenter");
+            return;
+          }
+          speedRunHomePrepStage = SPEEDRUN_HOME_PREP_AFTER_SNAP;
+          debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
+                           "source=speedrun-goal-home-snap");
+          debugPrintln("[SNAP] speedrun goal->home snapcenter");
+          return;
+        }
+
+        debugPrintln("[SNAP] skip speedrun goal->home snapcenter (need known back wall)");
+        speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
+        explorer.setRunning(true);
+        if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
+          clearPlannerQueue();
+          speedRunQueueNeedsBuild = true;
+        }
+        clearForwardActionTracking();
+        motionController.clearCompletionState();
+        return;
+      }
+
+      if (speedRunHomePrepStage == SPEEDRUN_HOME_PREP_AFTER_SNAP) {
+        speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
+        explorer.setRunning(true);
+        if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
+          clearPlannerQueue();
+          speedRunQueueNeedsBuild = true;
+        }
+        clearForwardActionTracking();
+        motionController.clearCompletionState();
         return;
       }
     }
