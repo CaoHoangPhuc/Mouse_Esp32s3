@@ -280,7 +280,7 @@ void DcMotor::update() {
       side = "R";
       ctr = &sMotorPidTraceCounterR;
     }
-    const uint8_t everyN = (AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N == 0)
+    const uint16_t everyN = (AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N == 0)
                            ? 1
                            : AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N;
     bool shouldPrint = true;
