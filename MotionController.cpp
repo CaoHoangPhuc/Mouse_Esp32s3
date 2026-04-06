@@ -433,16 +433,18 @@ void MotionController::update(RobotState& state) {
         startRightTicks_ = right_->getTicks();
         lastProgressMm_ = 0.0f;
         lastProgressMs_ = now;
-        left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
-        right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
       }
       return;
     } else {
       const float progressMm = averageProgressMm_();
       state.pose.forwardProgressMm = progressMm;
-
-      left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
-      right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+      RobotWalls walls = tof_->getWalls();
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
+      float correction = 0.0f;
+      if (walls.leftValid || walls.rightValid) {
+        correction = tof_->computeError(0.0f) * cfg_.centeringGain;
+      }
+      applyCenteredSpeed(cfg_.shortForwardSpeedTps, correction);
 
       if (progressMm >= cfg_.shortForwardDistanceMm) {
         markDone_(MOTION_COMPLETED);
