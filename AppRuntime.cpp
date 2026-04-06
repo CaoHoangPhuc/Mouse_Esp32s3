@@ -1256,6 +1256,9 @@ static void beginExplore(bool clearMaze, int32_t stepBudget) {
   applyRuntimeGoalRect();
   if (clearMaze) explorer.clearKnownMaze();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  if (AppConfig::Explorer::QUEUE_ENABLE_EXPLORE) {
+    (void)explorer.requestNextActionNoAck();  // clear pending ACK state for queue mode
+  }
   updateRobotLed();
   clearPlannerQueue();
   debugPrintln("[MODE] EXPLORE");
@@ -1409,23 +1412,23 @@ static bool executePlannerAction(FloodFillExplorer::Action act) {
 static bool enqueueExplorePlannerAction() {
   if (plannerQueueCount > 0 || plannerQueueItemInFlight) return true;
 
-  debugWallApplyEvent("[WALL APPLY]", "planner_idle");
-  applyWallsToExplorer();
-  debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
-
-  const FloodFillExplorer::Action act = explorer.requestNextAction();
-  if (act == FloodFillExplorer::ACT_NONE) {
+  FloodFillExplorer::QueuedAction actions[1];
+  uint16_t actionCount = 0;
+  if (!explorer.buildQueuedActionsFromCurrentPose(actions, 1, actionCount)) {
+    if (explorer.atGoal()) return true;
+    enterFaultMode("explore queue build failed");
+    return false;
+  }
+  if (actionCount == 0) {
     return true;
   }
 
   PlannerQueueItem item;
   item.primitive = MOTION_NONE;
-  item.forwardCells = 1;
-  item.endsAtKnownWall = false;
+  item.forwardCells = actions[0].forwardCells > 0 ? actions[0].forwardCells : 1;
+  item.endsAtKnownWall = actions[0].endsAtKnownWall;
+  const FloodFillExplorer::Action act = actions[0].action;
   if (act == FloodFillExplorer::ACT_MOVE_F) {
-    item.forwardCells = explorer.lastActionForwardCells();
-    if (item.forwardCells == 0) item.forwardCells = 1;
-    item.endsAtKnownWall = explorer.lastActionEndsAtKnownWall();
     item.primitive = (item.forwardCells <= 1) ? MOTION_MOVE_ONE_CELL : MOTION_MOVE_MULTI_CELL;
   } else if (act == FloodFillExplorer::ACT_TURN_L) {
     item.primitive = MOTION_TURN_LEFT_90;
@@ -1955,7 +1958,8 @@ static void handleMotionCompletion() {
 
     if (isTurnPrimitive &&
         !deferPlannerAckUntilSnapCenter &&
-        robotState.mode == ROBOT_MODE_EXPLORE) {
+        robotState.mode == ROBOT_MODE_EXPLORE &&
+        !queueModeEnabledForCurrentMode()) {
       updateRobotState();
       const bool knownBackWall = shouldSnapCenterFromKnownBackWall();
       const bool sideWallsOpen = !robotState.walls.leftWall && !robotState.walls.rightWall;
@@ -2024,13 +2028,14 @@ static void handleMotionCompletion() {
       if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
         reachedGoal = explorer.atGoal();
-      } else if (deferPlannerAckUntilSnapCenter) {
+      } else if (!queueModeEnabledForCurrentMode() && deferPlannerAckUntilSnapCenter) {
         deferPlannerAckUntilSnapCenter = false;
         reachedGoal = explorer.ackPendingActionExternal(true,
           robotState.pose.cellX,
           robotState.pose.cellY,
           headingDir());
-      } else if (!runStartSnapPending || !isSnapCenterPrimitive) {
+      } else if (!queueModeEnabledForCurrentMode() &&
+                 (!runStartSnapPending || !isSnapCenterPrimitive)) {
         reachedGoal = explorer.ackPendingActionExternal(true,
           robotState.pose.cellX,
           robotState.pose.cellY,
@@ -2088,7 +2093,8 @@ static void handleMotionCompletion() {
                      beforeX, beforeY, beforeH,
                      robotState.pose.cellX, robotState.pose.cellY, headingDir(),
                      "error=" + motionController.lastError());
-    if (robotState.mode != ROBOT_MODE_SPEED_RUN) {
+    if (robotState.mode != ROBOT_MODE_SPEED_RUN &&
+        !queueModeEnabledForCurrentMode()) {
       explorer.ackPendingActionExternal(false,
         robotState.pose.cellX,
         robotState.pose.cellY,
