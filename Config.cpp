@@ -222,7 +222,7 @@ const uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
 
 namespace Tasks {
 const uint32_t USER_LOOP_PERIOD_MS = 20;
-const uint32_t PLANNER_LOOP_PERIOD_MS = 50;
+const uint32_t PLANNER_LOOP_PERIOD_MS = 10;
 const uint32_t MOTOR_LOOP_PERIOD_MS = 5;
 const uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
 const uint32_t TOF_LOOP_PERIOD_MS = 5;
