@@ -123,6 +123,7 @@ static bool readBootButtonPressed();
 static void dispatchBootButtonAction(uint8_t pressCount);
 static void debugPrint(const String& s);
 static void debugPrintln(const String& s = "");
+static void serviceCrossCoreDebugLogs();
 static void debugPrompt();
 static bool debugClientConnected();
 static bool serialOutputEnabled();
@@ -219,6 +220,18 @@ static LoopWatchdogState userLoopWatchdog{"userTaskBody"};
 static LoopWatchdogState plannerLoopWatchdog{"plannerTaskBody"};
 static LoopWatchdogState telemetryLoopWatchdog{"telemetryTask"};
 static LoopWatchdogState explorerLoopWatchdog{"explorerTask"};
+static constexpr uint16_t kCrossCoreLogQueueDepth = 64;
+static constexpr size_t kCrossCoreLogLineMax = 192;
+struct CrossCoreLogEntry {
+  char text[kCrossCoreLogLineMax];
+  bool newline;
+};
+static CrossCoreLogEntry crossCoreLogQueue[kCrossCoreLogQueueDepth];
+static uint16_t crossCoreLogHead = 0;
+static uint16_t crossCoreLogTail = 0;
+static uint16_t crossCoreLogCount = 0;
+static uint32_t crossCoreLogDropped = 0;
+static portMUX_TYPE crossCoreLogMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t runtimeGoalX0 = AppConfig::Maze::GOAL_X0;
 static uint8_t runtimeGoalY0 = AppConfig::Maze::GOAL_Y0;
 static uint8_t runtimeGoalW = AppConfig::Maze::GOAL_W;
@@ -239,9 +252,7 @@ static void logToDbg(const String& s) {
 }
 
 static void logMotorPidToTelnet(const String& s) {
-  if (debugClientConnected()) {
-    debugClient.println(s);
-  }
+  debugPrintln(s);
 }
 
 static bool debugClientConnected() {
@@ -448,22 +459,94 @@ static bool isContinuousSpeedRunPhase(uint8_t phase) {
   return phase >= 2;
 }
 
-static void debugPrint(const String& s) {
+static void emitDebugNow(const char* s, bool newline) {
   if (serialOutputEnabled()) {
-    Serial.print(s);
+    if (newline) {
+      Serial.println(s);
+    } else {
+      Serial.print(s);
+    }
   }
   if (debugClientConnected()) {
-    debugClient.print(s);
+    if (newline) {
+      debugClient.println(s);
+    } else {
+      debugClient.print(s);
+    }
   }
 }
 
+static void enqueueCrossCoreDebugLog(const String& s, bool newline) {
+  char text[kCrossCoreLogLineMax];
+  s.toCharArray(text, sizeof(text));
+
+  portENTER_CRITICAL(&crossCoreLogMux);
+  if (crossCoreLogCount >= kCrossCoreLogQueueDepth) {
+    crossCoreLogTail = (uint16_t)((crossCoreLogTail + 1U) % kCrossCoreLogQueueDepth);
+    crossCoreLogCount--;
+    crossCoreLogDropped++;
+  }
+  CrossCoreLogEntry& slot = crossCoreLogQueue[crossCoreLogHead];
+  strncpy(slot.text, text, sizeof(slot.text));
+  slot.text[sizeof(slot.text) - 1] = '\0';
+  slot.newline = newline;
+  crossCoreLogHead = (uint16_t)((crossCoreLogHead + 1U) % kCrossCoreLogQueueDepth);
+  crossCoreLogCount++;
+  portEXIT_CRITICAL(&crossCoreLogMux);
+}
+
+static void serviceCrossCoreDebugLogs() {
+  if (xPortGetCoreID() != 0) return;
+
+  for (;;) {
+    CrossCoreLogEntry item{};
+    bool hasItem = false;
+    uint32_t dropped = 0;
+    bool emitDrop = false;
+
+    portENTER_CRITICAL(&crossCoreLogMux);
+    if (crossCoreLogCount > 0) {
+      item = crossCoreLogQueue[crossCoreLogTail];
+      crossCoreLogTail = (uint16_t)((crossCoreLogTail + 1U) % kCrossCoreLogQueueDepth);
+      crossCoreLogCount--;
+      hasItem = true;
+    } else if (crossCoreLogDropped > 0) {
+      dropped = crossCoreLogDropped;
+      crossCoreLogDropped = 0;
+      emitDrop = true;
+    }
+    portEXIT_CRITICAL(&crossCoreLogMux);
+
+    if (hasItem) {
+      emitDebugNow(item.text, item.newline);
+      continue;
+    }
+    if (emitDrop) {
+      char buf[72];
+      snprintf(buf, sizeof(buf), "[DBGQ] dropped %lu messages", (unsigned long)dropped);
+      emitDebugNow(buf, true);
+      continue;
+    }
+    break;
+  }
+}
+
+static void debugPrint(const String& s) {
+  if (xPortGetCoreID() != 0) {
+    enqueueCrossCoreDebugLog(s, false);
+    return;
+  }
+  serviceCrossCoreDebugLogs();
+  emitDebugNow(s.c_str(), false);
+}
+
 static void debugPrintln(const String& s) {
-  if (serialOutputEnabled()) {
-    Serial.println(s);
+  if (xPortGetCoreID() != 0) {
+    enqueueCrossCoreDebugLog(s, true);
+    return;
   }
-  if (debugClientConnected()) {
-    debugClient.println(s);
-  }
+  serviceCrossCoreDebugLogs();
+  emitDebugNow(s.c_str(), true);
 }
 
 static void debugPrompt() {
@@ -1900,6 +1983,7 @@ void userTaskBody(void* arg) {
     serviceMotorBothFlipTest();
     serviceCenterTrackTest();
     serviceBootButtonLauncher();
+    serviceCrossCoreDebugLogs();
     serviceDebugServerState();
     serviceDebugConsole();
 
