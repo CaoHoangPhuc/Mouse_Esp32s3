@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include "driver/gptimer.h"
 
 #include "Battery.h"
 #include "Config.h"
@@ -86,6 +87,10 @@ static TaskHandle_t explorerTaskHandle = nullptr;
 static TaskHandle_t plannerTaskHandle = nullptr;
 static TaskHandle_t telemetryTaskHandle = nullptr;
 static TaskHandle_t userTaskHandle = nullptr;
+static gptimer_handle_t motorLoopTimer = nullptr;
+static gptimer_handle_t tofLoopTimer = nullptr;
+static bool motorLoopTimerActive = false;
+static bool tofLoopTimerActive = false;
 
 static void motorTask(void* arg);
 static void tofTask(void* arg);
@@ -161,6 +166,13 @@ static void stopLapTimer(bool record);
 static String explorerLapStateJson();
 static void resetLoopWatchdogState(struct LoopWatchdogState& state);
 static void serviceLoopWatchdog(struct LoopWatchdogState& state, uint32_t expectedMs);
+static bool IRAM_ATTR onRealtimeLoopTimer(gptimer_handle_t timer,
+                                          const gptimer_alarm_event_data_t* edata,
+                                          void* user_ctx);
+static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
+                                   TaskHandle_t targetTask,
+                                   uint32_t periodMs,
+                                   const char* tag);
 
 static bool otaSafeModeActive = false;
 static uint32_t lastConsoleActivityMs = 0;
@@ -275,11 +287,78 @@ static void serviceLoopWatchdog(LoopWatchdogState& state, uint32_t expectedMs) {
 
   const uint32_t lateMs = actualMs - expectedMs;
   debugPrintln("[LOOP WARN] task=" + String(state.taskName) +
-               " period=" + String(expectedMs) + "ms" +
-               " actual=" + String(actualMs) + "ms" +
-               " late=" + String(lateMs) + "ms" +
-               " core=" + String((int)xPortGetCoreID()) +
-               " count=" + String(state.warningCount));
+              " period=" + String(expectedMs) + "ms" +
+              " actual=" + String(actualMs) + "ms" +
+              " late=" + String(lateMs) + "ms" +
+              " core=" + String((int)xPortGetCoreID()) +
+              " count=" + String(state.warningCount));
+}
+
+static bool IRAM_ATTR onRealtimeLoopTimer(gptimer_handle_t timer,
+                                          const gptimer_alarm_event_data_t* edata,
+                                          void* user_ctx) {
+  (void)timer;
+  (void)edata;
+  TaskHandle_t task = static_cast<TaskHandle_t>(user_ctx);
+  BaseType_t woke = pdFALSE;
+  if (task != nullptr) {
+    vTaskNotifyGiveFromISR(task, &woke);
+  }
+  return woke == pdTRUE;
+}
+
+static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
+                                   TaskHandle_t targetTask,
+                                   uint32_t periodMs,
+                                   const char* tag) {
+  if (outTimer == nullptr || targetTask == nullptr || periodMs == 0) {
+    return false;
+  }
+
+  const uint64_t periodUs = (uint64_t)periodMs * 1000ULL;
+  gptimer_config_t timerCfg = {};
+  timerCfg.clk_src = GPTIMER_CLK_SRC_DEFAULT;
+  timerCfg.direction = GPTIMER_COUNT_UP;
+  timerCfg.resolution_hz = 1000000;  // 1 tick = 1us
+
+  gptimer_handle_t timer = nullptr;
+  esp_err_t err = gptimer_new_timer(&timerCfg, &timer);
+  if (err != ESP_OK || timer == nullptr) {
+    debugPrintln(String("[RT] timer create failed: ") + tag + " err=" + String((int)err));
+    return false;
+  }
+
+  gptimer_event_callbacks_t cbs = {};
+  cbs.on_alarm = onRealtimeLoopTimer;
+  err = gptimer_register_event_callbacks(timer, &cbs, targetTask);
+  if (err != ESP_OK) {
+    debugPrintln(String("[RT] timer callback failed: ") + tag + " err=" + String((int)err));
+    gptimer_del_timer(timer);
+    return false;
+  }
+
+  gptimer_alarm_config_t alarmCfg = {};
+  alarmCfg.reload_count = 0;
+  alarmCfg.alarm_count = periodUs;
+  alarmCfg.flags.auto_reload_on_alarm = true;
+  err = gptimer_set_alarm_action(timer, &alarmCfg);
+  if (err != ESP_OK) {
+    debugPrintln(String("[RT] timer alarm failed: ") + tag + " err=" + String((int)err));
+    gptimer_del_timer(timer);
+    return false;
+  }
+
+  err = gptimer_enable(timer);
+  if (err == ESP_OK) err = gptimer_start(timer);
+  if (err != ESP_OK) {
+    debugPrintln(String("[RT] timer start failed: ") + tag + " err=" + String((int)err));
+    gptimer_del_timer(timer);
+    return false;
+  }
+
+  *outTimer = timer;
+  debugPrintln(String("[RT] timer started: ") + tag + " period=" + String(periodMs) + "ms");
+  return true;
 }
 
 static void resetLapHistory() {
@@ -1785,6 +1864,11 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 1, &userTaskHandle,      kCoreApp);
   xTaskCreatePinnedToCore(telemetryTask, "telemetry", 4096, nullptr, 0, &telemetryTaskHandle, kCoreApp);
 
+  motorLoopTimerActive = startRealtimeLoopTimer(
+    &motorLoopTimer, motorTaskHandle, AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS, "motor");
+  tofLoopTimerActive = startRealtimeLoopTimer(
+    &tofLoopTimer, tofTaskHandle, AppConfig::Tasks::TOF_LOOP_PERIOD_MS, "tof");
+
   enterIdleMode("ready");
   updateRobotLed();
 }
@@ -1902,15 +1986,18 @@ static void motorTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
 
   for (;;) {
+    if (motorLoopTimerActive) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    } else {
+      vTaskDelayUntil(&last, period);
+    }
     serviceLoopWatchdog(motorLoopWatchdog, AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(motorLoopWatchdog);
-      vTaskDelayUntil(&last, period);
       continue;
     }
     leftMotor.update();
     rightMotor.update();
-    vTaskDelayUntil(&last, period);
   }
 }
 
@@ -1937,14 +2024,17 @@ static void tofTask(void* arg) {
   const TickType_t period = pdMS_TO_TICKS(AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
 
   for (;;) {
+    if (tofLoopTimerActive) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    } else {
+      vTaskDelayUntil(&lastWake, period);
+    }
     serviceLoopWatchdog(tofLoopWatchdog, AppConfig::Tasks::TOF_LOOP_PERIOD_MS);
     if (dbg.isUpdateInProgress()) {
       resetLoopWatchdogState(tofLoopWatchdog);
-      vTaskDelayUntil(&lastWake, period);
       continue;
     }
     tofArray.update();
-    vTaskDelayUntil(&lastWake, period);
   }
 }
 
