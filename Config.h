@@ -306,6 +306,11 @@ extern const float MIN_PROGRESS_MM;
 // Stop mode used when a primitive completes in normal motion flow
 // (explore / speedrun 1). Choose one of: COAST, BRAKE, HARDSTOP.
 extern const MotionController::StopMode COMPLETION_STOP_MODE;
+// Stop mode used during snap-center back/hold phases.
+extern const MotionController::StopMode SNAP_CENTER_HOLD_STOP_MODE;
+// Stop mode applied in AppRuntime right after each completed primitive
+// before the optional settle hold delay.
+extern const MotionController::StopMode POST_MOTION_SETTLE_STOP_MODE;
 
 // Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
@@ -429,6 +434,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.stopTps = Motion::STOP_TPS;
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
   cfg.completionStopMode = Motion::COMPLETION_STOP_MODE;
+  cfg.snapCenterHoldStopMode = Motion::SNAP_CENTER_HOLD_STOP_MODE;
   cfg.leftMmPerTick = Motion::LEFT_MM_PER_TICK;
   cfg.rightMmPerTick = Motion::RIGHT_MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;

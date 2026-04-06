@@ -410,8 +410,7 @@ void MotionController::update(RobotState& state) {
       right_->setSpeedTPS(-cfg_.reverseSpeedTps);
 
       if (progressMm >= cfg_.reverseDistanceMm) {
-        left_->hardStop();
-        right_->hardStop();
+        applyStopMode_(cfg_.snapCenterHoldStopMode);
         snapCenterPhase_ = SNAP_CENTER_PHASE_HOLD;
         snapCenterHoldUntilMs_ = now + cfg_.snapCenterStopHoldMs;
         startLeftTicks_ = left_->getTicks();
@@ -424,8 +423,7 @@ void MotionController::update(RobotState& state) {
       if (updateProgressOrFail_(progressMm, now, "snap center reverse stall")) return;
     } else if (snapCenterPhase_ == SNAP_CENTER_PHASE_HOLD) {
       state.pose.forwardProgressMm = 0.0f;
-      left_->hardStop();
-      right_->hardStop();
+      applyStopMode_(cfg_.snapCenterHoldStopMode);
 
       if ((int32_t)(now - snapCenterHoldUntilMs_) >= 0) {
         snapCenterPhase_ = SNAP_CENTER_PHASE_FORWARD;

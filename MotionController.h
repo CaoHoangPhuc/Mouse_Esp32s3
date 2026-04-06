@@ -49,6 +49,7 @@ public:
     float rightMmPerTick = 0.54f;
     uint8_t corridorMaxCells = 1;
     StopMode completionStopMode = StopMode::HARDSTOP;
+    StopMode snapCenterHoldStopMode = StopMode::HARDSTOP;
   };
 
   void begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery = nullptr);

@@ -136,6 +136,7 @@ static bool onWebTelnetReconnect();
 static String onWebHealthJson();
 static void onExplorerWebCommand(const String& cmd);
 static void updateRobotLed();
+static void applyStopModeToDriveMotors(MotionController::StopMode mode);
 static const char* centerTrackTestModeName(CenterTrackTestMode mode);
 static void beginExplore(bool clearMaze, int32_t stepBudget = -1);
 static void beginSpeedRun(uint8_t phase = 1);
@@ -552,6 +553,26 @@ static void debugPrintln(const String& s) {
 static void debugPrompt() {
   if (debugClientConnected()) {
     debugClient.print("> ");
+  }
+}
+
+static void applyStopModeToDriveMotors(MotionController::StopMode mode) {
+  switch (mode) {
+    case MotionController::StopMode::COAST:
+      leftMotor.coastStop();
+      rightMotor.coastStop();
+      break;
+    case MotionController::StopMode::BRAKE:
+      leftMotor.enableSpeedControl(false);
+      rightMotor.enableSpeedControl(false);
+      leftMotor.brakeStop();
+      rightMotor.brakeStop();
+      break;
+    case MotionController::StopMode::HARDSTOP:
+    default:
+      leftMotor.hardStop();
+      rightMotor.hardStop();
+      break;
   }
 }
 
@@ -1494,8 +1515,7 @@ static void handleMotionCompletion() {
                         String((int)activeForwardActionCellsRequested)) :
                        String());
     if (!continuousSpeedRun) {
-      leftMotor.hardStop();
-      rightMotor.hardStop();
+      applyStopModeToDriveMotors(AppConfig::Motion::POST_MOTION_SETTLE_STOP_MODE);
     }
 
     if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
