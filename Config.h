@@ -252,6 +252,9 @@ extern const float CORRIDOR_CENTERING_GAIN;
 // Extra gain applied only on the side that should slow down from centering correction.
 // 1.0 = symmetric behavior, 2.0 = slowing side is reduced 2x.
 extern const float CENTERING_SLOW_SIDE_GAIN;
+// Gain applied on the side that would speed up from centering correction.
+// 0.0 = keep fast side at base speed (no speed-up).
+extern const float CENTERING_FAST_SIDE_GAIN;
 extern const float CENTER_TARGET_LEFT_MM;
 extern const float CENTER_TARGET_RIGHT_MM;
 extern const float CENTER_TARGET_CAPTURE_WINDOW_MM;
@@ -408,6 +411,7 @@ inline MotionController::Config makeMotionConfig() {
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
   cfg.centeringSlowSideGain = Motion::CENTERING_SLOW_SIDE_GAIN;
+  cfg.centeringFastSideGain = Motion::CENTERING_FAST_SIDE_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
   cfg.distanceApproachStartRatio = Motion::DISTANCE_APPROACH_START_RATIO;

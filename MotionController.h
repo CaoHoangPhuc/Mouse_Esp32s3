@@ -33,6 +33,7 @@ public:
     float centeringGain = 1.6f;
     float corridorCenteringGain = 1.6f;
     float centeringSlowSideGain = 1.0f;
+    float centeringFastSideGain = 0.0f;
     float frontStopMm = 55.0f;
     float corridorFrontStopMm = 55.0f;
     float distanceApproachStartRatio = 0.85f;

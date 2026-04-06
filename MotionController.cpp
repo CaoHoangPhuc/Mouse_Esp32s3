@@ -287,13 +287,16 @@ void MotionController::update(RobotState& state) {
 
   auto applyCenteredSpeed = [&](float baseSpeedTps, float correction) {
     const float slowSideGain = max(1.0f, cfg_.centeringSlowSideGain);
-    float leftCmd = baseSpeedTps + correction;
-    float rightCmd = baseSpeedTps - correction;
+    const float fastSideGain = max(0.0f, cfg_.centeringFastSideGain);
+    float leftCmd = baseSpeedTps;
+    float rightCmd = baseSpeedTps;
     if (correction > 0.0f) {
       // Right side should slow down.
+      leftCmd = baseSpeedTps + correction * fastSideGain;
       rightCmd = baseSpeedTps - correction * slowSideGain;
     } else if (correction < 0.0f) {
       // Left side should slow down.
+      rightCmd = baseSpeedTps - correction * fastSideGain;
       leftCmd = baseSpeedTps + correction * slowSideGain;
     }
     left_->setSpeedTPS(leftCmd);
