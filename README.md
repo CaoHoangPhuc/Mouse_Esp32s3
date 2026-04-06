@@ -52,12 +52,10 @@ This repository now includes the first integrated hardware-oriented control stac
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
-- `speedrun [1-4]` is now phase-aware: `speedrun 1` keeps the existing baseline behavior, while `speedrun 2` is now the dedicated one-way home-to-goal profile and phases `3-4` inherit the previous phase until tuned
+- `speedrun [1-4]` is phase-aware: `speedrun 1` and `speedrun 2` are both one-way home-to-goal profiles, and phases `3-4` inherit the previous phase until tuned
 - `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
-- `speedrun 1` now flips the active target at the goal and continues the shortest-path run back home before finishing
-- `speedrun 1` now restores the active target back to the original goal after the return-home leg finishes, so the web/planner state is ready for the next run
 - `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
-- `speedrun` still means `speedrun 1`, while `speedrun 2` now runs the known shortest path one-way from home to goal using its own motion-profile selection and continuous execution path
+- `speedrun` still means `speedrun 1`, and `speedrun 2` runs the known shortest path one-way from home to goal with its dedicated profile selection
 - fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
@@ -126,7 +124,7 @@ Release note:
 8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
+11. `speedrun 1` uses the shortest known path directly as a one-way home-to-goal run: no wall-map updates and no floodfill ACK handshake in the motion loop.
 12. `speedrun 2` runs one-way from home to goal with its own motion profile and continuous shortest-path execution, so the runtime syncs pose and dispatches the next action directly instead of using the explore ACK loop.
 13. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
 14. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.

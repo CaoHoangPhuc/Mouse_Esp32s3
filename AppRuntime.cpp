@@ -157,7 +157,7 @@ static bool startSpeedRunPreAlignSequence();
 static void finishSpeedRunStart();
 static void advancePoseForwardOneCell();
 static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBudgetReached, bool& reachedGoal);
-static bool handleReachedGoal(bool& skipPostMotionHold);
+static bool handleReachedGoal();
 static void clearForwardActionTracking();
 static bool shouldStopCorridorAfterCommittedCell();
 static bool queueModeEnabledForCurrentMode();
@@ -171,6 +171,9 @@ static const char* queueItemName(MotionPrimitiveType primitive);
 static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* actions, uint16_t count);
 static void debugPrintSpeedRunQueuePreview(const char* tag);
 static void servicePendingPersistence();
+static void schedulePostTurnWallSettle(MotionPrimitiveType primitive);
+static bool isPostTurnWallSettleReady();
+static void queueTrace(const char* tag);
 static void resetExploreLoopTracking();
 static void setPose(uint8_t x, uint8_t y, FloodFillExplorer::Dir h);
 static void resetLapHistory();
@@ -217,13 +220,12 @@ static bool plannerQueueItemInFlight = false;
 static PlannerQueueItem plannerQueueInFlightItem{};
 static bool speedRunQueueNeedsBuild = false;
 static bool speedRunGoalSnapPending = false;
+static bool queueTraceEnabled = AppConfig::Debug::QUEUE_TRACE_DEFAULT;
 static bool mazeSavePending = false;
-enum SpeedRunHomePrepStage : uint8_t {
-  SPEEDRUN_HOME_PREP_NONE = 0,
-  SPEEDRUN_HOME_PREP_AFTER_TURN,
-  SPEEDRUN_HOME_PREP_AFTER_SNAP
-};
-static SpeedRunHomePrepStage speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
+static bool postTurnWallSettlePending = false;
+static uint32_t postTurnWallSettleUntilMs = 0;
+static uint8_t postTurnWallStableCount = 0;
+static uint8_t postTurnWallLastSignature = 0xFF;
 enum SpeedRunPreAlignStage : uint8_t {
   SPEEDRUN_PREALIGN_NONE = 0,
   SPEEDRUN_PREALIGN_AFTER_SIDE_TURN,
@@ -897,7 +899,6 @@ static void clearPlannerQueue() {
   plannerQueueInFlightItem = PlannerQueueItem{};
   speedRunQueueNeedsBuild = false;
   speedRunGoalSnapPending = false;
-  speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
 }
 
 static bool plannerQueuePush(const PlannerQueueItem& item) {
@@ -955,6 +956,34 @@ static String plannerQueueSequenceString(const FloodFillExplorer::QueuedAction* 
     }
   }
   return out;
+}
+
+static void queueTrace(const char* tag) {
+  if (!queueTraceEnabled) return;
+  const MotionPrimitiveType prim = motionController.primitive();
+  const MotionStatus st = motionController.status();
+  explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+  const bool atGoal = explorer.atGoal();
+
+  char buf[320];
+  snprintf(buf, sizeof(buf),
+           "[QTRACE] %s mode=%s pose=(%u,%u,%u) prog=%.1f req=%u com=%u prim=%s st=%s busy=%d q=%u in=%d tot=%u build=%d snap=%d atGoal=%d",
+           tag ? tag : "",
+           modeName(robotState.mode),
+           robotState.pose.cellX, robotState.pose.cellY, robotState.pose.heading,
+           robotState.pose.forwardProgressMm,
+           (unsigned)activeForwardActionCellsRequested,
+           (unsigned)activeForwardActionCellsCommitted,
+           primitiveName(prim),
+           motionStatusName(st),
+           motionController.isBusy() ? 1 : 0,
+           (unsigned)plannerQueueCount,
+           plannerQueueItemInFlight ? 1 : 0,
+           (unsigned)plannerQueueTotalBuilt,
+           speedRunQueueNeedsBuild ? 1 : 0,
+           speedRunGoalSnapPending ? 1 : 0,
+           atGoal ? 1 : 0);
+  debugPrintln(String(buf));
 }
 
 static void debugPrintSpeedRunQueuePreview(const char* tag) {
@@ -1142,6 +1171,10 @@ static void resetCommonModeState() {
   runStartSnapMode = ROBOT_MODE_IDLE;
   speedRunPreAlignStage = SPEEDRUN_PREALIGN_NONE;
   speedRunPreAlignHasSideSnap = false;
+  postTurnWallSettlePending = false;
+  postTurnWallSettleUntilMs = 0;
+  postTurnWallStableCount = 0;
+  postTurnWallLastSignature = 0xFF;
   motorBothFlipTestEnabled = false;
   centerTrackTestMode = CENTER_TEST_OFF;
   centerTrackTestLastCorrection = 0.0f;
@@ -1179,6 +1212,10 @@ static void updateOtaSafeMode() {
     runStartSnapPending = false;
     deferPlannerAckUntilSnapCenter = false;
     runStartSnapMode = ROBOT_MODE_IDLE;
+    postTurnWallSettlePending = false;
+    postTurnWallSettleUntilMs = 0;
+    postTurnWallStableCount = 0;
+    postTurnWallLastSignature = 0xFF;
     clearPlannerQueue();
     explorer.setRunning(false);
     motionController.stop();
@@ -1235,6 +1272,15 @@ static void onExplorerWebCommand(const String& cmd) {
   }
   if (cmd == "clearmaze") {
     clearMazeMemoryOnly();
+    return;
+  }
+  if (cmd == "srun 1" || cmd == "srun1") {
+    if (!robotState.speedRunReady) {
+      debugPrintln("[SPEEDRUN] not ready, explore until shortest path is known");
+      return;
+    }
+    beginSpeedRun(1);
+    return;
   }
 }
 
@@ -1295,7 +1341,8 @@ static void beginSpeedRun(uint8_t phase) {
   speedRunPreAlignHasSideSnap = false;
   explorer.setHardwareMode(true);
   explorer.setStart(robotState.pose.cellX, robotState.pose.cellY, headingDir());
-  applyCurrentPoseAsHomeRect();
+  explorer.setHomeRect(AppConfig::Maze::HOME_X0, AppConfig::Maze::HOME_Y0,
+                       AppConfig::Maze::HOME_W, AppConfig::Maze::HOME_H);
   applyRuntimeGoalRect();
   explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
   explorer.setRunning(false);
@@ -1304,7 +1351,7 @@ static void beginSpeedRun(uint8_t phase) {
   updateRobotLed();
   debugPrintln("[MODE] SPEED RUN " + String((int)phase));
   if (phase == 1) {
-    debugPrintln("[SPEEDRUN] phase 1 is the baseline shortest-path run");
+    debugPrintln("[SPEEDRUN] phase 1 is round-trip shortest-path run (home->goal->home)");
   } else if (phase == 2) {
     debugPrintln("[SPEEDRUN] phase 2 is the one-way shortest-path run with the dedicated motion profile");
   } else {
@@ -1542,6 +1589,7 @@ static bool startNextQueuedAction() {
 
   plannerQueueItemInFlight = true;
   plannerQueueInFlightItem = item;
+  queueTrace("queue-start");
   if (AppConfig::Explorer::QUEUE_DEBUG_PRINT) {
     const uint16_t done = (plannerQueueTotalBuilt >= plannerQueueCount) ? (plannerQueueTotalBuilt - plannerQueueCount) : 0;
     debugPrintln("[QUEUE] start " + String(queueItemName(item.primitive)) +
@@ -1579,45 +1627,36 @@ static void advancePoseForFinishedPrimitive(MotionPrimitiveType primitive) {
   robotState.pose.turnProgressDeg = 0.0f;
 }
 
-static bool handleReachedGoal(bool& skipPostMotionHold) {
+static bool handleReachedGoal() {
+  queueTrace("goal-handle-enter");
   const bool atOriginalGoal = explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY);
   const bool atOriginalStart = explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY);
   if (atOriginalGoal || atOriginalStart) {
     stopLapTimer(true);
   }
   if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
-    if (robotState.speedRunPhase == 1 &&
-        atOriginalGoal &&
-        !atOriginalStart) {
-      startLapTimer("GH");
-      explorer.advanceTargetAfterReach();
-      explorer.setRunning(false);
-      if (!motionController.turn180()) {
-        enterFaultMode("failed to start speedrun goal->home turn180");
-        return false;
-      }
-      speedRunHomePrepStage = SPEEDRUN_HOME_PREP_AFTER_TURN;
-      debugMotionEvent("[MOTION START]", MOTION_TURN_180, motionController.status(),
-                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                       robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                       "source=speedrun-goal-home-prep");
-      debugPrintln("[SPEEDRUN] reached goal, turn180 before home leg");
-      if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
+    if (robotState.speedRunPhase == 1) {
+      if (atOriginalGoal && !atOriginalStart) {
+        debugPrintln("[SPEEDRUN] reached goal, swap target to home");
+        if (activeForwardActionCellsRequested > activeForwardActionCellsCommitted) {
+          activeForwardActionCellsRequested = activeForwardActionCellsCommitted;
+          if (motionController.primitive() == MOTION_MOVE_MULTI_CELL &&
+              activeForwardActionCellsRequested > 0) {
+            motionController.limitMoveCellTargetCount(activeForwardActionCellsRequested);
+          }
+        }
+        explorer.advanceTargetAfterReach();
+        explorer.setRunning(true);
         clearPlannerQueue();
         speedRunQueueNeedsBuild = true;
+        motionController.clearCompletionState();
+        robotState.goalReached = false;
+        updateRobotLed();
+        startLapTimer("GH");
+        queueTrace("goal-swap-home");
+        return true;
       }
-      robotState.goalReached = false;
-      robotState.speedRunReady = true;
-      skipPostMotionHold = true;
-      updateRobotLed();
-      clearForwardActionTracking();
-      motionController.clearCompletionState();
-      return false;
-    }
-    if (robotState.speedRunPhase == 1 && atOriginalStart) {
-      explorer.advanceTargetAfterReach();
-    }
-    if (robotState.speedRunPhase == 1) {
+      debugPrintln("[SPEEDRUN] reached home, speedrun finished");
       serialOutputTemporarilyMuted = false;
     } else if (usesSpeedRun2Profile(robotState.speedRunPhase)) {
       debugPrintln("[SPEEDRUN] reached goal, finish one-way run");
@@ -1672,7 +1711,6 @@ static bool handleReachedGoal(bool& skipPostMotionHold) {
 
     explorer.setRunning(true);
     robotState.goalReached = false;
-    skipPostMotionHold = true;
     updateRobotLed();
     debugPrintln("[EXPLORE] target toggled, continue exploring");
   }
@@ -1713,9 +1751,11 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
 
   if (!crossedBoundary) return false;
 
+  queueTrace("cell-cross-before");
   advancePoseForwardOneCell();
   activeForwardActionCellsCommitted++;
   updateRobotState();
+  queueTrace("cell-cross-after");
   if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
       usesSpeedRun2Profile(robotState.speedRunPhase)) {
     motionController.latchStraightTrackMode(robotState.walls);
@@ -1739,7 +1779,9 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
     if (queueModeEnabledForCurrentMode()) {
       explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
       if (explorer.atGoal()) {
-        explorer.advanceTargetAfterReach();
+        if (robotState.mode == ROBOT_MODE_EXPLORE) {
+          explorer.advanceTargetAfterReach();
+        }
         reachedGoal = true;
       }
     } else {
@@ -1751,6 +1793,9 @@ static bool commitForwardActionCell(bool allowFrontStopCompletion, bool& stepBud
   } else {
     explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
     reachedGoal = explorer.atGoal();
+    if (reachedGoal) {
+      queueTrace("goal-detected-speedrun");
+    }
   }
 
   if (robotState.mode == ROBOT_MODE_EXPLORE && exploreStepBudget > 0) {
@@ -1780,7 +1825,6 @@ static void handleMotionCompletion() {
     robotState.mode == ROBOT_MODE_SPEED_RUN &&
     isContinuousSpeedRunPhase(robotState.speedRunPhase) &&
     speedRunPreAlignStage == SPEEDRUN_PREALIGN_NONE;
-  bool skipPostMotionHold = false;
   bool stepBudgetReached = false;
 
   if (status == MOTION_COMPLETED) {
@@ -1805,7 +1849,10 @@ static void handleMotionCompletion() {
       }
     } else if (queueModeEnabledForCurrentMode() &&
                explorer.isRunning() &&
-               primitive != MOTION_SNAP_CENTER) {
+               primitive != MOTION_SNAP_CENTER &&
+               !(robotState.mode == ROBOT_MODE_SPEED_RUN &&
+                 robotState.speedRunPhase == 1 &&
+                 speedRunQueueNeedsBuild)) {
       clearPlannerQueue();
       enterFaultMode("queued completion without inflight item");
       return;
@@ -1820,7 +1867,11 @@ static void handleMotionCompletion() {
       updateRobotState();
       while (commitForwardActionCell(true, stepBudgetReached, reachedGoal)) {
         forwardAlreadyCommitted = true;
-        if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+        if (reachedGoal) {
+          if (!handleReachedGoal()) {
+            return;
+          }
+          // Goal/home transition handled; do not commit additional cells in this completion tick.
           return;
         }
         if (stepBudgetReached) {
@@ -1930,50 +1981,6 @@ static void handleMotionCompletion() {
       }
     }
 
-    if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
-        robotState.speedRunPhase == 1 &&
-        speedRunHomePrepStage != SPEEDRUN_HOME_PREP_NONE) {
-      if (speedRunHomePrepStage == SPEEDRUN_HOME_PREP_AFTER_TURN) {
-        updateRobotState();
-        if (shouldSnapCenterFromKnownBackWall()) {
-          if (!motionController.snapCenter()) {
-            enterFaultMode("failed to start speedrun goal->home snapcenter");
-            return;
-          }
-          speedRunHomePrepStage = SPEEDRUN_HOME_PREP_AFTER_SNAP;
-          debugMotionEvent("[MOTION START]", MOTION_SNAP_CENTER, motionController.status(),
-                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                           robotState.pose.cellX, robotState.pose.cellY, headingDir(),
-                           "source=speedrun-goal-home-snap");
-          debugPrintln("[SNAP] speedrun goal->home snapcenter");
-          return;
-        }
-
-        debugPrintln("[SNAP] skip speedrun goal->home snapcenter (need known back wall)");
-        speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
-        explorer.setRunning(true);
-        if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
-          clearPlannerQueue();
-          speedRunQueueNeedsBuild = true;
-        }
-        clearForwardActionTracking();
-        motionController.clearCompletionState();
-        return;
-      }
-
-      if (speedRunHomePrepStage == SPEEDRUN_HOME_PREP_AFTER_SNAP) {
-        speedRunHomePrepStage = SPEEDRUN_HOME_PREP_NONE;
-        explorer.setRunning(true);
-        if (AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1) {
-          clearPlannerQueue();
-          speedRunQueueNeedsBuild = true;
-        }
-        clearForwardActionTracking();
-        motionController.clearCompletionState();
-        return;
-      }
-    }
-
     if (isTurnPrimitive &&
         robotState.mode == ROBOT_MODE_EXPLORE &&
         queueModeEnabledForCurrentMode() &&
@@ -2024,6 +2031,7 @@ static void handleMotionCompletion() {
     }
 
     updateRobotState();
+    schedulePostTurnWallSettle(primitive);
     if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
         robotState.speedRunPhase == 1 &&
         AppConfig::Explorer::QUEUE_ENABLE_SPEEDRUN1 &&
@@ -2038,6 +2046,18 @@ static void handleMotionCompletion() {
                  !plannerQueueItemInFlight &&
                  primitive != MOTION_SNAP_CENTER) {
         explorer.syncPose(robotState.pose.cellX, robotState.pose.cellY, headingDir(), true);
+        const bool atOriginalGoalNow =
+          explorer.isInOriginalGoal(robotState.pose.cellX, robotState.pose.cellY);
+        const bool atOriginalStartNow =
+          explorer.isInOriginalStart(robotState.pose.cellX, robotState.pose.cellY);
+        // Speedrun1 round-trip rule:
+        // at goal, swap target to home and rebuild queue; do not snap before home-leg queue starts.
+        if (atOriginalGoalNow && !atOriginalStartNow) {
+        if (!handleReachedGoal()) {
+            return;
+          }
+          return;
+        }
         if (!explorer.atGoal()) {
           clearPlannerQueue();
           enterFaultMode("speedrun queue exhausted before goal");
@@ -2113,7 +2133,7 @@ static void handleMotionCompletion() {
       }
     }
 
-    if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+    if (reachedGoal && !handleReachedGoal()) {
       return;
     }
 
@@ -2124,7 +2144,6 @@ static void handleMotionCompletion() {
 
     if (AppConfig::Motion::POST_MOTION_HARD_STOP_HOLD_MS > 0 &&
         !continuousSpeedRun &&
-        !skipPostMotionHold &&
         motionController.status() == MOTION_COMPLETED &&
         robotState.mode != ROBOT_MODE_IDLE &&
         robotState.mode != ROBOT_MODE_FAULT) {
@@ -2166,10 +2185,13 @@ static void serviceActiveForwardAction() {
 
   bool stepBudgetReached = false;
   bool reachedGoal = false;
-  bool skipPostMotionHold = false;
 
   while (commitForwardActionCell(false, stepBudgetReached, reachedGoal)) {
-    if (reachedGoal && !handleReachedGoal(skipPostMotionHold)) {
+    if (reachedGoal) {
+      if (!handleReachedGoal()) {
+        return;
+      }
+      // Goal/home transition handled; do not commit additional cells in this service tick.
       return;
     }
     if (stepBudgetReached) {
@@ -2214,6 +2236,9 @@ static void applyWallsToExplorer() {
   if (queueSuppressWallRegistration()) {
     return;
   }
+  if (!isPostTurnWallSettleReady()) {
+    return;
+  }
   explorer.observeRelativeWalls(
     robotState.pose.cellX,
     robotState.pose.cellY,
@@ -2225,6 +2250,67 @@ static void applyWallsToExplorer() {
     robotState.walls.frontValid,
     robotState.walls.rightValid
   );
+}
+
+static void schedulePostTurnWallSettle(MotionPrimitiveType primitive) {
+  if (robotState.mode != ROBOT_MODE_EXPLORE) return;
+  if (queueModeEnabledForCurrentMode()) return;
+  const bool turnOrSnap =
+    primitive == MOTION_TURN_LEFT_90 ||
+    primitive == MOTION_TURN_RIGHT_90 ||
+    primitive == MOTION_TURN_180 ||
+    primitive == MOTION_SNAP_CENTER;
+  if (!turnOrSnap) return;
+
+  const uint32_t settleMs = AppConfig::Motion::POST_TURN_WALL_SETTLE_MS;
+  const uint8_t needSamples = max((uint8_t)1, AppConfig::Motion::POST_TURN_WALL_STABLE_SAMPLES);
+  if (settleMs == 0 && needSamples <= 1) return;
+
+  postTurnWallSettlePending = true;
+  postTurnWallSettleUntilMs = millis() + settleMs;
+  postTurnWallStableCount = 0;
+  postTurnWallLastSignature = 0xFF;
+  if (AppConfig::Debug::DEBUG_MOTION_FLOW) {
+    debugPrintln("[WALL] settle start ms=" + String((int)settleMs) +
+                 " samples=" + String((int)needSamples));
+  }
+}
+
+static bool isPostTurnWallSettleReady() {
+  if (!postTurnWallSettlePending) return true;
+
+  uint8_t validMask = 0;
+  if (robotState.walls.leftValid) validMask |= 0x1;
+  if (robotState.walls.frontValid) validMask |= 0x2;
+  if (robotState.walls.rightValid) validMask |= 0x4;
+
+  uint8_t wallMask = 0;
+  if (robotState.walls.leftWall) wallMask |= 0x1;
+  if (robotState.walls.frontWall) wallMask |= 0x2;
+  if (robotState.walls.rightWall) wallMask |= 0x4;
+
+  const uint8_t signature = (uint8_t)(wallMask | (validMask << 3));
+  if (validMask == 0) {
+    postTurnWallStableCount = 0;
+    postTurnWallLastSignature = 0xFF;
+  } else if (signature == postTurnWallLastSignature) {
+    if (postTurnWallStableCount < 255) postTurnWallStableCount++;
+  } else {
+    postTurnWallLastSignature = signature;
+    postTurnWallStableCount = 1;
+  }
+
+  const uint8_t needSamples = max((uint8_t)1, AppConfig::Motion::POST_TURN_WALL_STABLE_SAMPLES);
+  const bool sampleReady = postTurnWallStableCount >= needSamples;
+  const bool timeReady = (int32_t)(millis() - postTurnWallSettleUntilMs) >= 0;
+  if (!sampleReady || !timeReady) return false;
+
+  postTurnWallSettlePending = false;
+  if (AppConfig::Debug::DEBUG_MOTION_FLOW) {
+    debugPrintln("[WALL] settle done valid=" + String((int)validMask) +
+                 " walls=" + String((int)wallMask));
+  }
+  return true;
 }
 
 static bool shouldSnapCenterFromKnownBackWall() {
@@ -2541,8 +2627,7 @@ void plannerTaskBody(void* arg) {
             } else if (robotState.mode == ROBOT_MODE_SPEED_RUN &&
                        robotState.speedRunPhase == 1 &&
                        explorer.atGoal()) {
-              bool skip = false;
-              handleReachedGoal(skip);
+              handleReachedGoal();
             }
           }
         } else {
@@ -2550,6 +2635,11 @@ void plannerTaskBody(void* arg) {
           if (robotState.mode == ROBOT_MODE_SPEED_RUN) {
             act = explorer.requestNextActionNoAck();
           } else {
+            updateRobotState();
+            if (!queueModeEnabledForCurrentMode() && !isPostTurnWallSettleReady()) {
+              vTaskDelayUntil(&last, period);
+              continue;
+            }
             debugWallApplyEvent("[WALL APPLY]", "planner_idle");
             applyWallsToExplorer();
             debugWallApplyEvent("[WALL APPLIED]", "planner_idle");
@@ -2700,8 +2790,8 @@ static void printStartupSummary() {
     debugPrintln(String("[BOOT] TCP Console: waiting for WiFi on :") +
                  String(AppConfig::Wifi::DEBUG_TCP_PORT));
   }
-  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | idle | stop | brake | hardstop | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
-  debugPrintln("[SPEEDRUN] 1=baseline round trip | 2=one-way home->goal | 3-4 inherit previous until tuned");
+  debugPrintln("[CMD] help | explore [n] | speedrun [1-4] | qtrace on|off|status | idle | stop | brake | hardstop | restart | move [n] | back | left | right | uturn | testsnap | status | resetpose x y h | setgoal x y w h | clearmaze");
+  debugPrintln("[SPEEDRUN] 1=round-trip home->goal->home | 2=one-way home->goal (dedicated profile) | 3-4 inherit previous until tuned");
   debugPrintln("[CMD] led cycle|rotate|off|red|green|blue|yellow|cyan|magenta|white");
   debugPrintln("[CMD] maze");
   debugPrintln("[CMD] test | test off | test loop status|battery|sensors|sensorsraw|encoders|maze|off");
@@ -2851,6 +2941,23 @@ static void handleSerialCommand(const String& rawLine) {
       phase = (uint8_t)parsed;
     }
     beginSpeedRun(phase);
+    return;
+  }
+  if (line == "qtrace" || line == "qtrace status") {
+    debugPrintln(String("[CMD] qtrace=") + (queueTraceEnabled ? "on" : "off"));
+    queueTrace("manual");
+    return;
+  }
+  if (line == "qtrace on") {
+    queueTraceEnabled = true;
+    debugPrintln("[CMD] qtrace on");
+    queueTrace("manual-on");
+    return;
+  }
+  if (line == "qtrace off") {
+    queueTrace("manual-off");
+    queueTraceEnabled = false;
+    debugPrintln("[CMD] qtrace off");
     return;
   }
   if (line == "idle") {

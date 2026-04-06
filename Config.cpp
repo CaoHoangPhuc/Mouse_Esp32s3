@@ -32,10 +32,10 @@ const uint8_t HOME_X0 = 0;
 const uint8_t HOME_Y0 = 0;
 const uint8_t HOME_W = 1;
 const uint8_t HOME_H = 1;
-const uint8_t GOAL_X0 = 4;
-const uint8_t GOAL_Y0 = 4;
-const uint8_t GOAL_W = 1;
-const uint8_t GOAL_H = 1;
+const uint8_t GOAL_X0 = 7;
+const uint8_t GOAL_Y0 = 7;
+const uint8_t GOAL_W = 2;
+const uint8_t GOAL_H = 2;
 }
 
 namespace Wifi {
@@ -65,6 +65,7 @@ const bool CENTER_PID_TRACE = false;
 const uint8_t CENTER_PID_TRACE_EVERY_N = 10;
 const bool MOTOR_PID_TRACE = false;
 const uint16_t MOTOR_PID_TRACE_EVERY_N = 100;
+const bool QUEUE_TRACE_DEFAULT = false;
 const bool ENABLE_LOOP_WATCHDOG = false;
 const uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
 const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
@@ -143,14 +144,14 @@ const float CELL_DISTANCE_MM = 180.0f;
 const float TURN_LEFT_90_MM = 115.0f;
 const float TURN_RIGHT_90_MM = 115.0f;
 const float TURN_180_MM = 235.0f;
-const float MOVE_SPEED_TPS = 500.0f;
+const float MOVE_SPEED_TPS = 600.0f;
 const float CORRIDOR_MOVE_SPEED_TPS = 700.0f;
 const float SHORT_FORWARD_DISTANCE_MM = 40.0f;
-const float SHORT_FORWARD_SPEED_TPS = 350.0f;
+const float SHORT_FORWARD_SPEED_TPS = 300.0f;
 const float REVERSE_DISTANCE_MM = 100.0f;
-const float REVERSE_SPEED_TPS = 350.0f;
+const float REVERSE_SPEED_TPS = 300.0f;
 const uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
-const float TURN_SPEED_TPS = 350.0f;
+const float TURN_SPEED_TPS = 300.0f;
 const float TURN_MIN_SPEED_TPS = 200.0f;
 const float TURN_SLOWDOWN_START_RATIO = 0.8f;
 const float CENTERING_GAIN = 1.0f;
@@ -173,9 +174,9 @@ const float CENTER_RAW_TAU_SEC = 0.07f;
 const float FRONT_STOP_MM = 110.0f;
 const float CORRIDOR_FRONT_STOP_MM = 130.0f;
 const float DISTANCE_APPROACH_START_RATIO = 0.80f;
-const float DISTANCE_APPROACH_MIN_SPEED_TPS = 350.0f;
+const float DISTANCE_APPROACH_MIN_SPEED_TPS = 300.0f;
 const float FRONT_APPROACH_START_FACTOR = 1.4f;
-const float FRONT_APPROACH_MIN_SPEED_TPS = 350.0f;
+const float FRONT_APPROACH_MIN_SPEED_TPS = 300.0f;
 const uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
 const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
 const uint32_t STALL_TIMEOUT_MS = 1200;
@@ -189,6 +190,8 @@ const float LEFT_MM_PER_TICK = 0.53f;
 const float RIGHT_MM_PER_TICK = 0.53f;
 const bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
 const uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
+const uint32_t POST_TURN_WALL_SETTLE_MS = 45;
+const uint8_t POST_TURN_WALL_STABLE_SAMPLES = 2;
 }
 
 namespace Explorer {
@@ -203,8 +206,8 @@ const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
 const bool QUEUE_ENABLE_EXPLORE = false;
 const bool QUEUE_ENABLE_SPEEDRUN1 = true;
 const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE = true;
-const uint16_t QUEUE_CAPACITY = 128;
-const bool QUEUE_DEBUG_PRINT = true;
+const uint16_t QUEUE_CAPACITY = 250;
+const bool QUEUE_DEBUG_PRINT = false;
 }
 
 namespace SpeedRun2 {

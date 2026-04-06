@@ -47,6 +47,7 @@ static const char* kHtml PROGMEM = R"HTML(
       <button onclick="cmd('pause')">Pause</button>
       <button onclick="cmd('reset')">Reset</button>
       <button onclick="hwcmd('clearmaze')">Clear Maze</button>
+      <button onclick="hwcmd('srun 1')">SRun1</button>
 
       <span class="pill warn">
         AutoACK(sim)

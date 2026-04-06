@@ -322,6 +322,10 @@ extern const bool AUTO_PRINT_MAZE_AFTER_SENSE;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
 extern const uint32_t POST_MOTION_HARD_STOP_HOLD_MS;
+// Extra guard after a turn/snap before explore registers walls.
+// Helps avoid transient TOF states right after heading changes.
+extern const uint32_t POST_TURN_WALL_SETTLE_MS;
+extern const uint8_t POST_TURN_WALL_STABLE_SAMPLES;
 }
 
 namespace Explorer {
@@ -399,6 +403,8 @@ namespace Debug {
   extern const bool MOTOR_PID_TRACE;
   // Print every N motor updates (1 = every update).
   extern const uint16_t MOTOR_PID_TRACE_EVERY_N;
+  // Queue runtime trace default (can still be toggled at runtime by `qtrace on/off`).
+  extern const bool QUEUE_TRACE_DEFAULT;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
   extern const bool ENABLE_LOOP_WATCHDOG;
