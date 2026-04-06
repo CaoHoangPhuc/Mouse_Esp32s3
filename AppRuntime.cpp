@@ -1665,6 +1665,8 @@ static bool startRunSnapSequence(const char* label) {
 }
 
 void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
+  constexpr BaseType_t kCoreRealtime = 1;
+  constexpr BaseType_t kCoreApp = 0;
   ledController.begin();
   ledController.setState(LedController::State::RED);
   Serial.begin(921600);
@@ -1696,7 +1698,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   wifiCfg.serviceDelayMs = AppConfig::Wifi::SERVICE_DELAY_MS;
   wifiCfg.wifiConnectTimeoutMs = AppConfig::Wifi::CONNECT_TIMEOUT_MS;
   wifiCfg.wifiReconnectIntervalMs = AppConfig::Wifi::RECONNECT_INTERVAL_MS;
-  wifiCfg.uploadCore = (wifiCfg.wifiCore == 0) ? 1 : 0;
+  wifiCfg.uploadCore = wifiCfg.wifiCore;
   wifiCfg.uploadTaskPrio = wifiCfg.wifiTaskPrio + 1;
   wifiCfg.uploadTaskStack = wifiCfg.wifiTaskStack;
   dbg.setLedCommandHandler(onWebLedCommand);
@@ -1776,12 +1778,12 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
   updateRobotLed();
   printStartupSummary();
 
-  xTaskCreatePinnedToCore(motorTask,     "motor",     4096, nullptr, 3, &motorTaskHandle,     0);
-  xTaskCreatePinnedToCore(tofTask,       "tof",       4096, nullptr, 2, &tofTaskHandle,       0);
-  xTaskCreatePinnedToCore(plannerTaskFn, "planner",   4096, nullptr, 2, &plannerTaskHandle,   0);
-  xTaskCreatePinnedToCore(explorerTask,  "explorer",  8192, nullptr, 3, &explorerTaskHandle,  1);
-  xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 1, &userTaskHandle,      1);
-  xTaskCreatePinnedToCore(telemetryTask, "telemetry", 4096, nullptr, 0, &telemetryTaskHandle, 1);
+  xTaskCreatePinnedToCore(motorTask,     "motor",     4096, nullptr, 3, &motorTaskHandle,     kCoreRealtime);
+  xTaskCreatePinnedToCore(tofTask,       "tof",       4096, nullptr, 2, &tofTaskHandle,       kCoreRealtime);
+  xTaskCreatePinnedToCore(plannerTaskFn, "planner",   4096, nullptr, 2, &plannerTaskHandle,   kCoreApp);
+  xTaskCreatePinnedToCore(explorerTask,  "explorer",  8192, nullptr, 3, &explorerTaskHandle,  kCoreApp);
+  xTaskCreatePinnedToCore(userTaskFn,    "user",      6144, nullptr, 1, &userTaskHandle,      kCoreApp);
+  xTaskCreatePinnedToCore(telemetryTask, "telemetry", 4096, nullptr, 0, &telemetryTaskHandle, kCoreApp);
 
   enterIdleMode("ready");
   updateRobotLed();
