@@ -112,6 +112,49 @@ Release note:
 - [WiFiOtaWebSerial.h](WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
 - [WiFiOtaWebSerial.cpp](WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
 
+## Wi-Fi Feature Surface
+
+With Wi-Fi enabled, this project already provides:
+
+- HTTP control page for command input and runtime visibility
+- WebSocket stream for live maze/state synchronization
+- Telnet-style TCP debug console
+- Arduino OTA and browser-based OTA upload path
+- mDNS service discovery (`<hostname>.local`)
+
+High-value Wi-Fi features that can be added incrementally:
+
+1. REST API for state/config (`/api/state`, `/api/config`, `/api/motion`)
+2. Live dashboard plotting (TPS, PID terms, TOF distances, battery)
+3. Structured log streaming endpoint (machine-friendly JSON lines)
+4. Remote tuning profile save/load and compare
+5. Remote queue/mission submit API for scripted test runs
+6. Run record/replay tooling for tuning and regression checks
+7. Web calibration flows (TOF calibration, mm-per-tick, PID assist)
+8. Metrics endpoint for external monitoring
+9. Access control (viewer/operator/admin) and command authorization
+10. Remote safety controls (heartbeat + kill-switch)
+
+Design note:
+- Keep Wi-Fi callbacks lightweight and move heavy work into normal app tasks.
+- Realtime motor/TOF behavior should stay deterministic even when network traffic is active.
+
+## BLE Options (Optional / Future)
+
+BLE is not enabled in the current firmware, but can be added for short-range control and telemetry.
+
+Useful BLE feature ideas:
+
+1. BLE GATT telemetry service (battery, pose, walls, mode)
+2. BLE command/control service (start/stop/explore/speedrun)
+3. BLE tuning service for selected runtime parameters
+4. BLE provisioning (set Wi-Fi credentials from phone app)
+5. BLE fallback control path when Wi-Fi is unavailable
+6. BLE notifications for fault/state change events
+
+Recommendation:
+- Treat BLE as a secondary control channel; keep motion safety and planner authority in the same runtime core logic used by serial/Wi-Fi commands.
+
 ## Runtime Flow
 
 1. `setup()` in the `.ino` forwards to `MainApp::setupApp(...)`.

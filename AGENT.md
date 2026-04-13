@@ -11,6 +11,11 @@ This repository is an ESP32-S3 micromouse project that is being built in layers:
 
 When changing this code, prefer reliability and observability over aggressive optimization.
 
+This repository is also evolving into an education-friendly robotics platform:
+- teachable architecture over clever shortcuts
+- reusable modules over one-off logic
+- clear interfaces and documentation so students can learn and extend safely
+
 ## Coding Priorities
 
 - Do not break hardware safety for convenience.
@@ -21,6 +26,38 @@ When changing this code, prefer reliability and observability over aggressive op
   - pose updates only after motion completion
 - Treat the web explorer as a debug instrument, not the source of physical truth.
 - Prefer simple discrete-cell behaviors before adding faster multi-cell behaviors.
+- Keep module APIs stable when possible; if a contract changes, update docs and call sites together.
+- Prefer composable helpers and config-driven behavior so features can be reused in labs/demos.
+
+## Education Platform Direction
+
+We are developing this codebase as a reusable framework for learning embedded robotics.
+
+### Framework goals
+
+- Keep a clean separation between:
+  - hardware drivers
+  - control/motion primitives
+  - planner logic
+  - runtime orchestration and UI/debug
+- Make each layer independently testable and understandable.
+- Avoid hidden coupling between modules.
+
+### Reusability rules
+
+- Add new features behind existing module boundaries first; avoid bypassing `AppRuntime` orchestration.
+- Put tunables and hardware variants in `Config.h/.cpp`, not scattered constants.
+- Prefer small, explicit data contracts (`struct`/enums) over implicit side effects.
+- Keep fallback paths for teaching and bring-up (simple mode should remain available).
+
+### Documentation-first expectation
+
+- For each non-trivial feature, include:
+  - what it is
+  - where it lives
+  - how to tune/use it
+  - failure/safety behavior
+- When behavior changes, update `README.md`, `SKILL.md`, and `TODO.md` in the same change.
 
 ## Important Files
 

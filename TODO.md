@@ -15,6 +15,16 @@
 - Confirm the battery ADC pin is correct for the real board.
 - Confirm the current Wi-Fi credentials strategy is acceptable for development.
 
+## ESP32-S3 Platform Audit
+
+- Document current in-use ESP32-S3 features in README (`gptimer`, dual-core tasks, LEDC PWM, GPIO encoder ISR, I2C TOF, Wi-Fi/OTA/Web, mDNS, SPIFFS, ADC).
+- Add a security-state check step (`espefuse summary`) to bring-up docs before any erase/update workflow.
+- Define a secure update path if secure boot / flash encryption is enabled (signed/encrypted image flow).
+- Evaluate moving encoder counting from GPIO ISR to `PCNT` for high-speed robustness.
+- Add a crash diagnostics checklist (boot reason + panic/exception capture + fault context print).
+- Define per-task watchdog policy (TWDT coverage and expected recovery behavior).
+- Evaluate NVS/Preferences for persistent tuning/calibration values (keep SPIFFS for maze map only).
+
 ## Hardware Bring-Up
 
 - Measure battery raw ADC at low and full pack voltage.

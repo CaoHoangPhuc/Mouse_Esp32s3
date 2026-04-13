@@ -2514,7 +2514,7 @@ void setupApp(TaskFunction_t userTaskFn, TaskFunction_t plannerTaskFn) {
 }
 
 void loopApp() {
-  vTaskDelay(1);
+  vTaskDelay(portMAX_DELAY);
 }
 
 void userTaskBody(void* arg) {
