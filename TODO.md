@@ -2,8 +2,8 @@
 
 ## Immediate
 
-- Define `speedrun phase 2` on top of the stable `speedrun 1` baseline.
-- Prototype the first single-flow snake move behavior for phase 2 while keeping `speedrun 1` as the fallback path.
+- Tune the dedicated `speedrun 2` profile on top of the stable `speedrun 1` baseline.
+- Prototype the first single-flow snake/corridor behavior for `speedrun 2` while keeping `speedrun 1` as the fallback path.
 
 - Compile the project against the intended ESP32-S3 board and fix any board/core compile issues.
 - Verify all new source files are included by the Arduino build.
@@ -33,7 +33,7 @@
 - Verify right motor direction matches commanded forward motion.
 - Verify encoder sign and tick counts for both motors.
 - Tune `mmPerTick` from measured travel distance.
-- Verify the `47k / 18k` battery divider reading matches the expected ADC range.
+- Verify the configured `56k / 18k` battery divider reading matches the expected ADC range.
 
 ## Motion Tuning
 

@@ -23,7 +23,7 @@ extern const char* PROFILE_NAME;
 
 namespace Battery {
 // Battery ADC input pin.
-// Affects: Battery.cpp sampling and motion safety gating.
+// Affects: Battery.cpp sampling and battery telemetry readiness.
 extern const uint8_t ADC_PIN;
 
 // Physical divider currently expected:
@@ -42,10 +42,10 @@ extern const uint16_t RAW_HIGH;
 extern const float VOLTAGE_LOW;
 extern const float VOLTAGE_HIGH;
 
-// Runtime battery safety thresholds.
-// WARNING: robot may still operate but should be watched closely.
-// CRITICAL: motion is blocked/aborted for safety.
-// Affects: readyForMotion, fault behavior, primitive aborts.
+// Runtime battery telemetry thresholds.
+// WARNING and CRITICAL are currently reported to telemetry/status output.
+// They do not automatically block or abort motion in the current runtime.
+// Affects: reported battery state and status/debug output.
 extern const float WARNING_VOLTAGE;
 extern const float CRITICAL_VOLTAGE;
 }

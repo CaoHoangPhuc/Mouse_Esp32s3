@@ -9,7 +9,7 @@ Current project version: `0.4.1`
 This repository now includes the first integrated hardware-oriented control stack:
 - dual DC motor control with encoder-based speed PID
 - multi-VL53L0X wall sensing
-- battery monitoring with safety states
+- battery monitoring with warning/critical telemetry states
 - primitive motion executor for `move`, `back`, `turn 90 deg`, and `turn 180 deg`
 - floodfill maze state and web visualizer
 - floodfill maze web sync over WebSocket instead of browser polling
@@ -41,8 +41,8 @@ This repository now includes the first integrated hardware-oriented control stac
 - interrupted browser uploads now abort cleanly and force the LED `red` on failure/abort paths
 - long straight `move N` actions that are known to end at a wall now finish on the front-wall stop distance instead of stopping only on encoder distance
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
-- the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
-- the Wi-Fi service loop now runs with a `5 ms` cadence during normal service to balance OTA/web responsiveness and system stability
+- the dedicated Wi-Fi/OTA service task is currently pinned to core `0` by config
+- the Wi-Fi service loop currently runs with a `50 ms` cadence during normal service
 - Wi-Fi reconnect recovery now escalates from normal `WiFi.reconnect()` attempts to a full STA restart and fresh `WiFi.begin(...)` after a longer disconnect, so the robot can recover from wedged network states without a power cycle
 - Wi-Fi reconnect attempts now run only while the robot is idle; active explore/speedrun/test motion leaves the link alone so reconnect churn does not destabilize motion
 - manual LED commands now also support `yellow` and `magenta`
@@ -52,7 +52,7 @@ This repository now includes the first integrated hardware-oriented control stac
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
-- `speedrun [1-4]` is phase-aware: `speedrun 1` and `speedrun 2` are both one-way home-to-goal profiles, and phases `3-4` inherit the previous phase until tuned
+- `speedrun [1-4]` is phase-aware: `speedrun 1` is the round-trip home->goal->home profile, `speedrun 2` is the one-way home->goal profile, and phases `3-4` inherit the previous phase until tuned
 - `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
 - `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
 - `speedrun` still means `speedrun 1`, and `speedrun 2` runs the known shortest path one-way from home to goal with its dedicated profile selection
@@ -66,11 +66,11 @@ This repository now includes the first integrated hardware-oriented control stac
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
 - the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
-- global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
+- global Serial output remains configurable with `AppConfig::Debug::ENABLE_SERIAL_OUTPUT`, while `speedrun 1` still temporarily mutes Serial only during the active run when Serial output is enabled
 - floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
 - startup LED behavior now shows `red` during setup, then on ready idle shows `white` if shortest-path-ready is loaded, otherwise `off`
 - low-pass smoothing constants for TOF distance updates, motor TPS estimate, and center-track blending are now configurable in `Config.h`
-- HTTP firmware upload now uses a dedicated upload service task on the opposite core during active chunk transfer to improve upload stability under load
+- HTTP firmware upload now uses a dedicated upload service task during active chunk transfer to improve upload stability under load
 - HTTP firmware upload now pre-erases the OTA target partition before transfer and sets TCP no-delay on upload requests to improve throughput consistency
 - latched straight-track mode is now enabled only for `speedrun 2`; `explore` and `speedrun 1` use live wall availability each cycle for safer unknown-cell transitions
 - front-stop threshold now uses `FRONT_STOP_MM` when effective move target is 1 cell, and `CORRIDOR_FRONT_STOP_MM` only for true multi-cell corridor runs
@@ -167,7 +167,7 @@ Recommendation:
 8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `speedrun 1` uses the shortest known path directly as a one-way home-to-goal run: no wall-map updates and no floodfill ACK handshake in the motion loop.
+11. `speedrun 1` uses the shortest known path as a round-trip run: home -> goal -> home, with no wall-map updates and no floodfill ACK handshake in the motion loop.
 12. `speedrun 2` runs one-way from home to goal with its own motion profile and continuous shortest-path execution, so the runtime syncs pose and dispatches the next action directly instead of using the explore ACK loop.
 13. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
 14. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
@@ -442,7 +442,7 @@ Current front-sensor behavior:
 - far/open and error values follow `AppConfig::Tof::DIST_FAR_MM` and `AppConfig::Tof::DIST_ERROR_MM`
 
 Battery divider note:
-- current comments assume a `47k / 18k` divider into `GPIO 3`
+- the current configured divider is `56k / 18k` into `GPIO 3`
 - battery voltage now uses the measured ADC node voltage plus the configured divider ratio as the primary pack-voltage estimate
 - on ESP32, battery ADC debug now uses the calibrated millivolt reading path instead of a simple `raw / 4095 * 3.3` approximation
 - the current tuned divider constant uses an effective top resistor value of `56k` with `18k` bottom to better match the measured pack voltage on this board
