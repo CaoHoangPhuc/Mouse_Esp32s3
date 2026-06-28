@@ -11,6 +11,17 @@ This repository is an ESP32-S3 micromouse project that is being built in layers:
 
 When changing this code, prefer reliability and observability over aggressive optimization.
 
+## Command Execution with RTK
+
+All shell commands executed in this repository should be prefixed with `rtk` (Rust Token Killer) for token-optimized CLI proxying.
+Examples:
+- `rtk git status`
+- `rtk make`
+- `rtk ./build.sh`
+- `rtk pytest`
+
+See `~/.codex/RTK.md` for full RTK usage instructions.
+
 ## Coding Priorities
 
 - Do not break hardware safety for convenience.

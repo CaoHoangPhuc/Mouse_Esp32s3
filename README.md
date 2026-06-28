@@ -208,6 +208,61 @@ Then build and upload like this:
 5. Click `Verify` first.
 6. Click `Upload`.
 
+## Arduino CLI Build / Upload
+
+For headless environments or automation, you can use `arduino-cli`.
+
+### 1. Installation & Setup
+```bash
+# Install arduino-cli (macOS)
+brew install arduino-cli
+
+# Initialize and configure ESP32 core
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+
+# Install required libraries
+arduino-cli lib install PCF8574
+arduino-cli lib install VL53L0X
+arduino-cli lib install "Adafruit NeoPixel"
+```
+
+Note: Use quotes for library names with spaces. You can also search for libraries with:
+```bash
+arduino-cli lib search NeoPixel
+```
+
+### 2. Compile & Upload
+
+**Important:** This project requires the `min_spiffs` partition scheme (~1.9MB app space). The build will fail or behave incorrectly without it.
+
+```bash
+# List boards to find your port
+arduino-cli board list
+
+# Compile for ESP32-S3 with minimal SPIFFS partition
+# -j 10 uses up to 10 parallel compile jobs
+arduino-cli compile -v -j 10 -b esp32:esp32:esp32s3 \
+  --build-property build.partitions=min_spiffs \
+  --build-property upload.maximum_size=1966080 \
+  Mouse_Esp32s3
+
+# Upload (replace port with your actual device)
+# The partition scheme must match the compile step
+arduino-cli upload -v -p /dev/cu.usbmodem101 \
+  -b esp32:esp32:esp32s3 \
+  --build-property build.partitions=min_spiffs \
+  --build-property upload.maximum_size=1966080 \
+  Mouse_Esp32s3
+```
+
+**Notes:**
+- **Partition scheme:** The `min_spiffs` partition gives 1,966,080 bytes (~1.9MB) for the application. Without this property, the default partition only allows ~1.3MB and the build may fail.
+- **Parallel compilation:** Use `-j 10` to allow up to 10 parallel compile jobs.
+- **Board FQBN:** `esp32:esp32:esp32s3` is for the generic ESP32-S3 Dev Module. Adjust for your specific variant (e.g., `seeed:XIAO_ESP32S3:XIAO_ESP32S3`).
+
 Bring-up notes:
 
 - if the board does not enumerate correctly, re-check that `USB CDC On Boot` is enabled
