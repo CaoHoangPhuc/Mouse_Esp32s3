@@ -55,18 +55,18 @@ const uint32_t RECONNECT_INTERVAL_MS = 10000;
 }
 
 namespace Debug {
-const bool ENABLE_SERIAL_OUTPUT = false;
+const bool ENABLE_SERIAL_OUTPUT = true;
 const bool PRINT_STATUS_TPS = false;
-const bool DEBUG_MOTION_FLOW = false;
+const bool DEBUG_MOTION_FLOW = true;
 const bool DEBUG_MOTION_EVENT = DEBUG_MOTION_FLOW;
-const bool DEBUG_MAZE_PRINT = false;
-const bool DEBUG_WALL_APPLY = false;
+const bool DEBUG_MAZE_PRINT = true;
+const bool DEBUG_WALL_APPLY = true;
 const bool CENTER_PID_TRACE = false;
 const uint8_t CENTER_PID_TRACE_EVERY_N = 10;
 const bool MOTOR_PID_TRACE = false;
 const uint16_t MOTOR_PID_TRACE_EVERY_N = 100;
 const bool QUEUE_TRACE_DEFAULT = false;
-const bool ENABLE_LOOP_WATCHDOG = false;
+const bool ENABLE_LOOP_WATCHDOG = true;
 const uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
 const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
 }
@@ -100,25 +100,9 @@ const float DIST_LPF_SAMPLE_WEIGHT = 1.0f - DIST_LPF_PREV_WEIGHT;
 }
 
 namespace Motors {
-const DcMotor::Pins RIGHT_PINS = {
-  .in1 = 10,
-  .in2 = 11,
-  .pwm = 7,
-  .encA = 12,
-  .encB = 13,
-  .invertDir = false,
-  .invertEnc = false
-};
+const DcMotor::Pins RIGHT_PINS(10, 11, 7, 12, 13, false, false);
 
-const DcMotor::Pins LEFT_PINS = {
-  .in1 = 5,
-  .in2 = 6,
-  .pwm = 4,
-  .encA = 1,
-  .encB = 2,
-  .invertDir = true,
-  .invertEnc = true
-};
+const DcMotor::Pins LEFT_PINS(5, 6, 4, 1, 2, true, true);
 
 const uint8_t LEFT_PWM_CHANNEL = 0;
 const uint8_t RIGHT_PWM_CHANNEL = 1;

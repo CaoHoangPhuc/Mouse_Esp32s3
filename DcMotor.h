@@ -14,6 +14,11 @@ public:
     uint8_t encB;
     bool invertDir = false;
     bool invertEnc = false; // flips tick direction
+    Pins() = default;
+    Pins(uint8_t in1_, uint8_t in2_, uint8_t pwm_, uint8_t encA_, uint8_t encB_,
+          bool invertDir_ = false, bool invertEnc_ = false)
+      : in1(in1_), in2(in2_), pwm(pwm_), encA(encA_), encB(encB_),
+        invertDir(invertDir_), invertEnc(invertEnc_) {}
   };
 
   DcMotor();

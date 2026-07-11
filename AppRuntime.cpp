@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include "driver/gptimer.h"
+#include "esp_timer.h"
 
 #include "Battery.h"
 #include "Config.h"
@@ -87,8 +87,8 @@ static TaskHandle_t explorerTaskHandle = nullptr;
 static TaskHandle_t plannerTaskHandle = nullptr;
 static TaskHandle_t telemetryTaskHandle = nullptr;
 static TaskHandle_t userTaskHandle = nullptr;
-static gptimer_handle_t motorLoopTimer = nullptr;
-static gptimer_handle_t tofLoopTimer = nullptr;
+static esp_timer_handle_t motorLoopTimer = nullptr;
+static esp_timer_handle_t tofLoopTimer = nullptr;
 static bool motorLoopTimerActive = false;
 static bool tofLoopTimerActive = false;
 
@@ -182,10 +182,8 @@ static void stopLapTimer(bool record);
 static String explorerLapStateJson();
 static void resetLoopWatchdogState(struct LoopWatchdogState& state);
 static void serviceLoopWatchdog(struct LoopWatchdogState& state, uint32_t expectedMs);
-static bool onRealtimeLoopTimer(gptimer_handle_t timer,
-                                const gptimer_alarm_event_data_t* edata,
-                                void* user_ctx);
-static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
+static void onRealtimeLoopTimer(void* arg);
+static bool startRealtimeLoopTimer(esp_timer_handle_t* outTimer,
                                    TaskHandle_t targetTask,
                                    uint32_t periodMs,
                                    const char* tag);
@@ -249,6 +247,8 @@ struct LoopWatchdogState {
   TickType_t lastTick = 0;
   TickType_t lastWarnTick = 0;
   uint32_t warningCount = 0;
+  LoopWatchdogState() = default;
+  LoopWatchdogState(const char* name) : taskName(name) {}
 };
 static LoopWatchdogState motorLoopWatchdog{"motorTask"};
 static LoopWatchdogState tofLoopWatchdog{"tofTask"};
@@ -341,20 +341,14 @@ static void serviceLoopWatchdog(LoopWatchdogState& state, uint32_t expectedMs) {
               " count=" + String(state.warningCount));
 }
 
-static bool IRAM_ATTR onRealtimeLoopTimer(gptimer_handle_t timer,
-                                          const gptimer_alarm_event_data_t* edata,
-                                          void* user_ctx) {
-  (void)timer;
-  (void)edata;
-  TaskHandle_t task = static_cast<TaskHandle_t>(user_ctx);
-  BaseType_t woke = pdFALSE;
+static void onRealtimeLoopTimer(void* arg) {
+  TaskHandle_t task = static_cast<TaskHandle_t>(arg);
   if (task != nullptr) {
-    vTaskNotifyGiveFromISR(task, &woke);
+    xTaskNotifyGive(task);
   }
-  return woke == pdTRUE;
 }
 
-static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
+static bool startRealtimeLoopTimer(esp_timer_handle_t* outTimer,
                                    TaskHandle_t targetTask,
                                    uint32_t periodMs,
                                    const char* tag) {
@@ -363,43 +357,23 @@ static bool startRealtimeLoopTimer(gptimer_handle_t* outTimer,
   }
 
   const uint64_t periodUs = (uint64_t)periodMs * 1000ULL;
-  gptimer_config_t timerCfg = {};
-  timerCfg.clk_src = GPTIMER_CLK_SRC_DEFAULT;
-  timerCfg.direction = GPTIMER_COUNT_UP;
-  timerCfg.resolution_hz = 1000000;  // 1 tick = 1us
+  esp_timer_create_args_t timerCfg = {};
+  timerCfg.callback = onRealtimeLoopTimer;
+  timerCfg.arg = (void*)targetTask;
+  timerCfg.name = tag;
+  timerCfg.dispatch_method = ESP_TIMER_TASK;
 
-  gptimer_handle_t timer = nullptr;
-  esp_err_t err = gptimer_new_timer(&timerCfg, &timer);
+  esp_timer_handle_t timer = nullptr;
+  esp_err_t err = esp_timer_create(&timerCfg, &timer);
   if (err != ESP_OK || timer == nullptr) {
     debugPrintln(String("[RT] timer create failed: ") + tag + " err=" + String((int)err));
     return false;
   }
 
-  gptimer_event_callbacks_t cbs = {};
-  cbs.on_alarm = onRealtimeLoopTimer;
-  err = gptimer_register_event_callbacks(timer, &cbs, targetTask);
-  if (err != ESP_OK) {
-    debugPrintln(String("[RT] timer callback failed: ") + tag + " err=" + String((int)err));
-    gptimer_del_timer(timer);
-    return false;
-  }
-
-  gptimer_alarm_config_t alarmCfg = {};
-  alarmCfg.reload_count = 0;
-  alarmCfg.alarm_count = periodUs;
-  alarmCfg.flags.auto_reload_on_alarm = true;
-  err = gptimer_set_alarm_action(timer, &alarmCfg);
-  if (err != ESP_OK) {
-    debugPrintln(String("[RT] timer alarm failed: ") + tag + " err=" + String((int)err));
-    gptimer_del_timer(timer);
-    return false;
-  }
-
-  err = gptimer_enable(timer);
-  if (err == ESP_OK) err = gptimer_start(timer);
+  err = esp_timer_start_periodic(timer, periodUs);
   if (err != ESP_OK) {
     debugPrintln(String("[RT] timer start failed: ") + tag + " err=" + String((int)err));
-    gptimer_del_timer(timer);
+    esp_timer_delete(timer);
     return false;
   }
 
@@ -693,7 +667,7 @@ static void closeDebugConsole(const String& reason) {
   if (reason.length() > 0) {
     debugClient.println(reason);
   }
-  debugClient.clear();
+  // debugClient.clear(); // not available on WiFiClient in this core
   vTaskDelay(pdMS_TO_TICKS(20));
   debugClient.stop();
 }
