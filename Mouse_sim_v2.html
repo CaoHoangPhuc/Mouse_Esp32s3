@@ -335,6 +335,19 @@
       opacity: 0.32;
     }
 
+    .status-icon {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 1.05em;
+      line-height: 1;
+    }
+    .status-icon.optimized {
+      filter: hue-rotate(0deg);
+    }
+    .status-icon.not-optimized {
+      opacity: 0.85;
+    }
+
     .optimal-route.expanded-route {
       max-height: none;
       overflow: visible;
@@ -898,24 +911,20 @@
           </div>
           <div id="learnedRoutePanel" class="optimal-route expanded-route">
             <div class="route-detail" data-planner="ff" style="--route-color:#06b6d4">
-              <strong>Route FF:</strong>
-              <span id="learnedFfRouteText">Chưa xác định</span><br />
-              <small id="learnedFfCostText"></small>
+              <strong>FF</strong>
+              <span id="learnedFfStatus" class="status-icon not-optimized">❌</span>
             </div>
             <div class="route-detail" data-planner="ff2" style="--route-color:#a855f7">
-              <strong>Route FF2:</strong>
-              <span id="learnedFf2RouteText">Chưa xác định</span><br />
-              <small id="learnedFf2CostText"></small>
+              <strong>FF2</strong>
+              <span id="learnedFf2Status" class="status-icon not-optimized">❌</span>
             </div>
             <div class="route-detail" data-planner="dk" style="--route-color:#f97316">
-              <strong>Route DK:</strong>
-              <span id="learnedDkRouteText">Chưa xác định</span><br />
-              <small id="learnedDkCostText"></small>
+              <strong>DK</strong>
+              <span id="learnedDkStatus" class="status-icon not-optimized">❌</span>
             </div>
             <div class="route-detail" data-planner="dk2" style="--route-color:#ef4444">
-              <strong>Route DK2:</strong>
-              <span id="learnedDk2RouteText">Chưa xác định</span><br />
-              <small id="learnedDk2CostText"></small>
+              <strong>DK2</strong>
+              <span id="learnedDk2Status" class="status-icon not-optimized">❌</span>
             </div>
             <span id="optimalRouteText" hidden></span>
           </div>
@@ -1367,23 +1376,11 @@ const mouseApi = new HardwareMouse();</code></pre>
     const closeMouseApiDocsBtn = document.getElementById("closeMouseApiDocsBtn");
     const statusBox = document.getElementById("status");
     const optimalRouteText = document.getElementById("optimalRouteText");
-    const learnedRouteElements = {
-      ff: {
-        route: document.getElementById("learnedFfRouteText"),
-        cost: document.getElementById("learnedFfCostText")
-      },
-      ff2: {
-        route: document.getElementById("learnedFf2RouteText"),
-        cost: document.getElementById("learnedFf2CostText")
-      },
-      dk: {
-        route: document.getElementById("learnedDkRouteText"),
-        cost: document.getElementById("learnedDkCostText")
-      },
-      dk2: {
-        route: document.getElementById("learnedDk2RouteText"),
-        cost: document.getElementById("learnedDk2CostText")
-      }
+    const learnedStatusElements = {
+      ff: document.getElementById("learnedFfStatus"),
+      ff2: document.getElementById("learnedFf2Status"),
+      dk: document.getElementById("learnedDkStatus"),
+      dk2: document.getElementById("learnedDk2Status")
     };
     const truthMotionRouteText = document.getElementById("truthMotionRouteText");
     const truthMotionCostText = document.getElementById("truthMotionCostText");
@@ -6777,42 +6774,25 @@ const mouseApi = new HardwareMouse();</code></pre>
       ) < 0);
     }
 
-    function formatLearnedPlannerRoute(plannerKey, selected) {
-      if (plannerKey === "ff" || plannerKey === "ff2") {
-        return formatTruthFourWayPlan({
-          ...selected,
-          path: [getStartPosition(), ...selected.path]
-        }).text;
-      }
-      return compressTruthMotionPrimitives(
-        selected.plan.primitives
-      ).text;
-    }
-
     function updateLearnedRoutePanel() {
       for (const plannerKey of PLANNER_ORDER) {
-        const elements = learnedRouteElements[plannerKey];
+        const statusEl = learnedStatusElements[plannerKey];
         const display = getLearnedPlannerDisplay(plannerKey);
         if (!display) {
-          elements.route.textContent = "Chưa xác định";
-          elements.cost.textContent = "";
+          statusEl.textContent = "❌";
+          statusEl.className = "status-icon not-optimized";
           continue;
         }
         const isAlternative = plannerKey === "ff2" || plannerKey === "dk2";
         if (isAlternative && !learnedAlternativeIsBetter(
           plannerKey, display
         )) {
-          elements.route.textContent = plannerKey === "ff2"
-            ? "như FF" : "như DK";
-          elements.cost.textContent = "";
+          statusEl.textContent = "❌";
+          statusEl.className = "status-icon not-optimized";
           continue;
         }
-        elements.route.textContent = formatLearnedPlannerRoute(
-          plannerKey, display.selected
-        );
-        elements.cost.textContent = Number.isFinite(display.selected.cost)
-          ? `Tổng cost: ${display.selected.cost.toFixed(2)}`
-          : "Tổng cost: ∞";
+        statusEl.textContent = "✅";
+        statusEl.className = "status-icon optimized";
       }
     }
 
