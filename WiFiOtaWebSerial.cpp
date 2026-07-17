@@ -6,6 +6,10 @@
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <Update.h>
+#include <esp_err.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
+#include <esp_wifi.h>
 
 // Wrapper to keep WebServer out of header
 class WiFiOtaWebSerial::WebServerWrapper {
@@ -219,33 +223,19 @@ const form = document.getElementById('fwForm');
 const fileInput = document.getElementById('fwFile');
 const prog = document.getElementById('prog');
 const msg = document.getElementById('msg');
-const CHUNK_SIZE = 512 * 1024; 
+const CHUNK_SIZE = 64 * 1024; 
+const MAX_CHUNK_SIZE = 128 * 1024;
 const MIN_CHUNK_SIZE = 8192;
 const MAX_RETRIES = 5;
-const MAX_SESSION_RESTARTS = 2;
-const CHUNK_TIMEOUT_MS = 10000;
+const RETRY_BACKOFF_MS = 1000;
 const CHUNK_SUCCESS_PAUSE_MS = 1000;
-
-async function fetchWithTimeout(url, options, timeoutMs){
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      throw new Error('timeout');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const GROW_CHUNK_AFTER_SUCCESS = 4;
 
 async function postStart(totalSize){
-  const res = await fetchWithTimeout('/upload/start?size=' + totalSize, {
+  const res = await fetch('/upload/start?size=' + totalSize, {
     method: 'POST',
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
@@ -256,21 +246,21 @@ async function postChunk(file, offset, chunkSize){
   const chunk = file.slice(offset, end);
   const form = new FormData();
   form.append('chunk', chunk, file.name + '.part');
-  const res = await fetchWithTimeout('/upload/chunk?offset=' + offset, {
+  const res = await fetch('/upload/chunk?offset=' + offset, {
     method: 'POST',
     body: form,
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
 }
 
 async function postFinish(){
-  const res = await fetchWithTimeout('/upload/finish', {
+  const res = await fetch('/upload/finish', {
     method: 'POST',
     cache: 'no-store'
-  }, CHUNK_TIMEOUT_MS);
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
   return JSON.parse(text);
@@ -292,7 +282,7 @@ form.addEventListener('submit', async (ev) => {
     let info = await postStart(file.size);
     let offset = Number(info.nextOffset || 0);
     let chunkSize = CHUNK_SIZE;
-    let sessionRestarts = 0;
+    let successStreak = 0;
 
     while (offset < file.size) {
       let done = false;
@@ -303,28 +293,19 @@ form.addEventListener('submit', async (ev) => {
           offset = Number(info.nextOffset || 0);
           prog.value = Math.round((offset / file.size) * 100);
           msg.textContent = 'Uploading... ' + prog.value + '%';
+          successStreak++;
+          if (successStreak >= GROW_CHUNK_AFTER_SUCCESS && chunkSize < MAX_CHUNK_SIZE) {
+            chunkSize = Math.min(MAX_CHUNK_SIZE, chunkSize * 2);
+            successStreak = 0;
+          }
           await new Promise((resolve) => setTimeout(resolve, CHUNK_SUCCESS_PAUSE_MS));
           done = true;
           break;
         } catch (err) {
           lastErr = String(err);
-          const sessionLost =
-            lastErr.indexOf('no active upload session') >= 0 ||
-            lastErr.indexOf('restart upload') >= 0;
-          if (sessionLost) {
-            if (sessionRestarts >= MAX_SESSION_RESTARTS) {
-              throw new Error('upload session lost repeatedly; please retry from start');
-            }
-            sessionRestarts++;
-            msg.textContent = 'Upload session lost at offset ' + offset + '. Restarting session ' + sessionRestarts + '/' + MAX_SESSION_RESTARTS + '...';
-            info = await postStart(file.size);
-            offset = Number(info.nextOffset || 0);
-            prog.value = Math.round((offset / file.size) * 100);
-            done = true;
-            break;
-          }
+          successStreak = 0;
           msg.textContent = 'Chunk retry ' + attempt + '/' + MAX_RETRIES + ' at offset ' + offset + ' failed: ' + lastErr + ' (chunk=' + chunkSize + ')';
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
         }
       }
       if (!done) {
@@ -349,7 +330,9 @@ form.addEventListener('submit', async (ev) => {
 </html>
 )HTML";
 
-static constexpr uint32_t kUploadStallTimeoutMs = 15000;
+static constexpr uint32_t kUploadStallTimeoutMs = 10000;
+static constexpr bool kUploadPreEraseEnabled = true;
+static constexpr size_t kFlashSectorSize = 4096;
 
 WiFiOtaWebSerial::WiFiOtaWebSerial() {}
 
@@ -390,6 +373,10 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     vTaskDelete(wifiTask_);
     wifiTask_ = nullptr;
   }
+  if (uploadTask_) {
+    vTaskDelete(uploadTask_);
+    uploadTask_ = nullptr;
+  }
 
   BaseType_t ok = xTaskCreatePinnedToCore(
     &WiFiOtaWebSerial::wifiTaskThunk_,
@@ -407,6 +394,25 @@ bool WiFiOtaWebSerial::begin(const Config& cfg) {
     return false;
   }
 
+  if (cfg_.enableUploadWeb && uploadWeb_) {
+    BaseType_t uploadOk = xTaskCreatePinnedToCore(
+      &WiFiOtaWebSerial::uploadTaskThunk_,
+      "uploadTask",
+      cfg_.uploadTaskStack / sizeof(StackType_t),
+      this,
+      cfg_.uploadTaskPrio,
+      &uploadTask_,
+      cfg_.uploadCore
+    );
+    if (uploadOk != pdPASS) {
+      uploadTask_ = nullptr;
+      vTaskDelete(wifiTask_);
+      wifiTask_ = nullptr;
+      started_ = false;
+      return false;
+    }
+  }
+
   println(String("OTA Hostname: ") + cfg_.hostname);
   return true;
 }
@@ -415,6 +421,10 @@ void WiFiOtaWebSerial::end() {
   if (wifiTask_) {
     vTaskDelete(wifiTask_);
     wifiTask_ = nullptr;
+  }
+  if (uploadTask_) {
+    vTaskDelete(uploadTask_);
+    uploadTask_ = nullptr;
   }
   started_ = false;
   otaStarted_ = false;
@@ -442,6 +452,10 @@ void WiFiOtaWebSerial::loopNoService() {
 
 void WiFiOtaWebSerial::wifiTaskThunk_(void* arg) {
   static_cast<WiFiOtaWebSerial*>(arg)->wifiTaskLoop_();
+}
+
+void WiFiOtaWebSerial::uploadTaskThunk_(void* arg) {
+  static_cast<WiFiOtaWebSerial*>(arg)->uploadTaskLoop_();
 }
 
 void WiFiOtaWebSerial::wifiTaskLoop_() {
@@ -505,7 +519,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       if (otaInProgress) {
         // OTA priority mode
         if (otaStarted_) ArduinoOTA.handle();
-        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+          uploadWeb_->server.handleClient();
+        }
         serviceUploadSession_();
         // Optional: skip web server to reduce load
         // if (web_) web_->server.handleClient();
@@ -513,7 +529,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
         continue;
       }
       if (webUploadInProgress_) {
-        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+        if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+          uploadWeb_->server.handleClient();
+        }
         serviceUploadSession_();
         vTaskDelay(1);
         continue;
@@ -521,7 +539,9 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       // Normal mode
       if (otaStarted_) ArduinoOTA.handle();
       if (cfg_.enableWeb && web_ && webServerStarted_) web_->server.handleClient();
-      if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_) uploadWeb_->server.handleClient();
+      if (cfg_.enableUploadWeb && uploadWeb_ && uploadWebServerStarted_ && !uploadServerOwnedByUploadTask_()) {
+        uploadWeb_->server.handleClient();
+      }
       serviceUploadSession_();
       if (rebootPending_ && static_cast<int32_t>(millis() - rebootAtMs_) >= 0) {
         println("[WEB OTA] Rebooting now...");
@@ -533,6 +553,30 @@ void WiFiOtaWebSerial::wifiTaskLoop_() {
       vTaskDelay(pdMS_TO_TICKS(100));
     }
   }
+}
+
+void WiFiOtaWebSerial::uploadTaskLoop_() {
+  for (;;) {
+    if (!started_ || !cfg_.enableUploadWeb || !uploadWeb_ || !uploadWebServerStarted_) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (!uploadServerOwnedByUploadTask_()) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
+    uploadWeb_->server.handleClient();
+    serviceUploadSession_();
+    vTaskDelay(pdMS_TO_TICKS(cfg_.uploadServiceDelayMs));
+  }
+}
+
+bool WiFiOtaWebSerial::uploadServerOwnedByUploadTask_() const {
+  return uploadTask_ != nullptr && (webUploadInProgress_ || chunkUploadActive_);
 }
 
 void WiFiOtaWebSerial::print(const String& s, bool mirrorToSerial) {
@@ -563,6 +607,7 @@ void WiFiOtaWebSerial::configureSta_() {
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
   WiFi.setAutoReconnect(true);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
 }
@@ -718,6 +763,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
   });
 
   srv.on("/upload/start", HTTP_POST, [this]() {
+    uploadWeb_->server.client().setNoDelay(true);
     const size_t totalSize = (size_t)uploadWeb_->server.arg("size").toInt();
     if (totalSize == 0) {
       uploadWeb_->server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid size\"}");
@@ -744,6 +790,33 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
     setUploadLedActive_();
     println(String("[WEB OTA] Chunked start total=") + totalSize);
 
+    if (kUploadPreEraseEnabled) {
+      const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+      if (next == nullptr) {
+        setUploadLedError_();
+        webUploadInProgress_ = false;
+        chunkUploadActive_ = false;
+        uploadWeb_->server.send(500, "application/json", "{\"ok\":false,\"error\":\"no ota partition\"}");
+        return;
+      }
+      const size_t eraseSize =
+        ((totalSize + kFlashSectorSize - 1) / kFlashSectorSize) * kFlashSectorSize;
+      println(String("[WEB OTA] Pre-erase start bytes=") + eraseSize);
+      const esp_err_t eraseErr = esp_partition_erase_range(next, 0, eraseSize);
+      if (eraseErr != ESP_OK) {
+        setUploadLedError_();
+        webUploadInProgress_ = false;
+        chunkUploadActive_ = false;
+        uploadWeb_->server.send(
+          500,
+          "application/json",
+          String("{\"ok\":false,\"error\":\"pre-erase failed:") + esp_err_to_name(eraseErr) + "\"}"
+        );
+        return;
+      }
+      println("[WEB OTA] Pre-erase done");
+    }
+
     if (!Update.begin(totalSize)) {
       Update.printError(Serial);
       setUploadLedError_();
@@ -758,6 +831,7 @@ void WiFiOtaWebSerial::setupUploadWeb_() {
 
   srv.on("/upload/chunk", HTTP_POST,
     [this]() {
+      uploadWeb_->server.client().setNoDelay(true);
       if (!chunkUploadActive_) {
         uploadWeb_->server.send(409, "application/json", "{\"ok\":false,\"error\":\"no active upload session\"}");
         return;

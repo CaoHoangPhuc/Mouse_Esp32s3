@@ -1,31 +1,17 @@
 #include "Config.h"
 #include "MultiVL53L0X.h"
 
+static uint32_t sCenterPidTraceCounter = 0;
+
 uint8_t MultiVL53L0X::effectiveState_(uint8_t index) const {
     if (index >= _numSensors) return 255;
     if (!_initialized[index]) return 3;
-
-    if (_version == SENSOR_V2 && index == 3) {
-        uint8_t s0State = _timeoutFlag[0];
-
-        if (s0State == 2) return 2;  // S0 sees "far", clamp S3 to far too.
-        if (s0State == 3) return 3;  // S0 invalid => S3 invalid.
-    }
-
     return _timeoutFlag[index];
 }
 
 uint16_t MultiVL53L0X::effectiveDistance_(uint8_t index) const {
     if (index >= _numSensors) return 0;
     if (!_initialized[index]) return 0;
-
-    if (_version == SENSOR_V2 && index == 3) {
-        uint8_t s0State = _timeoutFlag[0];
-
-        if (s0State == 2) return AppConfig::Tof::DIST_FAR_MM;  // Match S0 "far" state.
-        if (s0State == 3) return 0;         // Match S0 invalid state.
-    }
-
     return _lastDistance[index];
 }
 
@@ -50,8 +36,9 @@ void MultiVL53L0X::resetCenterPid() {
     _dualWallBlend = 0.0f;
     _captureCenterTargetsOnFirstSample = true;
     _straightTrackMode = TRACK_NONE;
-    _centerPrevMs = 0;
+    _centerPrevUs = 0;
     _centerPidPrimed = false;
+    _sweepReadyForCompute = false;
     error = 0.0f;
 }
 
@@ -168,11 +155,13 @@ bool MultiVL53L0X::readTOF_fast(uint8_t addr, uint16_t &dist)
 
     return true;
 }
+
 void MultiVL53L0X::update() {
-    i2cLock();
+    // Define the sequence pattern
+    static const uint8_t sensorOrder[] = {0, 2, 1, 3, 4};
+    uint8_t currentSensor = sensorOrder[_cSensor % _numSensors];
 
     if (_numSensors == 0) {
-        i2cUnlock();
         return;
     }
 
@@ -181,49 +170,55 @@ void MultiVL53L0X::update() {
         _cSensor = (_cSensor + 1) % _numSensors;
     }
 
-    if (!_initialized[_cSensor]) {
-        i2cUnlock();
+    if (!_initialized[currentSensor]) {
         return;
     }
 
-    // uint16_t dist = _sensors[_cSensor].readRangeContinuousMillimeters();
-    // bool to = _sensors[_cSensor].timeoutOccurred();
+    // uint16_t dist = _sensors[currentSensor].readRangeContinuousMillimeters();
+    // bool to = _sensors[currentSensor].timeoutOccurred();
     uint16_t dist;
-    bool ok = readTOF_fast(_sensorAddresses[_cSensor], dist);
+    i2cLock();
+    bool ok = readTOF_fast(_sensorAddresses[currentSensor], dist);
+    i2cUnlock();
 
-    _raw[_cSensor] = dist;
+    _raw[currentSensor] = dist;
 
     if (ok && dist > 0 && dist < 1000) {
 
-        float corrected = dist * _scale[_cSensor] + _offset[_cSensor];
+        float corrected = dist * AppConfig::Tof::SENSOR_SCALE[currentSensor] +
+                          AppConfig::Tof::SENSOR_OFFSET_MM[currentSensor];
 
         if (corrected < AppConfig::Tof::DIST_MIN_VALID_MM) {
-            _lastDistance[_cSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;
-            _timeoutFlag[_cSensor]  = 1;
+            _lastDistance[currentSensor] = AppConfig::Tof::DIST_MIN_VALID_MM;
+            _timeoutFlag[currentSensor]  = 1;
         }
         else if (corrected > AppConfig::Tof::DIST_MAX_VALID_MM) {
-            _lastDistance[_cSensor] = AppConfig::Tof::DIST_FAR_MM;
-            _timeoutFlag[_cSensor]  = 2;
+            _lastDistance[currentSensor] = AppConfig::Tof::DIST_FAR_MM;
+            _timeoutFlag[currentSensor]  = 2;
         }
         else {
             uint16_t val = (uint16_t)corrected;
 
-            if ((_lastDistance[_cSensor] == 0) || (_lastDistance[_cSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
-                _lastDistance[_cSensor] = val;
+            if ((_lastDistance[currentSensor] == 0) || (_lastDistance[currentSensor] > AppConfig::Tof::DIST_MAX_VALID_MM)) {
+                _lastDistance[currentSensor] = val;
             } else {
-                _lastDistance[_cSensor] = 0.8f * _lastDistance[_cSensor] + 0.2f * val;
+                _lastDistance[currentSensor] =
+                    AppConfig::Tof::DIST_LPF_PREV_WEIGHT * _lastDistance[currentSensor] +
+                    AppConfig::Tof::DIST_LPF_SAMPLE_WEIGHT * val;
             }
 
-            _timeoutFlag[_cSensor] = 0;
+            _timeoutFlag[currentSensor] = 0;
         }
     }
     else {
-        _timeoutFlag[_cSensor] = 3;
+        _timeoutFlag[currentSensor] = 3;
         err_count ++;
     }
 
     _cSensor = (_cSensor + 1) % _numSensors;
-    i2cUnlock();
+    if (_cSensor == 4) {
+        _sweepReadyForCompute = true;
+    }
 }
 
 // Detect layout
@@ -274,12 +269,19 @@ MultiVL53L0X::SensorState MultiVL53L0X::getSensorState() {
         uint8_t flState = stateTimeout(0);
         uint8_t frState = stateTimeout(3);
         bool flValid = isObservable(0);
-        bool frValidRaw = isObservable(3);
-        // S3 is front-right. On current hardware it is only trustworthy when
-        // S0 (front-left) is also seeing the front wall region.
-        bool frValid = flValid && frValidRaw;
+        bool frValid = isObservable(3);
         bool flFar = flState == 2;
         bool frFar = frState == 2;
+        // V2 compatibility mode: S3 (front-right) is only trusted when
+        // S0 (front-left) is observable. If S0 is far, force S3 to far too.
+        if (!flValid) {
+            frValid = false;
+            frFar = false;
+        } else if (flFar) {
+            frValid = true;
+            frFar = true;
+            fr = AppConfig::Tof::DIST_FAR_MM;
+        }
         s.leftValid  = isObservable(1);
         s.rightValid = isObservable(2);
         s.frontValid = flValid || frValid || (flFar && frFar);
@@ -335,6 +337,12 @@ void MultiVL53L0X::xshutAllHigh() {
 }
 
 float MultiVL53L0X::computeError(float headingError) {
+    if (AppConfig::Tof::COMPUTE_HEADING_FROM_FULL_SWEEP) {
+        if (!_sweepReadyForCompute) {
+            return error;
+        }
+        _sweepReadyForCompute = false;
+    }
 
     auto isGood = [&](uint8_t state) {
         return state == 0 || state == 1;  // valid or clipped-min
@@ -343,25 +351,29 @@ float MultiVL53L0X::computeError(float headingError) {
     uint16_t left = AppConfig::Tof::DIST_ERROR_MM;
     uint16_t right = AppConfig::Tof::DIST_ERROR_MM;
 
+    const uint16_t effectiveSideMax = AppConfig::Motion::CENTER_PID_EFFECTIVE_SIDE_MAX_MM;
+
     uint8_t leftState = 3;
     uint8_t rightState = 3;
 
     if (_version == SENSOR_V1) {
-        left  = getDistance(0);
-        right = getDistance(4);
+        left  = min(getDistance(0), effectiveSideMax);
+        right = min(getDistance(4), effectiveSideMax);
         leftState  = stateTimeout(0);
         rightState = stateTimeout(4);
     }
     else if (_version == SENSOR_V2) {
-        left  = getDistance(1);
-        right = getDistance(2);
+        left  = min(getDistance(1), effectiveSideMax);
+        right = min(getDistance(2), effectiveSideMax);
         leftState  = stateTimeout(1);
         rightState = stateTimeout(2);
     }
 
     const bool leftValid  = isGood(leftState);
     const bool rightValid = isGood(rightState);
-    const bool dualWallValid = leftValid && rightValid;
+    const bool leftWallTrackable = leftValid && (left < _wallThreshold);
+    const bool rightWallTrackable = rightValid && (right < _wallThreshold);
+    const bool dualWallValid = leftWallTrackable && rightWallTrackable;
     const bool forceLeft = _straightTrackMode == TRACK_LEFT;
     const bool forceRight = _straightTrackMode == TRACK_RIGHT;
     const bool forceDual = _straightTrackMode == TRACK_DUAL;
@@ -373,8 +385,8 @@ float MultiVL53L0X::computeError(float headingError) {
     if (dualWallValid) {
         if (shouldCaptureTargets &&
             fabsf((float)left - (float)right) <= AppConfig::Motion::CENTER_TARGET_CAPTURE_WINDOW_MM) {
-            _centerTargetLeft = (float)left;
-            _centerTargetRight = (float)right;
+            _centerTargetLeft = 0.8f * _centerTargetLeft + 0.2f * (float)left;
+            _centerTargetRight = 0.8f * _centerTargetRight + 0.2f * (float)right;
         }
         dualErr = 0.5f * ((_centerTargetLeft - (float)left) +
                           ((float)right - _centerTargetRight));
@@ -382,18 +394,17 @@ float MultiVL53L0X::computeError(float headingError) {
     }
 
     float singleErr = headingError;
-    if (leftValid && !rightValid) {
+    if (leftWallTrackable && !rightWallTrackable) {
         singleErr = _centerTargetLeft - (float)left;
-    } else if (rightValid && !leftValid) {
+    } else if (rightWallTrackable && !leftWallTrackable) {
         singleErr = (float)right - _centerTargetRight;
     }
 
-    const uint32_t now = millis();
-    float dt = 0.02f;
-    if (_centerPidPrimed && _centerPrevMs > 0) {
-        const uint32_t deltaMs = now - _centerPrevMs;
-        if (deltaMs > 0) dt = max(0.001f, deltaMs / 1000.0f);
-    }
+    const uint32_t nowUs = micros();
+    const uint32_t fallbackUs = max(1000UL, (uint32_t)AppConfig::Tof::UPDATE_INTERVAL_MS * 1000UL);
+    uint32_t elapsedUs = (_centerPrevUs == 0) ? fallbackUs : (nowUs - _centerPrevUs);
+    if (elapsedUs == 0) elapsedUs = 1;
+    float dt = max(0.0005f, elapsedUs / 1e6f);
 
     if (!_centerPidPrimed) {
         _centerIntegral = 0.0f;
@@ -415,7 +426,7 @@ float MultiVL53L0X::computeError(float headingError) {
     }
 
     const float blendTarget = (forceDual && dualWallValid) ? 1.0f : 0.0f;
-    const float blendTauSec = 0.18f;
+    const float blendTauSec = AppConfig::Motion::CENTER_BLEND_TAU_SEC;
     const float blendAlpha = dt / (blendTauSec + dt);
     _dualWallBlend += (blendTarget - _dualWallBlend) * blendAlpha;
     if (_dualWallBlend < 0.0f) _dualWallBlend = 0.0f;
@@ -423,21 +434,41 @@ float MultiVL53L0X::computeError(float headingError) {
 
     float targetRawErr = headingError;
     if (forceDual) {
-        targetRawErr = dualWallValid ? dualErr : _lastDualWallError;
+        if (dualWallValid) {
+            targetRawErr = dualErr;
+        } else if (leftWallTrackable) {
+            // Corridor transition: if dual tracking loses the right wall, keep following left.
+            targetRawErr = _centerTargetLeft - (float)left;
+        } else if (rightWallTrackable) {
+            // Corridor transition: if dual tracking loses the left wall, keep following right.
+            targetRawErr = (float)right - _centerTargetRight;
+        } else {
+            targetRawErr = headingError;
+        }
     } else if (forceLeft) {
-        targetRawErr = leftValid ? (_centerTargetLeft - (float)left) : headingError;
+        targetRawErr = leftWallTrackable ? (_centerTargetLeft - (float)left) : headingError;
     } else if (forceRight) {
-        targetRawErr = rightValid ? ((float)right - _centerTargetRight) : headingError;
+        targetRawErr = rightWallTrackable ? ((float)right - _centerTargetRight) : headingError;
     } else if (!forceNone) {
         if (dualWallValid) {
             targetRawErr = dualErr;
-        } else if (leftValid || rightValid) {
+        } else if (leftWallTrackable || rightWallTrackable) {
             targetRawErr = (_dualWallBlend * _lastDualWallError) +
                            ((1.0f - _dualWallBlend) * singleErr);
         }
     }
 
-    const float rawTauSec = 0.10f;
+    // In one-wall tracking, clamp target error to avoid aggressive steering
+    // when the opposite side is open/far.
+    if (!dualWallValid && (leftWallTrackable || rightWallTrackable)) {
+        const float lim = AppConfig::Motion::CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM;
+        if (lim > 0.0f) {
+            if (targetRawErr > lim) targetRawErr = lim;
+            if (targetRawErr < -lim) targetRawErr = -lim;
+        }
+    }
+
+    const float rawTauSec = AppConfig::Motion::CENTER_RAW_TAU_SEC;
     const float rawAlpha = dt / (rawTauSec + dt);
     _centerRawFiltered += (targetRawErr - _centerRawFiltered) * rawAlpha;
     const float rawErr = _centerRawFiltered;
@@ -449,18 +480,48 @@ float MultiVL53L0X::computeError(float headingError) {
     float derivative = 0.0f;
     if (dt > 0.0f) {
         derivative = (rawErr - _centerPrevError) / dt;
+        const float dLim = AppConfig::Motion::CENTER_PID_DERIV_LIMIT;
+        if (derivative > dLim) derivative = dLim;
+        if (derivative < -dLim) derivative = -dLim;
     }
 
-    float out = (_centerKp * rawErr) +
-                (_centerKi * _centerIntegral) +
-                (_centerKd * derivative);
+    const float pTerm = _centerKp * rawErr;
+    const float iTerm = _centerKi * _centerIntegral;
+    const float dTerm = _centerKd * derivative;
+    float out = pTerm + iTerm + dTerm;
 
     if (out > _centerOutLimit) out = _centerOutLimit;
     if (out < -_centerOutLimit) out = -_centerOutLimit;
 
     _centerPrevError = rawErr;
-    _centerPrevMs = now;
+    _centerPrevUs = nowUs;
     error = out;
+
+    if (AppConfig::Debug::CENTER_PID_TRACE && _logFn != nullptr) {
+        const uint8_t everyN = (AppConfig::Debug::CENTER_PID_TRACE_EVERY_N == 0)
+                             ? 1
+                             : AppConfig::Debug::CENTER_PID_TRACE_EVERY_N;
+        sCenterPidTraceCounter++;
+        if ((sCenterPidTraceCounter % everyN) == 0) {
+            const char* mode = "none";
+            switch (_straightTrackMode) {
+                case TRACK_LEFT: mode = "left"; break;
+                case TRACK_RIGHT: mode = "right"; break;
+                case TRACK_DUAL: mode = "dual"; break;
+                case TRACK_NONE:
+                default: mode = "none"; break;
+            }
+            char buf[220];
+            snprintf(buf, sizeof(buf),
+                     "CPID mode=%s L=%u(%u) R=%u(%u) raw=%.3f tgt=%.3f h=%.3f P=%.3f I=%.3f D=%.3f out=%.3f",
+                     mode,
+                     (unsigned)left, (unsigned)leftState,
+                     (unsigned)right, (unsigned)rightState,
+                     rawErr, targetRawErr, headingError,
+                     pTerm, iTerm, dTerm, out);
+            _logFn(String(buf));
+        }
+    }
 
     return out;
 }

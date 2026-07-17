@@ -21,6 +21,27 @@ void MotionController::resetSnapState_() {
   snapCenterPhase_ = SNAP_CENTER_PHASE_NONE;
 }
 
+void MotionController::applyStopMode_(StopMode mode) {
+  if (!left_ || !right_) return;
+  switch (mode) {
+    case StopMode::COAST:
+      left_->coastStop();
+      right_->coastStop();
+      break;
+    case StopMode::BRAKE:
+      left_->enableSpeedControl(false);
+      right_->enableSpeedControl(false);
+      left_->brakeStop();
+      right_->brakeStop();
+      break;
+    case StopMode::HARDSTOP:
+    default:
+      left_->hardStop();
+      right_->hardStop();
+      break;
+  }
+}
+
 bool MotionController::updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason) {
   if (progressMm > lastProgressMm_ + cfg_.minProgressMm) {
     lastProgressMm_ = progressMm;
@@ -59,8 +80,8 @@ bool MotionController::startPrimitive_(MotionPrimitiveType primitive) {
 bool MotionController::moveOneCell() {
   if (!startPrimitive_(MOTION_MOVE_ONE_CELL)) return false;
   tof_->resetCenterPid();
-  left_->setSpeedTPS(cfg_.moveSpeedTps);
   right_->setSpeedTPS(cfg_.moveSpeedTps);
+  left_->setSpeedTPS(cfg_.moveSpeedTps);
   return true;
 }
 
@@ -145,8 +166,7 @@ void MotionController::stop() {
 void MotionController::abort(const String& reason) {
   if (!left_ || !right_) return;
   if (tof_) tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
-  left_->hardStop();
-  right_->hardStop();
+  applyStopMode_(StopMode::HARDSTOP);
   primitive_ = MOTION_NONE;
   lastFinishedPrimitive_ = MOTION_NONE;
   status_ = MOTION_ABORTED;
@@ -165,6 +185,14 @@ void MotionController::clearCompletionState() {
   resetSnapState_();
 }
 
+void MotionController::setUseLatchedTrackMode(bool en) {
+  useLatchedTrackMode_ = en;
+  straightTrackModeLatched_ = false;
+  if (tof_ && !useLatchedTrackMode_) {
+    tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
+  }
+}
+
 MultiVL53L0X::StraightTrackMode MotionController::chooseStraightTrackMode_(const WallObservation& walls) const {
   if (walls.leftValid && walls.rightValid) return MultiVL53L0X::TRACK_DUAL;
   if (walls.leftValid) return MultiVL53L0X::TRACK_LEFT;
@@ -174,6 +202,7 @@ MultiVL53L0X::StraightTrackMode MotionController::chooseStraightTrackMode_(const
 
 void MotionController::latchStraightTrackMode(const WallObservation& walls) {
   if (!tof_) return;
+  if (!useLatchedTrackMode_) return;
   straightTrackMode_ = chooseStraightTrackMode_(walls);
   straightTrackModeLatched_ = true;
   tof_->setStraightTrackMode(straightTrackMode_);
@@ -182,23 +211,28 @@ void MotionController::latchStraightTrackMode(const WallObservation& walls) {
 float MotionController::averageProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
-  return 0.5f * (leftDelta + rightDelta) * cfg_.mmPerTick;
+  const float leftMm = leftDelta * cfg_.leftMmPerTick;
+  const float rightMm = rightDelta * cfg_.rightMmPerTick;
+  return 0.5f * (leftMm + rightMm);
 }
 
 float MotionController::absoluteAverageProgressMm_() const {
   return fabsf(averageProgressMm_());
 }
 
-int32_t MotionController::differentialTicks_() const {
+float MotionController::differentialProgressMm_() const {
   const int32_t leftDelta = left_->getTicks() - startLeftTicks_;
   const int32_t rightDelta = right_->getTicks() - startRightTicks_;
-  return rightDelta - leftDelta;
+  const float leftMm = leftDelta * cfg_.leftMmPerTick;
+  const float rightMm = rightDelta * cfg_.rightMmPerTick;
+  return rightMm - leftMm;
 }
 
 void MotionController::markDone_(MotionStatus status, const String& reason) {
-  if (status != MOTION_COMPLETED || stopOnCompletion_) {
-    left_->hardStop();
-    right_->hardStop();
+  if (status != MOTION_COMPLETED) {
+    applyStopMode_(StopMode::HARDSTOP);
+  } else if (stopOnCompletion_) {
+    applyStopMode_(cfg_.completionStopMode);
   }
   if (tof_) tof_->setStraightTrackMode(MultiVL53L0X::TRACK_NONE);
   status_ = status;
@@ -227,13 +261,57 @@ void MotionController::update(RobotState& state) {
     return;
   }
 
+  auto approachSpeedTps = [&](float baseSpeedTps, float stopMm, const WallObservation& walls) {
+    if (!walls.frontValid || walls.frontMm == 0) return baseSpeedTps;
+    const float startFactor = max(1.0f, cfg_.frontApproachStartFactor);
+    const float startMm = stopMm * startFactor;
+    const float minSpeed = max(1.0f, min(baseSpeedTps, cfg_.frontApproachMinSpeedTps));
+    const float frontMm = (float)walls.frontMm;
+    if (frontMm >= startMm) return baseSpeedTps;
+    if (frontMm <= stopMm) return minSpeed;
+    const float span = max(1.0f, startMm - stopMm);
+    const float t = (frontMm - stopMm) / span;  // 1 at start, 0 at stop
+    return minSpeed + t * (baseSpeedTps - minSpeed);
+  };
+
+  auto distanceSpeedTps = [&](float baseSpeedTps, float targetMm, float progressMm) {
+    const float startRatio = constrain(cfg_.distanceApproachStartRatio, 0.0f, 1.0f);
+    const float startMm = targetMm * startRatio;
+    const float minSpeed = max(1.0f, min(baseSpeedTps, cfg_.distanceApproachMinSpeedTps));
+    if (progressMm <= startMm) return baseSpeedTps;
+    if (progressMm >= targetMm) return minSpeed;
+    const float span = max(1.0f, targetMm - startMm);
+    const float t = (progressMm - startMm) / span;  // 0 at start, 1 at target
+    return baseSpeedTps - t * (baseSpeedTps - minSpeed);
+  };
+
+  auto applyCenteredSpeed = [&](float baseSpeedTps, float correction) {
+    const float slowSideGain = max(1.0f, cfg_.centeringSlowSideGain);
+    const float fastSideGain = max(0.0f, cfg_.centeringFastSideGain);
+    float leftCmd = baseSpeedTps;
+    float rightCmd = baseSpeedTps;
+    if (correction > 0.0f) {
+      // Right side should slow down.
+      leftCmd = baseSpeedTps + correction * fastSideGain;
+      rightCmd = baseSpeedTps - correction * slowSideGain;
+    } else if (correction < 0.0f) {
+      // Left side should slow down.
+      rightCmd = baseSpeedTps - correction * fastSideGain;
+      leftCmd = baseSpeedTps + correction * slowSideGain;
+    }
+    left_->setSpeedTPS(leftCmd);
+    right_->setSpeedTPS(rightCmd);
+  };
+
   if (primitive_ == MOTION_MOVE_ONE_CELL) {
     const float progressMm = averageProgressMm_();
     state.pose.forwardProgressMm = progressMm;
 
     const WallObservation& walls = state.walls;
-    if (!straightTrackModeLatched_) {
+    if (useLatchedTrackMode_ && !straightTrackModeLatched_) {
       latchStraightTrackMode(walls);
+    } else if (!useLatchedTrackMode_) {
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
     }
     bool shouldFrontStop = walls.frontValid && walls.frontWall && walls.frontMm > 0 &&
                            walls.frontMm <= cfg_.frontStopMm;
@@ -243,8 +321,9 @@ void MotionController::update(RobotState& state) {
       correction = tof_->computeError(0.0f) * cfg_.centeringGain;
     }
 
-    left_->setSpeedTPS(cfg_.moveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.moveSpeedTps - correction);
+    float cmdSpeed = distanceSpeedTps(cfg_.moveSpeedTps, cfg_.cellDistanceMm, progressMm);
+    cmdSpeed = min(cmdSpeed, approachSpeedTps(cfg_.moveSpeedTps, cfg_.frontStopMm, walls));
+    applyCenteredSpeed(cmdSpeed, correction);
 
     if (progressMm >= cfg_.cellDistanceMm || shouldFrontStop) {
       markDone_(MOTION_COMPLETED);
@@ -256,26 +335,34 @@ void MotionController::update(RobotState& state) {
     const float progressMm = averageProgressMm_();
     const float targetDistanceMm = cfg_.cellDistanceMm * (float)moveCellTargetCount_;
     const float finalCellStartMm = max(0.0f, targetDistanceMm - cfg_.cellDistanceMm);
+    const float frontStopThresholdMm =
+      (moveCellTargetCount_ <= 1) ? cfg_.frontStopMm : cfg_.corridorFrontStopMm;
     state.pose.forwardProgressMm = progressMm;
 
     const WallObservation& walls = state.walls;
-    if (!straightTrackModeLatched_) {
+    if (useLatchedTrackMode_ && !straightTrackModeLatched_) {
       latchStraightTrackMode(walls);
+    } else if (!useLatchedTrackMode_) {
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
     }
     const bool inFinalCell = progressMm >= finalCellStartMm;
     const bool shouldFrontStop = inFinalCell &&
                                  walls.frontValid &&
                                  walls.frontWall &&
                                  walls.frontMm > 0 &&
-                                 walls.frontMm <= cfg_.corridorFrontStopMm;
+                                 walls.frontMm <= frontStopThresholdMm;
 
     float correction = 0.0f;
     if (walls.leftValid || walls.rightValid) {
       correction = tof_->computeError(0.0f) * cfg_.corridorCenteringGain;
     }
 
-    left_->setSpeedTPS(cfg_.corridorMoveSpeedTps + correction);
-    right_->setSpeedTPS(cfg_.corridorMoveSpeedTps - correction);
+    float cmdSpeed = distanceSpeedTps(cfg_.corridorMoveSpeedTps, targetDistanceMm, progressMm);
+    if (inFinalCell) {
+      cmdSpeed = min(cmdSpeed,
+                     approachSpeedTps(cfg_.corridorMoveSpeedTps, frontStopThresholdMm, walls));
+    }
+    applyCenteredSpeed(cmdSpeed, correction);
 
     const bool reachedDistanceTarget = progressMm >= targetDistanceMm;
     const bool shouldComplete = moveEndsAtKnownWall_
@@ -323,8 +410,7 @@ void MotionController::update(RobotState& state) {
       right_->setSpeedTPS(-cfg_.reverseSpeedTps);
 
       if (progressMm >= cfg_.reverseDistanceMm) {
-        left_->hardStop();
-        right_->hardStop();
+        applyStopMode_(cfg_.snapCenterHoldStopMode);
         snapCenterPhase_ = SNAP_CENTER_PHASE_HOLD;
         snapCenterHoldUntilMs_ = now + cfg_.snapCenterStopHoldMs;
         startLeftTicks_ = left_->getTicks();
@@ -337,8 +423,7 @@ void MotionController::update(RobotState& state) {
       if (updateProgressOrFail_(progressMm, now, "snap center reverse stall")) return;
     } else if (snapCenterPhase_ == SNAP_CENTER_PHASE_HOLD) {
       state.pose.forwardProgressMm = 0.0f;
-      left_->hardStop();
-      right_->hardStop();
+      applyStopMode_(cfg_.snapCenterHoldStopMode);
 
       if ((int32_t)(now - snapCenterHoldUntilMs_) >= 0) {
         snapCenterPhase_ = SNAP_CENTER_PHASE_FORWARD;
@@ -346,16 +431,18 @@ void MotionController::update(RobotState& state) {
         startRightTicks_ = right_->getTicks();
         lastProgressMm_ = 0.0f;
         lastProgressMs_ = now;
-        left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
-        right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
       }
       return;
     } else {
       const float progressMm = averageProgressMm_();
       state.pose.forwardProgressMm = progressMm;
-
-      left_->setSpeedTPS(cfg_.shortForwardSpeedTps);
-      right_->setSpeedTPS(cfg_.shortForwardSpeedTps);
+      const WallObservation& walls = state.walls;
+      tof_->setStraightTrackMode(chooseStraightTrackMode_(walls));
+      float correction = 0.0f;
+      if (walls.leftValid || walls.rightValid) {
+        correction = tof_->computeError(0.0f) * cfg_.centeringGain;
+      }
+      applyCenteredSpeed(cfg_.shortForwardSpeedTps, correction);
 
       if (progressMm >= cfg_.shortForwardDistanceMm) {
         markDone_(MOTION_COMPLETED);
@@ -367,22 +454,34 @@ void MotionController::update(RobotState& state) {
   } else if (primitive_ == MOTION_TURN_LEFT_90 ||
              primitive_ == MOTION_TURN_RIGHT_90 ||
              primitive_ == MOTION_TURN_180) {
-    const int32_t turnTarget = (primitive_ == MOTION_TURN_180)
-      ? ((cfg_.turnTicks180 > 0) ? cfg_.turnTicks180 : max<int32_t>(1, cfg_.turnTicks90 * 2))
-      : ((cfg_.turnTicks90 > 0) ? cfg_.turnTicks90 : 1);
+    float turnTargetMm = 1.0f;
+    if (primitive_ == MOTION_TURN_LEFT_90) {
+      turnTargetMm = (cfg_.turnLeft90Mm > 0.0f) ? cfg_.turnLeft90Mm : 1.0f;
+    } else if (primitive_ == MOTION_TURN_RIGHT_90) {
+      turnTargetMm = (cfg_.turnRight90Mm > 0.0f) ? cfg_.turnRight90Mm : 1.0f;
+    } else {
+      turnTargetMm = (cfg_.turn180Mm > 0.0f) ? cfg_.turn180Mm : max(1.0f, 2.0f * cfg_.turnLeft90Mm);
+    }
+    const float diffMm = fabsf(differentialProgressMm_());
     const float turnDegrees = (primitive_ == MOTION_TURN_180) ? 180.0f : 90.0f;
-    const float turnRatio = (float)abs(differentialTicks_()) / (float)turnTarget;
+    const float turnRatio = diffMm / turnTargetMm;
     state.pose.turnProgressDeg = min(turnDegrees, turnRatio * turnDegrees);
 
+    const float slowdownStartRatio = constrain(cfg_.turnSlowdownStartRatio, 0.0f, 1.0f);
+    const bool slowZone = turnRatio >= slowdownStartRatio;
+    const float turnCmdTps = slowZone
+      ? min(cfg_.turnSpeedTps, max(1.0f, cfg_.turnMinSpeedTps))
+      : cfg_.turnSpeedTps;
+
     if (primitive_ == MOTION_TURN_LEFT_90) {
-      left_->setSpeedTPS(-cfg_.turnSpeedTps);
-      right_->setSpeedTPS(cfg_.turnSpeedTps);
+      left_->setSpeedTPS(-turnCmdTps);
+      right_->setSpeedTPS(turnCmdTps);
     } else {
-      left_->setSpeedTPS(cfg_.turnSpeedTps);
-      right_->setSpeedTPS(-cfg_.turnSpeedTps);
+      left_->setSpeedTPS(turnCmdTps);
+      right_->setSpeedTPS(-turnCmdTps);
     }
 
-    if (abs(differentialTicks_()) >= turnTarget) {
+    if (diffMm >= turnTargetMm) {
       markDone_(MOTION_COMPLETED);
       return;
     }

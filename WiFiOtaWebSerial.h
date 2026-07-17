@@ -26,6 +26,11 @@ public:
     uint32_t    wifiTaskStack  = 6144;   // bytes
     UBaseType_t wifiTaskPrio   = 1;
     BaseType_t  wifiCore       = 0;
+    // Dedicated upload service task (used during active HTTP chunk upload).
+    uint32_t    uploadTaskStack = 6144;  // bytes
+    UBaseType_t uploadTaskPrio  = 2;
+    BaseType_t  uploadCore      = 0;
+    uint32_t    uploadServiceDelayMs = 1;
     uint32_t    wifiConnectTimeoutMs = 5000;
     uint32_t    wifiReconnectIntervalMs = 1000;
   };
@@ -63,6 +68,7 @@ private:
 
   // FreeRTOS task
   TaskHandle_t wifiTask_ = nullptr;
+  TaskHandle_t uploadTask_ = nullptr;
   
   volatile bool otaInProgress = false;
   volatile bool webUploadInProgress_ = false;
@@ -76,7 +82,10 @@ private:
 
 private:
   static void wifiTaskThunk_(void* arg);
+  static void uploadTaskThunk_(void* arg);
   void wifiTaskLoop_();
+  void uploadTaskLoop_();
+  bool uploadServerOwnedByUploadTask_() const;
 
   void setupWiFi_();
   void configureSta_();

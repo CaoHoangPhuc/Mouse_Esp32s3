@@ -23,6 +23,12 @@ public:
     ACT_MOVE_F
   };
 
+  struct QueuedAction {
+    Action action = ACT_NONE;
+    uint8_t forwardCells = 1;
+    bool endsAtKnownWall = false;
+  };
+
   struct PlanNode {
     uint8_t x;
     uint8_t y;
@@ -73,6 +79,7 @@ public:
                             bool leftValid = true, bool frontValid = true, bool rightValid = true);
   Action requestNextAction();
   Action requestNextActionNoAck();
+  bool buildQueuedActionsFromCurrentPose(QueuedAction* outActions, uint16_t capacity, uint16_t& outCount);
   bool ackPendingActionExternal(bool ok, uint8_t x, uint8_t y, Dir h);
   void truncatePendingForwardAction();
 
@@ -130,6 +137,7 @@ private:
   bool inBounds_(int x,int y) const;
   bool isGoal_(int x,int y) const;
   bool atActiveTarget_() const;
+  bool atActiveTargetPose_(uint8_t x, uint8_t y, Dir h) const;
   bool isKnownOpen_(int x, int y, Dir d) const;
   uint16_t computeBestKnownCost_(uint8_t startX0, uint8_t startY0,
                                  uint8_t startW, uint8_t startH,
@@ -155,6 +163,9 @@ private:
   // --- ack-driven action ---
   Action chooseNextAction_();
   uint8_t chooseForwardCells_() const;
+  Action chooseNextActionForPose_(uint8_t x, uint8_t y, Dir h,
+                                  uint8_t& forwardCells, bool& endsAtKnownWall) const;
+  uint8_t chooseForwardCellsForPose_(uint8_t x, uint8_t y, Dir h) const;
   void dispatchAction_(Action a);
   bool commitPendingAction_();
   bool performStepMove_(String& reply);

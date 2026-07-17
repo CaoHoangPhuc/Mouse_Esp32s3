@@ -4,6 +4,8 @@
 
 class DcMotor {
 public:
+  using LogFn = void (*)(const String&);
+
   struct Pins {
     uint8_t in1;
     uint8_t in2;
@@ -12,6 +14,11 @@ public:
     uint8_t encB;
     bool invertDir = false;
     bool invertEnc = false; // flips tick direction
+    Pins() = default;
+    Pins(uint8_t in1_, uint8_t in2_, uint8_t pwm_, uint8_t encA_, uint8_t encB_,
+          bool invertDir_ = false, bool invertEnc_ = false)
+      : in1(in1_), in2(in2_), pwm(pwm_), encA(encA_), encB(encB_),
+        invertDir(invertDir_), invertEnc(invertEnc_) {}
   };
 
   DcMotor();
@@ -42,10 +49,11 @@ public:
                    float iLimit = 0.6f,
                    float dFilterHz = 30.0f,
                    float slewRatePerSec = 0.0f);
+  void setLog(LogFn fn) { _logFn = fn; }
 
   void resetPID();
 
-  // Call periodically (can be <5ms; <5ms does P-only)
+  // Call periodically; dt is measured from micros() inside update().
   void update();
 
   // Encoder / speed
@@ -79,6 +87,8 @@ private:
   uint32_t _lastMicros = 0;
   int32_t  _lastTicks = 0;
   float    _tps = 0.0f; // filtered ticks/sec
+  int32_t  _speedAccumTicks = 0;
+  uint32_t _speedAccumUs = 0;
 
   // control
   bool  _speedCtrlEnabled = false;
@@ -96,6 +106,7 @@ private:
   float _dMeas = 0.0f;       // filtered derivative of measurement (tps/s)
   float _lastTPSForD = 0.0f;
   float _lastOut = 0.0f;
+  LogFn _logFn = nullptr;
 
   // ISR glue (encA only, max 4 motors)
   static void isrEncA0();

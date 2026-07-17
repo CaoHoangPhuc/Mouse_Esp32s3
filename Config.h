@@ -6,322 +6,410 @@
 #include "FloodFillExplorer.h"
 #include "MotionController.h"
 
+// Easy firmware profile switch (no build flags needed):
+// 0 = FULL firmware (WiFi/OTA/web enabled by config defaults)
+// 1 = LITE firmware (minimal runtime, WiFi/OTA/web disabled by default)
+#ifndef APP_LITE_FIRMWARE
+#define APP_LITE_FIRMWARE 0
+#endif
+
 namespace AppConfig {
+namespace Build {
+// Build profile selected by compile flag.
+// Controlled by APP_LITE_FIRMWARE above.
+extern const bool LITE_FIRMWARE;
+extern const char* PROFILE_NAME;
+}
 
 namespace Battery {
 // Battery ADC input pin.
-// Affects: Battery.cpp sampling and motion safety gating.
-static constexpr uint8_t ADC_PIN = 3;
+// Affects: Battery.cpp sampling and battery telemetry readiness.
+extern const uint8_t ADC_PIN;
 
 // Physical divider currently expected:
-// battery+ -> 47k -> ADC node -> 18k -> GND
-// Divider ratio at ADC ~= 18 / (47 + 18) = 0.2769
-// Battery voltage ~= ADC voltage * 3.6111
+// battery+ -> 56k -> ADC node -> 18k -> GND
+// Divider ratio at ADC ~= 18 / (56 + 18) = 0.2432
+// Battery voltage ~= ADC voltage * 4.1111
 // This keeps a 2S pack in a safe ADC input range.
-static constexpr float DIVIDER_R_TOP_KOHM = 56.0f;
-static constexpr float DIVIDER_R_BOTTOM_KOHM = 18.0f;
+extern const float DIVIDER_R_TOP_KOHM;
+extern const float DIVIDER_R_BOTTOM_KOHM;
 
 // Two-point ADC calibration.
 // Measure pack voltage with a multimeter and record the matching ADC raw values.
 // Affects: reported battery voltage and battery percentage.
-static constexpr uint16_t RAW_LOW = 2800;
-static constexpr uint16_t RAW_HIGH = 3350;
-static constexpr float VOLTAGE_LOW = 7.20f;
-static constexpr float VOLTAGE_HIGH = 8.40f;
+extern const uint16_t RAW_LOW;
+extern const uint16_t RAW_HIGH;
+extern const float VOLTAGE_LOW;
+extern const float VOLTAGE_HIGH;
 
-// Runtime battery safety thresholds.
-// WARNING: robot may still operate but should be watched closely.
-// CRITICAL: motion is blocked/aborted for safety.
-// Affects: readyForMotion, fault behavior, primitive aborts.
-static constexpr float WARNING_VOLTAGE = 7.10f;
-static constexpr float CRITICAL_VOLTAGE = 6.90f;
+// Runtime battery telemetry thresholds.
+// WARNING and CRITICAL are currently reported to telemetry/status output.
+// They do not automatically block or abort motion in the current runtime.
+// Affects: reported battery state and status/debug output.
+extern const float WARNING_VOLTAGE;
+extern const float CRITICAL_VOLTAGE;
 }
 
 namespace Maze {
 // Robot start pose in maze cell coordinates.
 // Affects: initial floodfill pose, web explorer pose, reset behavior.
-static constexpr uint8_t START_X = 0;
-static constexpr uint8_t START_Y = 0;
-static constexpr FloodFillExplorer::Dir START_HEADING = FloodFillExplorer::SOUTH;
+extern const uint8_t START_X;
+extern const uint8_t START_Y;
+extern const FloodFillExplorer::Dir START_HEADING;
 
 // Home rectangle used by floodfill target toggling during explore loops.
 // This can differ from the single physical start pose.
-static constexpr uint8_t HOME_X0 = 0;
-static constexpr uint8_t HOME_Y0 = 0;
-static constexpr uint8_t HOME_W = 1;
-static constexpr uint8_t HOME_H = 1;
+extern const uint8_t HOME_X0;
+extern const uint8_t HOME_Y0;
+extern const uint8_t HOME_W;
+extern const uint8_t HOME_H;
 
 // Goal rectangle for floodfill.
 // Typical micromouse center goal is 2x2.
 // Affects: planner target and floodfill distance field.
-static constexpr uint8_t GOAL_X0 = 4;
-static constexpr uint8_t GOAL_Y0 = 4;
-static constexpr uint8_t GOAL_W = 1;
-static constexpr uint8_t GOAL_H = 1;
+extern const uint8_t GOAL_X0;
+extern const uint8_t GOAL_Y0;
+extern const uint8_t GOAL_W;
+extern const uint8_t GOAL_H;
 }
 
 namespace Wifi {
 // Development Wi-Fi / OTA / web logging settings.
 // Affects: WiFiOtaWebSerial startup, OTA hostname, web serial availability.
-static constexpr const char* SSID = "PhucWifi";
-static constexpr const char* PASS = "000000001";
-static constexpr const char* HOSTNAME = "PhucC_Esp32s3_mice";
+extern const char* SSID;
+extern const char* PASS;
+extern const char* HOSTNAME;
 // Set false to disable the HTTP web log on port 80.
 // OTA and the TCP debug console can still remain enabled.
-static constexpr bool ENABLE_WEB_LOG = true;
+extern const bool ENABLE_WEB_LOG;
 // Simple firmware upload page for browser-based wireless updates.
-static constexpr bool ENABLE_UPLOAD_WEB = true;
-static constexpr uint16_t UPLOAD_WEB_PORT = 82;
+extern const bool ENABLE_UPLOAD_WEB;
+extern const uint16_t UPLOAD_WEB_PORT;
 // Plain TCP debug/command console.
 // Connect with telnet, PuTTY raw TCP, or `nc <ip> <port>`.
-static constexpr uint16_t DEBUG_TCP_PORT = 2323;
+extern const uint16_t DEBUG_TCP_PORT;
 
 // FreeRTOS task placement/settings for Wi-Fi service loop.
 // Usually only change these if Wi-Fi/OTA becomes unstable.
-static constexpr BaseType_t CORE = 1;
-static constexpr UBaseType_t TASK_PRIORITY = 0;
-static constexpr uint32_t TASK_STACK = 10 * 1024;
-static constexpr uint32_t SERVICE_DELAY_MS = 5;
+extern const BaseType_t CORE;
+extern const UBaseType_t TASK_PRIORITY;
+extern const uint32_t TASK_STACK;
+extern const uint32_t SERVICE_DELAY_MS;
 // OTA reliability knobs. Increase connect timeout if Wi-Fi takes longer to join.
-static constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
+extern const uint32_t CONNECT_TIMEOUT_MS;
 // Retry interval when Wi-Fi drops after boot.
-static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
+extern const uint32_t RECONNECT_INTERVAL_MS;
   }
 
 namespace Debug {
   // Global serial output switch.
   // Set false to mute Serial.print/println output across the app while still
   // allowing the serial port to be opened for input if needed.
-  static constexpr bool ENABLE_SERIAL_OUTPUT = true;
+  extern const bool ENABLE_SERIAL_OUTPUT;
 
 // Compact status line option.
 // Set false to keep status prints but hide motor TPS values.
 // Affects: periodic `status`/telemetry output formatting only.
-static constexpr bool PRINT_STATUS_TPS = false;
+extern const bool PRINT_STATUS_TPS;
 }
 
 namespace I2C {
 // ESP32 I2C pins used for the TOF bus.
 // Affects: Wire.begin() and I2C recovery.
-static constexpr uint8_t SDA = 8;
-static constexpr uint8_t SCL = 9;
+extern const uint8_t SDA;
+extern const uint8_t SCL;
 
 // Intended I2C bus speed.
 // Currently documented here for clarity; use this if/when bus speed is centralized.
-static constexpr uint32_t CLOCK_HZ = 400000;
+extern const uint32_t CLOCK_HZ;
 }
 
 namespace Tof {
 // PCF8574 I/O expander address used to control XSHUT pins.
 // Affects: TOF power-up and address assignment.
-static constexpr uint8_t PCF_ADDRESS = 0x20;
+extern const uint8_t PCF_ADDRESS;
 
 // Number of configured TOF sensors and update cadence.
 // Affects: MultiVL53L0X initialization and polling behavior.
-static constexpr uint8_t SENSOR_COUNT = 5;
-static constexpr uint16_t UPDATE_INTERVAL_MS = 20;
+extern const uint8_t SENSOR_COUNT;
+extern const uint16_t UPDATE_INTERVAL_MS;
+// If true, heading-error PID is computed only once per full TOF sensor sweep.
+// This avoids mixing old/new sensor samples in the same control update.
+extern const bool COMPUTE_HEADING_FROM_FULL_SWEEP;
 
 // Distance threshold for wall detection.
 // Smaller = more conservative wall detection.
 // Larger = walls detected earlier/farther away.
 // Affects: left/front/right wall booleans used by motion + planner.
-static constexpr uint16_t WALL_THRESHOLD_MM = 130;
+extern const uint16_t WALL_THRESHOLD_MM;
 
 // Sensor distance validity window and sentinel values.
 // DIST_FAR represents a valid "clear / far" reading beyond the usable range.
 // DIST_ERROR represents an invalid/error sentinel for internal fusion paths.
-static constexpr uint16_t DIST_MIN_VALID_MM = 1;
-static constexpr uint16_t DIST_MAX_VALID_MM = 200;
-static constexpr uint16_t DIST_FAR_MM = DIST_MAX_VALID_MM + 1;
-static constexpr uint16_t DIST_ERROR_MM = DIST_MAX_VALID_MM + 2;
+extern const uint16_t DIST_MIN_VALID_MM;
+extern const uint16_t DIST_MAX_VALID_MM;
+extern const uint16_t DIST_FAR_MM;
+extern const uint16_t DIST_ERROR_MM;
 
 // XSHUT control pins on the PCF8574, one per sensor.
 // Order matters because it must match SENSOR_ADDR and physical mounting order.
-static constexpr uint8_t XSHUT_PINS[SENSOR_COUNT] = {0, 1, 2, 3, 4};
+extern const uint8_t XSHUT_PINS[];
 
 // Final I2C addresses assigned to each sensor during startup.
 // Order matters and must match the physical sensor order expected by MultiVL53L0X.
-static constexpr uint8_t SENSOR_ADDR[SENSOR_COUNT] = {0x30, 0x31, 0x32, 0x33, 0x34};
+extern const uint8_t SENSOR_ADDR[];
+
+// Per-sensor linear calibration after distance calibration.
+// Corrected(mm) = raw(mm) * SENSOR_SCALE[i] + SENSOR_OFFSET_MM[i]
+// Index map:
+// - V1: 0=LEFT, 2=FRONT, 4=RIGHT
+// - V2: 0=FL, 1=LEFT, 2=RIGHT, 3=FR, 4=spare
+// Only first SENSOR_COUNT entries are used.
+extern const float SENSOR_SCALE[8];
+extern const int16_t SENSOR_OFFSET_MM[8];
+
+// Low-pass smoothing for per-sensor distance updates.
+// update = prev * DIST_LPF_PREV_WEIGHT + sample * DIST_LPF_SAMPLE_WEIGHT
+extern const float DIST_LPF_PREV_WEIGHT;
+extern const float DIST_LPF_SAMPLE_WEIGHT;
 
 }
 
 namespace Motors {
 // Right motor pin mapping and encoder polarity.
 // Affects: low-level motor direction, encoder tick sign, and all motion control.
-static constexpr DcMotor::Pins RIGHT_PINS = {
-  .in1 = 10,
-  .in2 = 11,
-  .pwm = 7,
-  .encA = 12,
-  .encB = 13,
-  .invertDir = false,
-  .invertEnc = false
-};
+extern const DcMotor::Pins RIGHT_PINS;
 
 // Left motor pin mapping and encoder polarity.
 // `invertDir` or `invertEnc` are common first-upload tuning points.
-static constexpr DcMotor::Pins LEFT_PINS = {
-  .in1 = 5,
-  .in2 = 6,
-  .pwm = 4,
-  .encA = 1,
-  .encB = 2,
-  .invertDir = true,
-  .invertEnc = true
-};
+extern const DcMotor::Pins LEFT_PINS;
 
 // LEDC channels and PWM setup.
 // Affects: motor drive generation on ESP32.
-static constexpr uint8_t LEFT_PWM_CHANNEL = 0;
-static constexpr uint8_t RIGHT_PWM_CHANNEL = 1;
-static constexpr uint32_t PWM_FREQ = 20000;
-static constexpr uint8_t PWM_RESOLUTION_BITS = 10;
+extern const uint8_t LEFT_PWM_CHANNEL;
+extern const uint8_t RIGHT_PWM_CHANNEL;
+extern const uint32_t PWM_FREQ;
+extern const uint8_t PWM_RESOLUTION_BITS;
 
 // Wheel speed PID defaults.
 // Affects: how aggressively each wheel tracks target ticks/sec.
 // Tune only after verifying motor direction and encoder polarity.
-static constexpr float PID_KP = 0.0050f;
-static constexpr float PID_KI = 0.0030f;
-static constexpr float PID_KD = 0.0004f;
-static constexpr float PID_OUT_LIMIT = 0.80f;
-static constexpr float PID_I_LIMIT = 0.50f;
-static constexpr float PID_D_FILTER_HZ = 25.0f;
-static constexpr float PID_SLEW_RATE = 10.0f;
+extern const float PID_KP;
+extern const float PID_KI;
+extern const float PID_KD;
+extern const float PID_OUT_LIMIT;
+extern const float PID_I_LIMIT;
+extern const float PID_D_FILTER_HZ;
+extern const float PID_SLEW_RATE;
+extern const float PID_SLEW_RATE_LEFT;
+extern const float PID_SLEW_RATE_RIGHT;
+// Minimum absolute PWM duty used by speed PID when target TPS is non-zero.
+// Helps avoid weak-duty region where one motor starts later than the other.
+extern const uint16_t PID_MIN_DRIVE_DUTY;
+
+// Low-pass smoothing for encoder speed estimate in DcMotor::update().
+// _tps += TPS_LPF_ALPHA * (instant - _tps)
+extern const float TPS_LPF_ALPHA;
+// Window for period-based TPS estimate (ticks accumulated across this time).
+// Larger = smoother/noisier tradeoff.
+extern const uint32_t TPS_ESTIMATE_WINDOW_MS;
 }
 
 namespace Motion {
 // Estimated forward travel for one maze cell.
 // Affects: when moveOneCell() decides the move is complete.
 // One of the most important hardware tuning values.
-static constexpr float CELL_DISTANCE_MM = 180.0f;
+extern const float CELL_DISTANCE_MM;
 
-// Encoder differential ticks needed for a 90-degree turn.
-// Affects: turnLeft90() / turnRight90() completion.
-// One of the most important hardware tuning values.
-static constexpr int32_t TURN_TICKS_90 = 210;
-// Encoder differential ticks needed for a 180-degree turn.
+// Differential wheel travel (mm) needed for turn completion.
+// Affects: turnLeft90() / turnRight90() / turn180() completion.
+// Tune left/right independently to compensate turn asymmetry.
+extern const float TURN_LEFT_90_MM;
+extern const float TURN_RIGHT_90_MM;
 // Keep this separate from 2x90 so you can tune U-turns independently.
-static constexpr int32_t TURN_TICKS_180 = 430;
+extern const float TURN_180_MM;
 
 // Nominal primitive speeds in ticks/sec.
 // Affects: how fast the robot attempts straight moves and turns.
-static constexpr float MOVE_SPEED_TPS = 400.0f;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = 500.0f;
+extern const float MOVE_SPEED_TPS;
+extern const float CORRIDOR_MOVE_SPEED_TPS;
 // Short forward settle after a snap-back. Intended for explore-only recentering.
-static constexpr float SHORT_FORWARD_DISTANCE_MM = 50.0f;
-static constexpr float SHORT_FORWARD_SPEED_TPS = 400.0f;
+extern const float SHORT_FORWARD_DISTANCE_MM;
+extern const float SHORT_FORWARD_SPEED_TPS;
 // Short reverse primitive used for manual alignment and future turn recentering work.
-static constexpr float REVERSE_DISTANCE_MM = 100.0f;
-static constexpr float REVERSE_SPEED_TPS = 400.0f;
+extern const float REVERSE_DISTANCE_MM;
+extern const float REVERSE_SPEED_TPS;
 // Hold time between snapcenter reverse hard-stop and forward restart.
 // Affects: how long the robot pauses after backing up before returning to center.
-static constexpr uint32_t SNAP_CENTER_STOP_HOLD_MS = 1;
-static constexpr float TURN_SPEED_TPS = 400.0f;
+extern const uint32_t SNAP_CENTER_STOP_HOLD_MS;
+extern const float TURN_SPEED_TPS;
+// Turn slowdown profile to reduce overshoot near 90/180 target ticks.
+// Once progress reaches TURN_SLOWDOWN_START_RATIO of target ticks, reduce to
+// TURN_MIN_SPEED_TPS for final approach.
+extern const float TURN_MIN_SPEED_TPS;
+extern const float TURN_SLOWDOWN_START_RATIO;
 
 // Wall-centering correction gain while driving straight.
 // Higher = stronger correction, but too high can oscillate.
 // Affects: corridor following stability.
-static constexpr float CENTERING_GAIN = 1.0f;
-static constexpr float CORRIDOR_CENTERING_GAIN = 1.0f;
-static constexpr float CENTER_TARGET_LEFT_MM = 100.0f;
-static constexpr float CENTER_TARGET_RIGHT_MM = 100.0f;
-static constexpr float CENTER_TARGET_CAPTURE_WINDOW_MM = 0.0f;
-static constexpr float CENTER_PID_KP = 2.0f;
-static constexpr float CENTER_PID_KI = 0.01f;
-static constexpr float CENTER_PID_KD = 1.0f;
-static constexpr float CENTER_PID_I_LIMIT = 40.0f;
-static constexpr float CENTER_PID_OUT_LIMIT = 50.0f;
+extern const float CENTERING_GAIN;
+extern const float CORRIDOR_CENTERING_GAIN;
+// Extra gain applied only on the side that should slow down from centering correction.
+// 1.0 = symmetric behavior, 2.0 = slowing side is reduced 2x.
+extern const float CENTERING_SLOW_SIDE_GAIN;
+// Gain applied on the side that would speed up from centering correction.
+// 0.0 = keep fast side at base speed (no speed-up).
+extern const float CENTERING_FAST_SIDE_GAIN;
+extern const float CENTER_TARGET_LEFT_MM;
+extern const float CENTER_TARGET_RIGHT_MM;
+extern const float CENTER_TARGET_CAPTURE_WINDOW_MM;
+extern const float CENTER_PID_KP;
+extern const float CENTER_PID_KI;
+extern const float CENTER_PID_KD;
+extern const float CENTER_PID_I_LIMIT;
+extern const float CENTER_PID_OUT_LIMIT;
+// Clamp one-wall tracking target error to reduce large steering spikes
+// when the opposite side is open/far.
+extern const float CENTER_PID_SINGLE_WALL_ERR_LIMIT_MM;
+// Clamp derivative magnitude to avoid large D kicks on abrupt sensor transitions.
+extern const float CENTER_PID_DERIV_LIMIT;
+// Clamp side-wall distance used by center PID math only.
+// Sensor data can remain valid farther than this, but PID error uses this max.
+extern const uint16_t CENTER_PID_EFFECTIVE_SIDE_MAX_MM;
+// Low-pass time constants (seconds) for wall-centering blend and raw error smoothing.
+extern const float CENTER_BLEND_TAU_SEC;
+extern const float CENTER_RAW_TAU_SEC;
 
 // If a front wall is seen this close near the end of a move, stop early.
 // Affects: wall approach safety and cell alignment.
-static constexpr float FRONT_STOP_MM = 100.0f;
-static constexpr float CORRIDOR_FRONT_STOP_MM = 120.0f;
+extern const float FRONT_STOP_MM;
+extern const float CORRIDOR_FRONT_STOP_MM;
+// Distance-based slowdown near motion target distance.
+// Example: 0.85 means start slowing after 85% of target distance is reached.
+extern const float DISTANCE_APPROACH_START_RATIO;
+extern const float DISTANCE_APPROACH_MIN_SPEED_TPS;
+extern const float FRONT_APPROACH_START_FACTOR;
+extern const float FRONT_APPROACH_MIN_SPEED_TPS;
 
 // Primitive fault timing.
 // Affects: when moves/turns fail due to timeout or lack of progress.
-static constexpr uint32_t PRIMITIVE_TIMEOUT_MS = 3000;
-static constexpr uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS = 1000;
-static constexpr uint32_t STALL_TIMEOUT_MS = 700;
-static constexpr uint8_t CORRIDOR_MAX_CELLS = 4;
+extern const uint32_t PRIMITIVE_TIMEOUT_MS;
+extern const uint32_t CORRIDOR_TIMEOUT_PER_CELL_MS;
+extern const uint32_t STALL_TIMEOUT_MS;
+extern const uint8_t CORRIDOR_MAX_CELLS;
 
 // Primitive completion thresholds.
 // STOP_TPS: considered stopped when wheel speed falls below this.
 // MIN_PROGRESS_MM: minimum progress before stall timer is refreshed.
-static constexpr float STOP_TPS = 20.0f;
-static constexpr float MIN_PROGRESS_MM = 12.0f;
+extern const float STOP_TPS;
+extern const float MIN_PROGRESS_MM;
+// Stop mode used when a primitive completes in normal motion flow
+// (explore / speedrun 1). Choose one of: COAST, BRAKE, HARDSTOP.
+extern const MotionController::StopMode COMPLETION_STOP_MODE;
+// Stop mode used during snap-center back/hold phases.
+extern const MotionController::StopMode SNAP_CENTER_HOLD_STOP_MODE;
+// Stop mode applied in AppRuntime right after each completed primitive
+// before the optional settle hold delay.
+extern const MotionController::StopMode POST_MOTION_SETTLE_STOP_MODE;
 
-// Mechanical distance-per-tick estimate.
+// Mechanical distance-per-tick estimate per wheel.
 // Affects: forward progress estimation and one-cell completion.
-// Usually tune this before final CELL_DISTANCE_MM tuning.
-static constexpr float MM_PER_TICK = 0.54f;
+// Tune left/right independently to reduce long straight drift.
+extern const float LEFT_MM_PER_TICK;
+extern const float RIGHT_MM_PER_TICK;
 // Print known maze as ASCII after exploration updates the map.
-static constexpr bool AUTO_PRINT_MAZE_AFTER_SENSE = true;
+extern const bool AUTO_PRINT_MAZE_AFTER_SENSE;
 // Hold the motors in hard-stop briefly after a primitive completes.
 // Affects: how long the robot fully settles before wall sensing and the next action.
-static constexpr uint32_t POST_MOTION_HARD_STOP_HOLD_MS = 1;
+extern const uint32_t POST_MOTION_HARD_STOP_HOLD_MS;
+// Extra guard after a turn/snap before explore registers walls.
+// Helps avoid transient TOF states right after heading changes.
+extern const uint32_t POST_TURN_WALL_SETTLE_MS;
+extern const uint8_t POST_TURN_WALL_STABLE_SAMPLES;
 }
 
 namespace Explorer {
 // Floodfill web explorer settings.
 // Affects: debug UI on the network and action ACK timeout behavior.
 // Set false to disable the floodfill web UI on port 81 while keeping floodfill logic active.
-static constexpr bool ENABLE_WEB = true;
-static constexpr uint16_t PORT = 81;
-static constexpr uint16_t WS_PORT = 83;
-static constexpr bool AUTO_RUN = false;
-static constexpr uint32_t ACK_TIMEOUT_MS = 2000;
-static constexpr bool PAUSE_ON_ACK_TIMEOUT = true;
+extern const bool ENABLE_WEB;
+extern const uint16_t PORT;
+extern const uint16_t WS_PORT;
+extern const bool AUTO_RUN;
+extern const uint32_t ACK_TIMEOUT_MS;
+extern const bool PAUSE_ON_ACK_TIMEOUT;
 // In explore mode, keep looping between original goal and original start
 // after each target is reached. This helps continue discovering alternate
 // walls and improving the path without resetting pose.
-static constexpr bool CONTINUE_AFTER_GOAL = true;
+extern const bool CONTINUE_AFTER_GOAL;
 // Mark the shortest path as known after this many consecutive
 // goal->home round trips report the same best-known start->goal cost.
-static constexpr uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS = 1;
+extern const uint8_t SHORTEST_PATH_STABLE_ROUND_TRIPS;
+// Motion queue runtime behavior.
+extern const bool QUEUE_ENABLE_EXPLORE;
+extern const bool QUEUE_ENABLE_SPEEDRUN1;
+extern const bool QUEUE_DISABLE_WALL_REGISTER_WHILE_ACTIVE;
+extern const uint16_t QUEUE_CAPACITY;
+extern const bool QUEUE_DEBUG_PRINT;
 }
 
 namespace SpeedRun2 {
 // Dedicated one-way shortest-path motion profile.
 // Starts with the current stable speedrun tuning so it can be tuned independently later.
-static constexpr float MOVE_SPEED_TPS = Motion::MOVE_SPEED_TPS;
-static constexpr float CORRIDOR_MOVE_SPEED_TPS = Motion::CORRIDOR_MOVE_SPEED_TPS;
-static constexpr float TURN_SPEED_TPS = Motion::TURN_SPEED_TPS;
-static constexpr float CENTERING_GAIN = Motion::CENTERING_GAIN;
-static constexpr float CORRIDOR_CENTERING_GAIN = Motion::CORRIDOR_CENTERING_GAIN;
-static constexpr float FRONT_STOP_MM = Motion::FRONT_STOP_MM;
-static constexpr float CORRIDOR_FRONT_STOP_MM = Motion::CORRIDOR_FRONT_STOP_MM;
+extern const float MOVE_SPEED_TPS;
+extern const float CORRIDOR_MOVE_SPEED_TPS;
+extern const float TURN_SPEED_TPS;
+extern const float CENTERING_GAIN;
+extern const float CORRIDOR_CENTERING_GAIN;
+extern const float FRONT_STOP_MM;
+extern const float CORRIDOR_FRONT_STOP_MM;
 }
 
 namespace Inputs {
 // Built-in BOOT button multi-press launcher on ESP32-S3 GPIO0.
-static constexpr bool ENABLE_BOOT_BUTTON_LAUNCH = true;
-static constexpr uint8_t BOOT_BUTTON_PIN = 0;
-static constexpr bool BOOT_BUTTON_ACTIVE_LOW = true;
-static constexpr uint32_t BOOT_BUTTON_DEBOUNCE_MS = 30;
-static constexpr uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS = 5000;
+extern const bool ENABLE_BOOT_BUTTON_LAUNCH;
+extern const uint8_t BOOT_BUTTON_PIN;
+extern const bool BOOT_BUTTON_ACTIVE_LOW;
+extern const uint32_t BOOT_BUTTON_DEBOUNCE_MS;
+extern const uint32_t BOOT_BUTTON_MULTI_PRESS_TIMEOUT_MS;
 }
 
 namespace Tasks {
 // Main periodic task cadences (milliseconds).
 // Affects: scheduler pacing and loop watchdog expected periods.
-static constexpr uint32_t USER_LOOP_PERIOD_MS = 20;
-static constexpr uint32_t PLANNER_LOOP_PERIOD_MS = 50;
-static constexpr uint32_t MOTOR_LOOP_PERIOD_MS = 5;
-static constexpr uint32_t EXPLORER_LOOP_PERIOD_MS = 10;
-static constexpr uint32_t TOF_LOOP_PERIOD_MS = 5;
-static constexpr uint32_t TELEMETRY_LOOP_PERIOD_MS = 1000;
+extern const uint32_t USER_LOOP_PERIOD_MS;
+extern const uint32_t PLANNER_LOOP_PERIOD_MS;
+extern const uint32_t MOTOR_LOOP_PERIOD_MS;
+extern const uint32_t EXPLORER_LOOP_PERIOD_MS;
+extern const uint32_t TOF_LOOP_PERIOD_MS;
+extern const uint32_t TELEMETRY_LOOP_PERIOD_MS;
 }
 
 namespace Debug {
   // Additional runtime flow logging for motion, snap, and wall application.
   // Affects: extra serial/TCP debug output only; no behavior changes.
-  static constexpr bool DEBUG_MOTION_FLOW = true;
-  static constexpr bool DEBUG_WALL_APPLY = true;
+  extern const bool DEBUG_MOTION_FLOW;
+  // Dedicated gate for debugMotionEvent() start/end primitive logs.
+  extern const bool DEBUG_MOTION_EVENT;
+  // Gate for automatic maze ASCII dumps via maze_debug_s().
+  extern const bool DEBUG_MAZE_PRINT;
+  extern const bool DEBUG_WALL_APPLY;
+  // High-rate center PID trace from MultiVL53L0X::computeError().
+  extern const bool CENTER_PID_TRACE;
+  // Print every N center-PID updates (1 = every update).
+  extern const uint8_t CENTER_PID_TRACE_EVERY_N;
+  // High-rate motor PID trace from DcMotor::update().
+  // Prints one line per motor update with target/tps/err/P/I/D/out/duty.
+  extern const bool MOTOR_PID_TRACE;
+  // Print every N motor updates (1 = every update).
+  extern const uint16_t MOTOR_PID_TRACE_EVERY_N;
+  // Queue runtime trace default (can still be toggled at runtime by `qtrace on/off`).
+  extern const bool QUEUE_TRACE_DEFAULT;
   // Lightweight periodic-task timing watchdog.
   // Warns when a watched loop runs later than its expected cadence.
-  static constexpr bool ENABLE_LOOP_WATCHDOG = true;
-  static constexpr uint32_t LOOP_WATCHDOG_TOLERANCE_MS = 3;
-  static constexpr uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS = 500;
+  extern const bool ENABLE_LOOP_WATCHDOG;
+  extern const uint32_t LOOP_WATCHDOG_TOLERANCE_MS;
+  extern const uint32_t LOOP_WATCHDOG_RATE_LIMIT_MS;
 }
 
 // Helper that converts config constants into the runtime motion controller config.
@@ -329,8 +417,9 @@ namespace Debug {
 inline MotionController::Config makeMotionConfig() {
   MotionController::Config cfg;
   cfg.cellDistanceMm = Motion::CELL_DISTANCE_MM;
-  cfg.turnTicks90 = Motion::TURN_TICKS_90;
-  cfg.turnTicks180 = Motion::TURN_TICKS_180;
+  cfg.turnLeft90Mm = Motion::TURN_LEFT_90_MM;
+  cfg.turnRight90Mm = Motion::TURN_RIGHT_90_MM;
+  cfg.turn180Mm = Motion::TURN_180_MM;
   cfg.moveSpeedTps = Motion::MOVE_SPEED_TPS;
   cfg.corridorMoveSpeedTps = Motion::CORRIDOR_MOVE_SPEED_TPS;
   cfg.shortForwardDistanceMm = Motion::SHORT_FORWARD_DISTANCE_MM;
@@ -339,16 +428,27 @@ inline MotionController::Config makeMotionConfig() {
   cfg.reverseSpeedTps = Motion::REVERSE_SPEED_TPS;
   cfg.snapCenterStopHoldMs = Motion::SNAP_CENTER_STOP_HOLD_MS;
   cfg.turnSpeedTps = Motion::TURN_SPEED_TPS;
+  cfg.turnMinSpeedTps = Motion::TURN_MIN_SPEED_TPS;
+  cfg.turnSlowdownStartRatio = Motion::TURN_SLOWDOWN_START_RATIO;
   cfg.centeringGain = Motion::CENTERING_GAIN;
   cfg.corridorCenteringGain = Motion::CORRIDOR_CENTERING_GAIN;
+  cfg.centeringSlowSideGain = Motion::CENTERING_SLOW_SIDE_GAIN;
+  cfg.centeringFastSideGain = Motion::CENTERING_FAST_SIDE_GAIN;
   cfg.frontStopMm = Motion::FRONT_STOP_MM;
   cfg.corridorFrontStopMm = Motion::CORRIDOR_FRONT_STOP_MM;
+  cfg.distanceApproachStartRatio = Motion::DISTANCE_APPROACH_START_RATIO;
+  cfg.distanceApproachMinSpeedTps = Motion::DISTANCE_APPROACH_MIN_SPEED_TPS;
+  cfg.frontApproachStartFactor = Motion::FRONT_APPROACH_START_FACTOR;
+  cfg.frontApproachMinSpeedTps = Motion::FRONT_APPROACH_MIN_SPEED_TPS;
   cfg.primitiveTimeoutMs = Motion::PRIMITIVE_TIMEOUT_MS;
   cfg.corridorTimeoutPerCellMs = Motion::CORRIDOR_TIMEOUT_PER_CELL_MS;
   cfg.stallTimeoutMs = Motion::STALL_TIMEOUT_MS;
   cfg.stopTps = Motion::STOP_TPS;
   cfg.minProgressMm = Motion::MIN_PROGRESS_MM;
-  cfg.mmPerTick = Motion::MM_PER_TICK;
+  cfg.completionStopMode = Motion::COMPLETION_STOP_MODE;
+  cfg.snapCenterHoldStopMode = Motion::SNAP_CENTER_HOLD_STOP_MODE;
+  cfg.leftMmPerTick = Motion::LEFT_MM_PER_TICK;
+  cfg.rightMmPerTick = Motion::RIGHT_MM_PER_TICK;
   cfg.corridorMaxCells = Motion::CORRIDOR_MAX_CELLS;
   return cfg;
 }
@@ -379,3 +479,4 @@ inline FloodFillExplorer::Config makeExplorerConfig() {
 }
 
 }  // namespace AppConfig
+

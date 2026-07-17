@@ -9,10 +9,17 @@
 
 class MotionController {
 public:
+  enum class StopMode : uint8_t {
+    COAST = 0,
+    BRAKE = 1,
+    HARDSTOP = 2,
+  };
+
   struct Config {
     float cellDistanceMm = 180.0f;
-    int32_t turnTicks90 = 300;
-    int32_t turnTicks180 = 600;
+    float turnLeft90Mm = 113.0f;
+    float turnRight90Mm = 113.0f;
+    float turn180Mm = 232.0f;
     float moveSpeedTps = 320.0f;
     float corridorMoveSpeedTps = 320.0f;
     float shortForwardDistanceMm = 90.0f;
@@ -21,17 +28,28 @@ public:
     float reverseSpeedTps = 180.0f;
     uint32_t snapCenterStopHoldMs = 50;
     float turnSpeedTps = 250.0f;
+    float turnMinSpeedTps = 120.0f;
+    float turnSlowdownStartRatio = 0.75f;
     float centeringGain = 1.6f;
     float corridorCenteringGain = 1.6f;
+    float centeringSlowSideGain = 1.0f;
+    float centeringFastSideGain = 0.0f;
     float frontStopMm = 55.0f;
     float corridorFrontStopMm = 55.0f;
+    float distanceApproachStartRatio = 0.85f;
+    float distanceApproachMinSpeedTps = 180.0f;
+    float frontApproachStartFactor = 1.5f;
+    float frontApproachMinSpeedTps = 180.0f;
     uint32_t primitiveTimeoutMs = 3000;
     uint32_t corridorTimeoutPerCellMs = 1000;
     uint32_t stallTimeoutMs = 700;
     float stopTps = 20.0f;
     float minProgressMm = 12.0f;
-    float mmPerTick = 0.54f;
+    float leftMmPerTick = 0.54f;
+    float rightMmPerTick = 0.54f;
     uint8_t corridorMaxCells = 1;
+    StopMode completionStopMode = StopMode::HARDSTOP;
+    StopMode snapCenterHoldStopMode = StopMode::HARDSTOP;
   };
 
   void begin(DcMotor& left, DcMotor& right, MultiVL53L0X& tof, Battery* battery = nullptr);
@@ -50,6 +68,7 @@ public:
   void update(RobotState& state);
   void setStopOnCompletion(bool en) { stopOnCompletion_ = en; }
   void clearCompletionState();
+  void setUseLatchedTrackMode(bool en);
 
   bool isBusy() const { return status_ == MOTION_RUNNING_PRIMITIVE; }
   MotionStatus status() const { return status_; }
@@ -66,7 +85,8 @@ private:
   MultiVL53L0X::StraightTrackMode chooseStraightTrackMode_(const WallObservation& walls) const;
   float averageProgressMm_() const;
   float absoluteAverageProgressMm_() const;
-  int32_t differentialTicks_() const;
+  float differentialProgressMm_() const;
+  void applyStopMode_(StopMode mode);
   void resetSnapState_();
   bool updateProgressOrFail_(float progressMm, uint32_t now, const char* stallReason);
 
@@ -92,5 +112,6 @@ private:
   bool moveEndsAtKnownWall_ = false;
   bool straightTrackModeLatched_ = false;
   MultiVL53L0X::StraightTrackMode straightTrackMode_ = MultiVL53L0X::TRACK_NONE;
+  bool useLatchedTrackMode_ = true;
   bool stopOnCompletion_ = true;
 };

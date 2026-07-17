@@ -2,14 +2,14 @@
 
 ESP32-S3 micromouse project for a floodfill-based maze runner.
 
-Current project version: `0.4.0`
+Current project version: `0.4.1`
 
 ## Current Status
 
 This repository now includes the first integrated hardware-oriented control stack:
 - dual DC motor control with encoder-based speed PID
 - multi-VL53L0X wall sensing
-- battery monitoring with safety states
+- battery monitoring with warning/critical telemetry states
 - primitive motion executor for `move`, `back`, `turn 90 deg`, and `turn 180 deg`
 - floodfill maze state and web visualizer
 - floodfill maze web sync over WebSocket instead of browser polling
@@ -29,47 +29,53 @@ This repository now includes the first integrated hardware-oriented control stac
 - wall-centering now uses left-target and right-target references consistently for both dual-wall and single-wall follow
 - wall-centering now captures left/right center targets once near the start of each straight move, only when both walls are visible and already within the configured `5 mm` balance window
 - wall-centering correction is now tuned through the center-wall `KP` term and correction output limit, while leaving `CORRIDOR_CENTERING_GAIN` unchanged
-- motion speed targets in `Config.h` are now standardized to `400 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `500 TPS`
+- motion speed targets in `Config.h` are now standardized to `350 TPS` for move, short-forward, reverse, and turn primitives, with corridor speed kept at `450 TPS`
 - the shortest-path-known rule now triggers after `1` stable goal->home round trip with the same best-known cost
 - the ESP32-S3 BOOT button now supports a 5-second multi-press launcher from idle with LED-cycle feedback on each accepted press
 - BOOT-button `1` press now starts `explore` without clearing the known maze first
 - the serial `explore` and `explore n` commands now also keep the known maze, matching the BOOT-button and web explore entry paths; `clearmaze` is the explicit wall-memory reset command
 - the browser uploader on port `82` now uses the chunked HTTP retry path again, streaming firmware through `/upload/start`, `/upload/chunk`, and `/upload/finish`
 - legacy firmware-upload WebSocket transport has been removed; firmware upload now uses HTTP chunk endpoints only
-- the browser uploader now uses chunked HTTP with retry, adaptive chunk-size fallback, and session restart recovery on failures
+- the browser uploader now uses chunked HTTP with retry, adaptive chunk-size fallback, and fixed retry backoff/pacing
 - OTA/web upload status LED is now solid `blue` while receiving and forced `off` on success
 - interrupted browser uploads now abort cleanly and force the LED `red` on failure/abort paths
 - long straight `move N` actions that are known to end at a wall now finish on the front-wall stop distance instead of stopping only on encoder distance
 - OTA safe mode now suspends the motor, TOF, explorer, planner, and telemetry tasks entirely during upload, then resumes them afterward for a quieter and more stable transfer path
-- the dedicated Wi-Fi/OTA service task is now pinned to core `1` instead of core `0`
-- the Wi-Fi service loop now runs with a `5 ms` cadence during normal service to balance OTA/web responsiveness and system stability
+- the dedicated Wi-Fi/OTA service task is currently pinned to core `0` by config
+- the Wi-Fi service loop currently runs with a `50 ms` cadence during normal service
 - Wi-Fi reconnect recovery now escalates from normal `WiFi.reconnect()` attempts to a full STA restart and fresh `WiFi.begin(...)` after a longer disconnect, so the robot can recover from wedged network states without a power cycle
 - Wi-Fi reconnect attempts now run only while the robot is idle; active explore/speedrun/test motion leaves the link alone so reconnect churn does not destabilize motion
 - manual LED commands now also support `yellow` and `magenta`
 - the port `80` control page now also has an `Open Upload` button that jumps straight to the browser firmware upload page on port `82`
 - the port `80` command guide now combines `explore` and `explore n` into one line: explore until the shortest path is known, or stop after `n` forward moves
+- floodfill web on port `81` now has a `Clear Maze` button that triggers the same robot-side `clearmaze` behavior (runtime + saved maze memory)
 - added `test motor both` for a simple full-power forward/reverse bench loop on both motors
 - compact status printing can now hide `tps=(left,right)` with a config flag when motor-speed text is too noisy
 - serial output can now be globally muted with a config flag while keeping the serial port open for input
-- `speedrun [1-4]` is now phase-aware: `speedrun 1` keeps the existing baseline behavior, while `speedrun 2` is now the dedicated one-way home-to-goal profile and phases `3-4` inherit the previous phase until tuned
+- `speedrun [1-4]` is phase-aware: `speedrun 1` is the round-trip home->goal->home profile, `speedrun 2` is the one-way home->goal profile, and phases `3-4` inherit the previous phase until tuned
 - `speedrun 1` now temporarily mutes serial output while the run is active, then restores it automatically on goal/idle/fault
-- `speedrun 1` now flips the active target at the goal and continues the shortest-path run back home before finishing
-- `speedrun 1` now restores the active target back to the original goal after the return-home leg finishes, so the web/planner state is ready for the next run
 - `speedrun` now rebuilds its start/home target and goal target from the current runtime pose and current runtime goal before the run begins
-- `speedrun` still means `speedrun 1`, while `speedrun 2` now runs the known shortest path one-way from home to goal using its own motion-profile selection and continuous execution path
+- `speedrun` still means `speedrun 1`, and `speedrun 2` runs the known shortest path one-way from home to goal with its dedicated profile selection
 - fixed the `speedrun 1` serial-mute build path by wiring the Wi-Fi serial mirror code to the shared config header
 - the floodfill web now shows live leg timing for both `HG` and `GH`, and keeps lap history in RAM across runs until reboot/reset
 - fixed the intermediate `speedrun 1` goal-flip path so a completed move is cleared before the return-home leg begins, preventing an extra logical cell advance
 - `speedrun 1` keeps the normal per-motion hard-stop and stop-hold behavior, matching `explore` while keeping the same no-ACK shortest-path planner flow
 - `speedrun 2` now executes the known shortest path directly as `move N -> turn left/right -> ... -> goal`, without explore-style ACK/wall-apply steps and without per-primitive stop-hold pauses
 - `speedrun 2` now treats an unexpected shortest-path `uturn` as a fault instead of executing it as a normal high-speed action
-- every speedrun phase now performs an untimed pre-run centering sequence before the lap starts: turn 90 degrees toward a known side wall when available, snap there, turn back to the original heading, then do the final snap in the original heading
+- every speedrun phase now performs at most one untimed pre-run snap-center (no pre-run side turns) before the lap starts, and skips it when the known back wall condition is not met
 - periodic RTOS task loops now have a lightweight watchdog that warns when a loop misses its expected cadence, including task name, expected period, actual interval, lateness, and core id
 - the RTOS loop watchdog now only warns for time-critical loops running on core `0`; core `1` loops are treated as delay-tolerant and no longer emit cadence warnings
 - `explorerTask` now uses `vTaskDelayUntil(...)` in normal operation so it follows the same fixed-cadence scheduling rule as the other steady-state task loops
-- global Serial output is enabled again for normal boot/runtime logs, while `speedrun 1` still temporarily mutes Serial only during the active run
+- global Serial output remains configurable with `AppConfig::Debug::ENABLE_SERIAL_OUTPUT`, while `speedrun 1` still temporarily mutes Serial only during the active run when Serial output is enabled
 - floodfill forward planning and runtime motion now support long straight corridors as `move N`, including manual `move [n]`, planner-emitted multi-cell runs, and cell-by-cell logical commits during explore so maze updates still happen per crossed cell
-- startup LED behavior now shows `red` during setup and forces `off` when boot completes and runtime enters ready idle
+- startup LED behavior now shows `red` during setup, then on ready idle shows `white` if shortest-path-ready is loaded, otherwise `off`
+- low-pass smoothing constants for TOF distance updates, motor TPS estimate, and center-track blending are now configurable in `Config.h`
+- HTTP firmware upload now uses a dedicated upload service task during active chunk transfer to improve upload stability under load
+- HTTP firmware upload now pre-erases the OTA target partition before transfer and sets TCP no-delay on upload requests to improve throughput consistency
+- latched straight-track mode is now enabled only for `speedrun 2`; `explore` and `speedrun 1` use live wall availability each cycle for safer unknown-cell transitions
+- front-stop threshold now uses `FRONT_STOP_MM` when effective move target is 1 cell, and `CORRIDOR_FRONT_STOP_MM` only for true multi-cell corridor runs
+- runtime forward-cell commit logic now matches that rule too, so `move 1` completion uses `FRONT_STOP_MM` consistently in both motion and planner-commit paths
+- center PID side-distance clamp is now configurable via `CENTER_PID_EFFECTIVE_SIDE_MAX_MM`, and V2 front-right (S3) is now treated independently (no S0 dependency workaround)
 
 This is a bring-up and integration version, not a race-tuned final solver yet.
 
@@ -83,6 +89,7 @@ Release note:
 - [AppRuntime.h](AppRuntime.h): app interface exposed to the `.ino` wrapper
 - [AppRuntime.cpp](AppRuntime.cpp): application logic, globals, startup flow, command handling, background tasks, planner integration
 - [Config.h](Config.h): centralized hardware pins, thresholds, Wi-Fi settings, and motion tuning constants
+- Build profile: set `APP_LITE_FIRMWARE` in [Config.h](c:\Users\donot\OneDrive\Documents\Arduino\Mouse_esp32s3\Config.h) (`0` full / `1` lite) to use the minimal runtime profile (Wi-Fi/OTA/web disabled by default)
 - [RobotTypes.h](RobotTypes.h): shared enums and `RobotState`
 
 ### Motion and hardware
@@ -105,6 +112,49 @@ Release note:
 - [WiFiOtaWebSerial.h](WiFiOtaWebSerial.h): OTA and lightweight port `80` control page API
 - [WiFiOtaWebSerial.cpp](WiFiOtaWebSerial.cpp): Wi-Fi task, control page, Arduino OTA, browser upload page, LED control
 
+## Wi-Fi Feature Surface
+
+With Wi-Fi enabled, this project already provides:
+
+- HTTP control page for command input and runtime visibility
+- WebSocket stream for live maze/state synchronization
+- Telnet-style TCP debug console
+- Arduino OTA and browser-based OTA upload path
+- mDNS service discovery (`<hostname>.local`)
+
+High-value Wi-Fi features that can be added incrementally:
+
+1. REST API for state/config (`/api/state`, `/api/config`, `/api/motion`)
+2. Live dashboard plotting (TPS, PID terms, TOF distances, battery)
+3. Structured log streaming endpoint (machine-friendly JSON lines)
+4. Remote tuning profile save/load and compare
+5. Remote queue/mission submit API for scripted test runs
+6. Run record/replay tooling for tuning and regression checks
+7. Web calibration flows (TOF calibration, mm-per-tick, PID assist)
+8. Metrics endpoint for external monitoring
+9. Access control (viewer/operator/admin) and command authorization
+10. Remote safety controls (heartbeat + kill-switch)
+
+Design note:
+- Keep Wi-Fi callbacks lightweight and move heavy work into normal app tasks.
+- Realtime motor/TOF behavior should stay deterministic even when network traffic is active.
+
+## BLE Options (Optional / Future)
+
+BLE is not enabled in the current firmware, but can be added for short-range control and telemetry.
+
+Useful BLE feature ideas:
+
+1. BLE GATT telemetry service (battery, pose, walls, mode)
+2. BLE command/control service (start/stop/explore/speedrun)
+3. BLE tuning service for selected runtime parameters
+4. BLE provisioning (set Wi-Fi credentials from phone app)
+5. BLE fallback control path when Wi-Fi is unavailable
+6. BLE notifications for fault/state change events
+
+Recommendation:
+- Treat BLE as a secondary control channel; keep motion safety and planner authority in the same runtime core logic used by serial/Wi-Fi commands.
+
 ## Runtime Flow
 
 1. `setup()` in the `.ino` forwards to `MainApp::setupApp(...)`.
@@ -117,7 +167,7 @@ Release note:
 8. `explore` only starts with `snapCenter()` when the wall behind the robot is already known to exist; otherwise the run-start snap is skipped and the planner is allowed to continue immediately.
 9. After a motion completes in explore hardware mode, the runtime refreshes robot sensor state, applies wall sensing for the new pose once, ACKs the pending planner action, and only then holds the motors in hard-stop briefly before allowing the next motion.
 10. After a 180-degree turn in explore hardware mode, if the wall behind the robot is known to exist, the runtime runs `snapCenter()` before wall registration and before ACKing the turn so the next planner action starts from the re-centered pose.
-11. `speedrun 1` uses the shortest known path directly: no wall-map updates, no floodfill ACK handshake, and no snap-center recovery steps during the run.
+11. `speedrun 1` uses the shortest known path as a round-trip run: home -> goal -> home, with no wall-map updates and no floodfill ACK handshake in the motion loop.
 12. `speedrun 2` runs one-way from home to goal with its own motion profile and continuous shortest-path execution, so the runtime syncs pose and dispatches the next action directly instead of using the explore ACK loop.
 13. `telemetryTask` now focuses on the selected manual-test loop output instead of always printing the compact status line every cycle.
 14. `explorerTask` serves the web maze view and now runs on a fixed `vTaskDelayUntil(...)` cadence during normal operation.
@@ -342,9 +392,9 @@ Available from the main sketch:
 - `test battery`
 - `test sensors`
 - `test sensorsraw`
-- `test motorl`
-- `test motorr`
-- `test motor both`
+- `test motorl [tps]`
+- `test motorr [tps]`
+- `test motor both [tps]`
 - `test encoders`
 
 Manual motion note:
@@ -353,7 +403,7 @@ Manual motion note:
 Console note:
 - periodic debug output pauses briefly while you type on serial or telnet, then resumes automatically
 - `restart` closes the TCP debug console first, then reboots the ESP32
-- `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` follows the normal coast-to-idle path
+- `brake` applies the active motor brake immediately for bench testing and tuning, while `stop` now forces motion stop + hard-stop on both motors before entering idle
 - the TCP debug console close path follows the current ESP32 `NetworkClient` API to avoid deprecated-call warnings during build
 - the TCP debug console listens on port `2323`
 - port `80` now serves a simple control page that shows the robot hostname and offers `Reconnect Telnet` plus `Cycle LED`
@@ -441,13 +491,13 @@ Current values are placeholders and will need on-robot tuning in [Config.h](Conf
 - `mmPerTick`
 
 Current front-sensor behavior:
-- In the current front fusion logic, S3 (front-right) is only trusted when S0 (front-left) is also valid
-- If S0 reports `201` / far, S3 is exposed as `201` too
-- If S0 is invalid, S3 is exposed as invalid too
-- If both front sensors are far, fused `frontMm` now reports `201` instead of `0`
+- V2 front fusion uses `min(front-left, front-right)` when both are valid, or the valid side when only one side is valid
+- V2 `frontValid` is true when either front sensor is valid, or when both front sensors are far/open
+- both front sensors are now treated independently; front-right is not gated by front-left validity
+- far/open and error values follow `AppConfig::Tof::DIST_FAR_MM` and `AppConfig::Tof::DIST_ERROR_MM`
 
 Battery divider note:
-- current comments assume a `47k / 18k` divider into `GPIO 3`
+- the current configured divider is `56k / 18k` into `GPIO 3`
 - battery voltage now uses the measured ADC node voltage plus the configured divider ratio as the primary pack-voltage estimate
 - on ESP32, battery ADC debug now uses the calibrated millivolt reading path instead of a simple `raw / 4095 * 3.3` approximation
 - the current tuned divider constant uses an effective top resistor value of `56k` with `18k` bottom to better match the measured pack voltage on this board

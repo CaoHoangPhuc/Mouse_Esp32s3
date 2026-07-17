@@ -1,5 +1,6 @@
 #include "esp32-hal-gpio.h"
 #include "DcMotor.h"
+#include "Config.h"
 #include "driver/gpio.h"
 
 #if defined(ESP32)
@@ -7,6 +8,9 @@
 #endif
 
 DcMotor* DcMotor::_instances[4] = {nullptr, nullptr, nullptr, nullptr};
+static portMUX_TYPE sMotorPidTraceMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t sMotorPidTraceCounterL = 0;
+static uint32_t sMotorPidTraceCounterR = 0;
 
 DcMotor::DcMotor() {}
 
@@ -75,6 +79,8 @@ bool DcMotor::begin(const Pins& pins,
   _lastMicros = micros();
   _lastTicks = 0;
   _tps = 0.0f;
+  _speedAccumTicks = 0;
+  _speedAccumUs = 0;
 
   _speedCtrlEnabled = false;
   _targetTPS = 0.0f;
@@ -150,10 +156,7 @@ void DcMotor::brakeStop() {
 }
 
 void DcMotor::hardStop() {
-  _targetTPS = 0.0f;
-  _speedCtrlEnabled = false;
-  resetPID();
-  brakeStop();
+  setSpeedTPS(0.0f);
 }
 
 void DcMotor::setSpeedPID(float kp, float ki, float kd,
@@ -177,7 +180,12 @@ void DcMotor::resetPID() {
 
 void DcMotor::update() {
   uint32_t now = micros();
-  uint32_t dt_us = now - _lastMicros;
+  const uint32_t fallbackUs = (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS > 0)
+                              ? (AppConfig::Tasks::MOTOR_LOOP_PERIOD_MS * 1000UL)
+                              : 5000UL;
+  uint32_t elapsedUs = (_lastMicros == 0) ? fallbackUs : (now - _lastMicros);
+  if (elapsedUs == 0) elapsedUs = 1;
+  const float dt = elapsedUs / 1e6f;
 
   // Always update speed estimate even if very fast
   int32_t ticksNow;
@@ -185,64 +193,62 @@ void DcMotor::update() {
 
   int32_t dTicks = ticksNow - _lastTicks;
 
-  float dt = (dt_us > 0) ? (dt_us / 1e6f) : 1e-6f;
-  float tpsInstant = dTicks / dt;
-
-  // Filter TPS (keeps it stable)
-  const float alpha = 0.2f;
-  _tps = _tps + alpha * (tpsInstant - _tps);
+  // Period-based speed estimate from a fixed accumulation window.
+  const uint32_t windowUs = (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS > 0)
+                            ? (AppConfig::Motors::TPS_ESTIMATE_WINDOW_MS * 1000UL)
+                            : 5000UL;
+  _speedAccumTicks += dTicks;
+  _speedAccumUs += elapsedUs;
+  if (_speedAccumUs >= windowUs) {
+    float tpsInstant = _speedAccumTicks / (_speedAccumUs / 1e6f);
+    const float alpha = AppConfig::Motors::TPS_LPF_ALPHA;
+    _tps = _tps + alpha * (tpsInstant - _tps);
+    _speedAccumTicks = 0;
+    _speedAccumUs = 0;
+  }
 
   _lastMicros = now;
   _lastTicks = ticksNow;
 
   if (!_speedCtrlEnabled) return;
 
-  // Your requested behavior:
-  // dt < 5ms  -> P only (fast response, no I/D noise)
-  // dt >= 5ms -> full PID
-  bool fastUpdate = (dt_us < 5000);
-
   float err = _targetTPS - _tps;
   float pTerm = _kp * err;
 
-  float out = pTerm;
+  // D on measurement
+  float dMeasRaw = (_tps - _lastTPSForD) / dt;
+  _lastTPSForD = _tps;
 
-  if (!fastUpdate) {
-    // D on measurement
-    float dMeasRaw = (_tps - _lastTPSForD) / dt;
-    _lastTPSForD = _tps;
-
-    float dTerm = 0.0f;
-    if (_kd != 0.0f) {
-      if (_dFilterHz > 0.0f) {
-        float rc = 1.0f / (2.0f * 3.1415926f * _dFilterHz);
-        float aD = dt / (dt + rc);
-        _dMeas = _dMeas + aD * (dMeasRaw - _dMeas);
-        dTerm = -_kd * _dMeas;
-      } else {
-        dTerm = -_kd * dMeasRaw;
-      }
+  float dTerm = 0.0f;
+  if (_kd != 0.0f) {
+    if (_dFilterHz > 0.0f) {
+      float rc = 1.0f / (2.0f * 3.1415926f * _dFilterHz);
+      float aD = dt / (dt + rc);
+      _dMeas = _dMeas + aD * (dMeasRaw - _dMeas);
+      dTerm = -_kd * _dMeas;
+    } else {
+      dTerm = -_kd * dMeasRaw;
     }
-
-    float preSat = pTerm + dTerm;
-
-    // Anti-windup integrator
-    float outUnsat = preSat + _iTerm;
-    float outSat = clampf(outUnsat, -_outLimit, _outLimit);
-
-    bool saturated = (outUnsat != outSat);
-    bool helpsUnsat =
-      (!saturated) ||
-      (outUnsat >  _outLimit && err < 0) ||
-      (outUnsat < -_outLimit && err > 0);
-
-    if (_ki != 0.0f && helpsUnsat) {
-      _iTerm += (err * _ki * dt);
-      _iTerm = clampf(_iTerm, -_iLimit, _iLimit);
-    }
-
-    out = preSat + _iTerm;
   }
+
+  float preSat = pTerm + dTerm;
+
+  // Anti-windup integrator
+  float outUnsat = preSat + _iTerm;
+  float outSat = clampf(outUnsat, -_outLimit, _outLimit);
+
+  bool saturated = (outUnsat != outSat);
+  bool helpsUnsat =
+    (!saturated) ||
+    (outUnsat >  _outLimit && err < 0) ||
+    (outUnsat < -_outLimit && err > 0);
+
+  if (_ki != 0.0f && helpsUnsat) {
+    _iTerm += (err * _ki * dt);
+    _iTerm = clampf(_iTerm, -_iLimit, _iLimit);
+  }
+
+  float out = preSat + _iTerm;
 
   // Clamp output
   out = clampf(out, -_outLimit, _outLimit);
@@ -257,6 +263,45 @@ void DcMotor::update() {
   _lastOut = out;
 
   int32_t duty = (int32_t)(out * (float)_pwmMax + (out >= 0 ? 0.5f : -0.5f));
+  if (_targetTPS != 0.0f && duty != 0) {
+    const int32_t minDuty = (int32_t)AppConfig::Motors::PID_MIN_DRIVE_DUTY;
+    const int32_t absDuty = (duty >= 0) ? duty : -duty;
+    if (absDuty < minDuty) {
+      duty = (duty > 0) ? minDuty : -minDuty;
+    }
+  }
+  if (AppConfig::Debug::MOTOR_PID_TRACE) {
+    const char* side = "?";
+    uint32_t* ctr = nullptr;
+    if (_pwmCh == AppConfig::Motors::LEFT_PWM_CHANNEL) {
+      side = "L";
+      ctr = &sMotorPidTraceCounterL;
+    } else if (_pwmCh == AppConfig::Motors::RIGHT_PWM_CHANNEL) {
+      side = "R";
+      ctr = &sMotorPidTraceCounterR;
+    }
+    const uint16_t everyN = (AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N == 0)
+                           ? 1
+                           : AppConfig::Debug::MOTOR_PID_TRACE_EVERY_N;
+    bool shouldPrint = true;
+    if (ctr != nullptr) {
+      (*ctr)++;
+      shouldPrint = ((*ctr % everyN) == 0);
+    }
+    if (shouldPrint) {
+      char buf[180];
+      snprintf(buf, sizeof(buf),
+               "PID %s tgt=%.1f tps=%.1f err=%.2f P=%.4f I=%.4f D=%.4f out=%.4f duty=%ld",
+               side, _targetTPS, _tps, err, pTerm, _iTerm, dTerm, out, (long)duty);
+      if (_logFn != nullptr) {
+        _logFn(String(buf));
+      } else if (AppConfig::Debug::ENABLE_SERIAL_OUTPUT) {
+        portENTER_CRITICAL(&sMotorPidTraceMux);
+        Serial.println(buf);
+        portEXIT_CRITICAL(&sMotorPidTraceMux);
+      }
+    }
+  }
   applyDuty(duty);
 }
 
@@ -269,6 +314,8 @@ int32_t DcMotor::getTicks() const {
 void DcMotor::resetTicks(int32_t value) {
   _ticks = value;
   _lastTicks = value;
+  _speedAccumTicks = 0;
+  _speedAccumUs = 0;
 }
 
 // ---------------- Encoder ISR (simple, encA only) ----------------

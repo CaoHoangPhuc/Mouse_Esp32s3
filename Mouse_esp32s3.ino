@@ -1,4 +1,5 @@
 #include "AppRuntime.h"
+#include <Arduino.h>
 
 static void userTask(void* arg);
 static void plannerTask(void* arg);
