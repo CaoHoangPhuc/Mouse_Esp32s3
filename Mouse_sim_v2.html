@@ -1732,6 +1732,9 @@ const mouseApi = new HardwareMouse();</code></pre>
     let leftTurnActions = 0;
     let rightTurnActions = 0;
     let uTurnActions = 0;
+    let left45Actions = 0;
+    let right45Actions = 0;
+    let diagonalActions = 0;
 
     let pathHistory = [];
 
@@ -1767,12 +1770,14 @@ const mouseApi = new HardwareMouse();</code></pre>
       leftTurnActions = 0;
       rightTurnActions = 0;
       uTurnActions = 0;
+      left45Actions = 0;
+      right45Actions = 0;
+      diagonalActions = 0;
     }
 
     function setPhase(nextPhase) {
       if (phase === nextPhase) return;
       phase = nextPhase;
-      resetMotionCounters();
     }
 
     // ============================================================
@@ -5661,7 +5666,6 @@ const mouseApi = new HardwareMouse();</code></pre>
         }
 
         if (await performMotionToward(confirmedPath[0])) {
-          finalRunSteps++;
           await senseWallsAtMouse();
         }
         refreshSimulation();
@@ -5721,10 +5725,6 @@ const mouseApi = new HardwareMouse();</code></pre>
 
       if (movedForward && phase === "returnHome") {
         firstReturnSteps++;
-      }
-
-      if (movedForward && phase === "finalRun") {
-        finalRunSteps++;
       }
 
       if (movedForward) {
@@ -5864,7 +5864,6 @@ const mouseApi = new HardwareMouse();</code></pre>
       mouseApi.reset(mouse, mouseHeading, knownMaze);
       lastMotionAction = "idle";
       pathHistory = [clonePosition(mouse)];
-      resetMotionCounters();
     }
 
     function appendVisitedCell(row, col) {
@@ -5959,8 +5958,12 @@ const mouseApi = new HardwareMouse();</code></pre>
         throw new Error("Cardinal executor không thể tiến");
       }
       run.actionCount++;
-      if (movedForward) run.cellCursor++;
+      if (movedForward) {
+        run.cellCursor++;
+        finalRunSteps++;
+      }
       if (activeRunHasFinished(run)) completeActiveRun(run);
+      refreshSimulation();
       return true;
     }
 
@@ -5996,11 +5999,19 @@ const mouseApi = new HardwareMouse();</code></pre>
       mouseHeading = heading || getInitialHeading();
       mouseApi.position = clonePosition(mouse);
       mouseApi.heading = mouseHeading;
+      if (primitive.type !== "MH") finalRunSteps++;
+      if (primitive.type === "M") forwardActions++;
+      if (primitive.type === "MD") diagonalActions++;
+      if (primitive.type === "L") leftTurnActions++;
+      if (primitive.type === "R") rightTurnActions++;
+      if (primitive.type === "L1") left45Actions++;
+      if (primitive.type === "R1") right45Actions++;
       recordMotionPrimitiveVisitedCells(primitive);
       animatedPose = null;
       isAnimating = false;
       run.primitiveCursor++;
       if (activeRunHasFinished(run)) completeActiveRun(run);
+      refreshSimulation();
       return true;
     }
 
@@ -6089,6 +6100,8 @@ const mouseApi = new HardwareMouse();</code></pre>
       const proof = getPlannerProof(plannerKey);
       if (!proof.proven) return false;
       clearActiveRun();
+      finalRunSteps = 0;
+      resetMotionCounters();
       activeRun = createPlannerRun(plannerKey, proof);
       if (activeRun.kind === "cardinal") {
         resetMousePoseAtStart(getInitialHeading());
@@ -6263,6 +6276,20 @@ const mouseApi = new HardwareMouse();</code></pre>
       return MOTION_LABELS[action];
     }
 
+    function getPlannerOptimizationStatus(plannerKey, proof) {
+      if (proof.proven) return "✅ Đã tối ưu";
+      const searchingPlanner = (
+        ["toGoal", "returnHome", "explore", "finalReturn", "learnFf"]
+          .includes(phase) ? "ff" :
+          phase === "learnFf2" ? "ff2" :
+          phase === "learnDk" ? "dk" :
+          phase === "learnDk2" ? "dk2" : null
+      );
+      return searchingPlanner === plannerKey
+        ? "🔎 Đang tìm thêm"
+        : "❌ Chưa tối ưu";
+    }
+
     function updateStatus() {
       const trueShortest =
         trueFloodDistances[startPosition.row][startPosition.col];
@@ -6336,19 +6363,22 @@ const mouseApi = new HardwareMouse();</code></pre>
         ${["ff", "ff2", "dk", "dk2"].map(key => {
           const item = plannerProofs[key];
           const name = key.toUpperCase();
-          return `Tối ưu ${name}: <strong>${item.proven ? "✅" : "Chưa"}</strong><br>` +
-            `Bước ${name}: <strong>${Number.isFinite(item.confirmed.steps) ? item.confirmed.steps : "∞"}</strong><br>` +
+          const cost = Number.isFinite(item.confirmed.cost)
+            ? item.confirmed.cost.toFixed(2) : "∞";
+          return `Bước ${name}: <strong>${Number.isFinite(item.confirmed.steps) ? item.confirmed.steps : "∞"}</strong><br>` +
             `Cua ${name}: <strong>${Number.isFinite(item.confirmed.turns) ? item.confirmed.turns : "∞"}</strong><br>` +
-            `Cost ${name}: <strong>${Number.isFinite(item.confirmed.cost) ? item.confirmed.cost.toFixed(2) : "∞"}</strong><br><br>`;
+            `Cost ${name}: <strong>${cost} ${getPlannerOptimizationStatus(key, item)}</strong><br><br>`;
         }).join("")}
 
         Lượt đầu tới goal: <strong>${firstOutboundSteps}</strong> bước<br>
-        Lượt đầu về start: <strong>${firstReturnSteps}</strong> bước<br>
         Speed Run: <strong>${finalRunSteps}</strong> bước<br>
         Tiến: <strong>${forwardActions}</strong> ·
         Trái: <strong>${leftTurnActions}</strong> ·
         Phải: <strong>${rightTurnActions}</strong> ·
-        U-turn: <strong>${uTurnActions}</strong>
+        U-turn: <strong>${uTurnActions}</strong><br>
+        Trái 45°: <strong>${left45Actions}</strong> ·
+        Phải 45°: <strong>${right45Actions}</strong> ·
+        Chéo: <strong>${diagonalActions}</strong>
         ${warning}
       `;
     }
