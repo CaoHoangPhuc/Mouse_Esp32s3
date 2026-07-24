@@ -607,6 +607,7 @@
     }
 
     .ff-number-grid {
+      position: relative;
       display: grid;
       grid-template-columns: repeat(4, minmax(42px, 1fr));
       gap: 4px;
@@ -614,6 +615,71 @@
       border: 1px solid #334155;
       border-radius: 9px;
       background: #0b1220;
+    }
+
+    .ff-route-overlay {
+      position: absolute;
+      z-index: 3;
+      inset: 10px;
+      width: calc(100% - 20px);
+      height: calc(100% - 20px);
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .ff-route-overlay > path {
+      fill: none;
+      stroke: #06b6d4;
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 15 11;
+      filter: drop-shadow(0 0 4px rgba(6, 182, 212, 0.75));
+    }
+
+    .ff-math-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .ff-math-card {
+      padding: 12px;
+      border: 1px solid #334155;
+      border-radius: 9px;
+      color: #cbd5e1;
+      background: #111827;
+      text-align: center;
+    }
+
+    .ff-equation {
+      display: block;
+      margin-bottom: 8px;
+      color: #7dd3fc;
+      font: 600 21px/1.5 Georgia, "Times New Roman", serif;
+      white-space: nowrap;
+    }
+
+    .ff-equation .operator {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0 4px;
+      vertical-align: middle;
+      line-height: 1;
+    }
+
+    .ff-equation .operator small {
+      margin-top: 3px;
+      color: #7dd3fc;
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .ff-math-card small {
+      display: block;
+      color: #94a3b8;
+      line-height: 1.5;
     }
 
     .ff-number-cell {
@@ -724,6 +790,10 @@
       .ff-doc-example {
         grid-template-columns: 1fr;
       }
+
+      .ff-math-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     code {
@@ -741,8 +811,8 @@
     <h1>🐭 Micromouse Flood Fill — Khám phá mê cung 16×16</h1>
 
     <p class="intro">
-      Mouse không biết trước maze. Tường thật chỉ hiển thị mờ cho người xem;
-      khi Micromouse quét sensor tại một ô, tường đã phát hiện sẽ chuyển thành đậm.
+      Mouse không biết trước mê cung. Tường thật chỉ hiển thị mờ cho người xem;
+      khi Micromouse quét cảm biến tại một ô, tường đã phát hiện sẽ chuyển thành đậm.
       Mouse chỉ dựa trên thông tin đã khám phá để chạy Flood Fill.
     </p>
 
@@ -770,11 +840,11 @@
         />
 
         <button id="newMazeBtn" class="secondary">
-          Tạo maze mới
+          Tạo mê cung mới
         </button>
 
         <button id="resetBtn" class="secondary">
-          Reset mouse và bản đồ
+          Đặt lại mouse và bản đồ
         </button>
 
         <div class="io-controls">
@@ -796,7 +866,7 @@
             <input
               id="mazeUrlInput"
               type="text"
-              placeholder="Tên maze hoặc URL TXT"
+              placeholder="Tên mê cung hoặc địa chỉ TXT"
               role="combobox"
               aria-autocomplete="list"
               aria-expanded="false"
@@ -815,13 +885,13 @@
           </button>
         </div>
         <div class="maze-source-info">
-          Maze: <strong id="currentMazeName">maze-ngẫu-nhiên.txt</strong><br />
+          Mê cung: <strong id="currentMazeName">maze-ngẫu-nhiên.txt</strong><br />
           <a
             id="classicMazeReference"
             href="https://github.com/micromouseonline/mazefiles/tree/master/classic"
             target="_blank"
             rel="noopener noreferrer"
-          >Tham khảo bộ maze classic</a>
+          >Tham khảo bộ mê cung cổ điển</a>
         </div>
         <div id="ioStatus" class="io-status" aria-live="polite"></div>
 
@@ -891,29 +961,29 @@
 
       <div class="maze-grid">
         <div class="maze-card">
-          <h2>Maze mouse đang học</h2>
+          <h2>Mê cung mouse đang học</h2>
           <p>Tường mờ chưa biết, tường đậm đã quét; số là Flood Fill theo bản đồ hiện tại.</p>
           <div class="maze-wrapper">
             <canvas id="mazeCanvas"></canvas>
           </div>
           <div id="learnedRoutePanel" class="optimal-route expanded-route">
             <div class="route-detail" data-planner="ff" style="--route-color:#06b6d4">
-              <strong>Route FF:</strong>
+              <strong>Tuyến đường FF:</strong>
               <span id="learnedFfRouteText">Chưa xác định</span><br />
               <small id="learnedFfCostText"></small>
             </div>
             <div class="route-detail" data-planner="ff2" style="--route-color:#a855f7">
-              <strong>Route FF2:</strong>
+              <strong>Tuyến đường FF2:</strong>
               <span id="learnedFf2RouteText">Chưa xác định</span><br />
               <small id="learnedFf2CostText"></small>
             </div>
             <div class="route-detail" data-planner="dk" style="--route-color:#f97316">
-              <strong>Route DK:</strong>
+              <strong>Tuyến đường DK:</strong>
               <span id="learnedDkRouteText">Chưa xác định</span><br />
               <small id="learnedDkCostText"></small>
             </div>
             <div class="route-detail" data-planner="dk2" style="--route-color:#ef4444">
-              <strong>Route DK2:</strong>
+              <strong>Tuyến đường DK2:</strong>
               <span id="learnedDk2RouteText">Chưa xác định</span><br />
               <small id="learnedDk2CostText"></small>
             </div>
@@ -922,28 +992,28 @@
         </div>
 
         <div class="maze-card">
-          <h2>Flood Fill toàn maze</h2>
+          <h2>Flood Fill toàn mê cung</h2>
           <p>Toàn bộ tường thật và khoảng cách chính xác tới đích; không hiển thị mouse.</p>
           <div class="maze-wrapper">
             <canvas id="analysisCanvas"></canvas>
           </div>
           <div id="truthRoutePanel" class="optimal-route expanded-route">
-            <div class="route-detail" data-planner="ff" style="--route-color:#06b6d4"><strong id="truthFloodRouteLabel">Route 4 hướng (FF):</strong>
+            <div class="route-detail" data-planner="ff" style="--route-color:#06b6d4"><strong id="truthFloodRouteLabel">Tuyến đường 4 hướng (FF):</strong>
             <span id="truthFloodRouteText">Đang tính...</span>
             <br />
-            <small id="truthFloodCostText">Tổng cost: ...</small></div>
+            <small id="truthFloodCostText">Tổng chi phí: ...</small></div>
             <div id="truthFlood2Row" class="route-detail" data-planner="ff2" style="--route-color:#a855f7" hidden>
-              <strong>Route 4 hướng (FF2):</strong>
+              <strong>Tuyến đường 4 hướng (FF2):</strong>
               <span id="truthFlood2RouteText"></span>
               <br />
               <small id="truthFlood2CostText"></small>
             </div>
-            <div class="route-detail" data-planner="dk" style="--route-color:#f97316"><strong id="truthMotionRouteLabel">Route 8 hướng (DK):</strong>
+            <div class="route-detail" data-planner="dk" style="--route-color:#f97316"><strong id="truthMotionRouteLabel">Tuyến đường 8 hướng (DK):</strong>
             <span id="truthMotionRouteText">Đang tính...</span>
             <br />
-            <small id="truthMotionCostText">Tổng cost: ...</small></div>
+            <small id="truthMotionCostText">Tổng chi phí: ...</small></div>
             <div id="truthMotionDk2Row" class="route-detail" data-planner="dk2" style="--route-color:#ef4444">
-              <strong>Route 8 hướng (DK2):</strong>
+              <strong>Tuyến đường 8 hướng (DK2):</strong>
               <span id="truthMotionDk2RouteText">Đang tính...</span>
               <br />
               <small id="truthMotionDk2CostText"></small>
@@ -959,7 +1029,7 @@
                   <th>Tiến</th>
                   <th>Trái/Phải</th>
                   <th>Quyết định</th>
-                  <th>Action</th>
+                  <th>Thao tác</th>
                   <th>Điểm</th>
                   <th>Mức</th>
                 </tr>
@@ -973,14 +1043,14 @@
 
     <section class="note">
       <strong>Các giai đoạn chạy:</strong><br />
-      <strong>1.</strong> FF đưa mouse lần đầu tới goal bằng cảm biến 4 hướng.<br />
-      <strong>2–5.</strong> Mouse đi tới frontier để lần lượt chứng minh
+      <strong>1.</strong> FF đưa mouse lần đầu tới đích bằng cảm biến 4 hướng.<br />
+      <strong>2–5.</strong> Mouse đi tới ô biên khám phá (frontier) để lần lượt chứng minh
       <code>FF → FF2 → DK → DK2</code>.<br />
-      <strong>6.</strong> Khi cả bốn planner proven, mouse mới quay về start một lần.<br />
-      <strong>7.</strong> Bốn nút route chạy one-way; nút “Đi một bước” vẫn điều khiển FF cơ bản giữa start và goal.<br /><br />
-      Explore luôn chỉ dùng <code>forward / left / right / U-turn</code>.
-      DK và DK2 chỉ phân tích gate-point trong lúc học; route chéo chỉ chạy sau proof.
-      <code>trueMaze</code> chỉ thuộc simulated sensor và truth canvas — planner của mouse chỉ nhận <code>knownMaze</code>.
+      <strong>6.</strong> Khi cả bốn bộ lập đường đã được chứng minh, mouse mới quay về điểm xuất phát một lần.<br />
+      <strong>7.</strong> Bốn nút tuyến đường chạy một chiều; nút “Đi một bước” vẫn điều khiển FF cơ bản giữa điểm xuất phát và đích.<br /><br />
+      Quá trình khám phá luôn chỉ dùng <code>forward / left / right / U-turn</code>.
+      DK và DK2 chỉ phân tích điểm cổng (gate-point) trong lúc học; tuyến chéo chỉ chạy sau khi được chứng minh.
+      <code>trueMaze</code> chỉ thuộc cảm biến mô phỏng và vùng phân tích mê cung thật — bộ lập đường của mouse chỉ nhận <code>knownMaze</code>.
     </section>
   </main>
 
@@ -996,8 +1066,8 @@
     <div class="api-docs-shell">
       <header class="api-docs-header">
         <div>
-          <h2 id="mouseApiDocsTitle">Mouse API — Web Planner ↔ Robot</h2>
-          <p>Contract tối thiểu để thay SimulatedMouse bằng UART, HTTP hoặc WebSocket.</p>
+          <h2 id="mouseApiDocsTitle">API Mouse — Bộ lập đường trên web ↔ Robot</h2>
+          <p>Giao ước tối thiểu để thay <code>SimulatedMouse</code> bằng UART, HTTP hoặc WebSocket.</p>
         </div>
         <button id="closeMouseApiDocsBtn" class="api-docs-close" aria-label="Đóng tài liệu">
           Đóng · Esc
@@ -1009,50 +1079,51 @@
           <strong>Mục lục</strong>
           <a href="#api-overview">Tổng quan</a>
           <a href="#api-algorithms">Giải thuật</a>
-          <a href="#api-cardinal-action">Cardinal action</a>
-          <a href="#api-sensors">Sensor</a>
-          <a href="#api-primitives">Motion primitive</a>
-          <a href="#api-speed-run">Speed run packet</a>
+          <a href="#api-competition-rules">Thể lệ cuộc thi</a>
+          <a href="#api-cardinal-action">Thao tác 4 hướng</a>
+          <a href="#api-sensors">Cảm biến</a>
+          <a href="#api-primitives">Thao tác chuyển động</a>
+          <a href="#api-speed-run">Gói chạy tốc độ</a>
           <a href="#api-errors">Lỗi và an toàn</a>
-          <a href="#api-adapter">Hardware adapter</a>
+          <a href="#api-adapter">Bộ chuyển đổi phần cứng</a>
         </nav>
 
         <article class="api-docs-content" tabindex="0">
           <section id="api-overview">
             <h3>1. Tổng quan trách nhiệm</h3>
             <div class="api-docs-flow">
-              Sensor state → Web cập nhật knownMaze → FF / FF2 / DK / DK2<br />
-              Web gửi action hoặc primitive queue → Mouse thực thi → trả trạng thái
+              Trạng thái cảm biến → Web cập nhật knownMaze → FF / FF2 / DK / DK2<br />
+              Web gửi thao tác hoặc hàng đợi primitive → Mouse thực thi → trả trạng thái
             </div>
             <div class="api-docs-grid">
               <div class="api-docs-card">
-                <h4>Web chịu trách nhiệm</h4>
+                <h4>Phần web chịu trách nhiệm</h4>
                 <ul>
-                  <li>Lưu <code>knownMaze</code>, vị trí và heading.</li>
-                  <li>Tính route, cost và proof confirmed/optimistic.</li>
-                  <li>Trong explore chỉ gửi action 4 hướng.</li>
-                  <li>Sau proof gửi route/primitive queue one-way.</li>
+                  <li>Lưu <code>knownMaze</code>, vị trí và trạng thái hướng (heading).</li>
+                  <li>Tính tuyến đường (route), chi phí và chứng minh xác nhận và khả quan.</li>
+                  <li>Trong lúc khám phá chỉ gửi thao tác 4 hướng.</li>
+                  <li>Sau khi chứng minh, gửi tuyến đường hoặc hàng đợi primitive chạy một chiều.</li>
                 </ul>
               </div>
               <div class="api-docs-card">
                 <h4>Mouse chịu trách nhiệm</h4>
                 <ul>
-                  <li>Điều khiển motor, encoder, gyro và wall follower.</li>
-                  <li>Thực thi action/primitive đúng thứ tự.</li>
-                  <li>Đọc tường theo heading hiện tại.</li>
-                  <li>Emergency stop khi stall hoặc sai pose.</li>
+                  <li>Điều khiển động cơ, bộ mã hóa (encoder), con quay hồi chuyển (gyro) và bám tường.</li>
+                  <li>Thực thi thao tác hoặc primitive đúng thứ tự.</li>
+                  <li>Đọc tường theo hướng hiện tại.</li>
+                  <li>Dừng khẩn cấp khi kẹt động cơ hoặc sai tư thế (pose).</li>
                 </ul>
               </div>
             </div>
-            <p><strong>Boundary:</strong> mouse planners không đọc <code>trueMaze</code>, chỉ đọc <code>knownMaze</code>. Trong simulator, <code>SimulatedMouse.readCardinalSensors()</code>, truth canvas và truth analysis được phép dùng maze thật.</p>
+            <p><strong>Ranh giới dữ liệu:</strong> các bộ lập đường của mouse không đọc <code>trueMaze</code>, chỉ đọc <code>knownMaze</code>. Trong trình mô phỏng, <code>SimulatedMouse.readCardinalSensors()</code>, vùng vẽ và phần phân tích mê cung thật được phép dùng bản đồ thật.</p>
           </section>
 
           <section id="api-algorithms">
-            <h3>2. Giải thuật từ khám phá đến speed run</h3>
-            <p><strong>Ranh giới dữ liệu:</strong> <code>trueMaze</code> chỉ dành cho simulated sensor và truth analysis/canvas. Mouse planner không nhìn maze thật; mọi route và proof phục vụ mouse đều được tính từ <code>knownMaze</code> do sensor cập nhật.</p>
+            <h3>2. Giải thuật từ khám phá đến lượt chạy tốc độ</h3>
+            <p><strong>Ranh giới dữ liệu:</strong> <code>trueMaze</code> chỉ dành cho cảm biến mô phỏng và phần phân tích/hiển thị mê cung thật. Bộ lập đường của mouse không nhìn mê cung thật; mọi tuyến đường và chứng minh phục vụ mouse đều được tính từ <code>knownMaze</code> do cảm biến cập nhật.</p>
 
             <section id="api-ff-numbering" class="ff-doc-section">
-              <h4>Flood Fill gốc: đánh số từ target</h4>
+              <h4>Flood Fill gốc: đánh số từ mục tiêu (target)</h4>
               <div class="ff-doc-example">
                 <div>
                   <div class="ff-number-grid" data-ff-numbering-diagram aria-label="Ví dụ các lớp số Flood Fill">
@@ -1072,18 +1143,40 @@
                     <div class="ff-number-cell">2</div>
                     <div class="ff-number-cell">1</div>
                     <div class="ff-number-cell is-goal">0 · G</div>
+                    <svg class="ff-route-overlay" data-ff-route-illustration viewBox="0 0 400 400" role="img" aria-label="Tuyến Flood Fill minh họa từ mouse tới đích">
+                      <defs>
+                        <marker id="ff-route-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                          <path d="M 0 0 L 10 5 L 0 10 z" fill="#06b6d4" stroke="none"></path>
+                        </marker>
+                      </defs>
+                      <path d="M 250 278 L 348 278 L 348 325" marker-end="url(#ff-route-arrow)"></path>
+                    </svg>
                   </div>
                   <div class="ff-doc-legend" data-ff-legend aria-label="Chú thích sơ đồ Flood Fill">
-                    <span class="goal">Goal/target = 0</span>
-                    <span class="mouse">Mouse</span>
+                    <span class="goal">Đích/mục tiêu = 0</span>
+                    <span class="mouse">Vị trí mouse</span>
                     <span class="next">Ô kế tiếp n - 1</span>
-                    <span class="frontier">Ứng viên frontier</span>
+                    <span class="frontier">Ứng viên ô biên khám phá</span>
                   </div>
                 </div>
                 <div>
-                  <p><code>buildDistanceMap()</code> là BFS nhiều nguồn. Ban đầu mỗi <strong>target = 0</strong> được đưa vào queue. Khi lấy một ô mang số <code>n</code>, mọi láng giềng đi được và chưa có số nhận <strong>neighbor = n + 1</strong>.</p>
-                  <p>Nếu target là vùng đích, <strong>bốn ô goal cùng mang 0</strong> và cùng được đưa vào queue. Vì BFS lan theo từng lớp, con số trong ô là số bước cardinal ngắn nhất tới target trong graph đang xét — không phải số lần mouse đã đi.</p>
-                  <p>Tường đã xác nhận luôn chặn cạnh. Khi tính optimistic hoặc đường tới frontier, cạnh <code>unknown</code> có thể được giả sử là mở; vì thế sensor mới có thể làm các số và route thay đổi.</p>
+                  <p><code>buildDistanceMap()</code> là BFS nhiều nguồn. Ban đầu mỗi <strong>mục tiêu có giá trị 0</strong> được đưa vào hàng đợi (queue). Khi lấy một ô mang số <code>n</code>, mọi ô láng giềng đi được và chưa có số nhận giá trị <strong><code>n + 1</code></strong>.</p>
+                  <p>Nếu mục tiêu là vùng đích, <strong>bốn ô đích cùng mang 0</strong> và cùng được đưa vào hàng đợi. Vì BFS lan theo từng lớp, con số trong ô là số bước 4 hướng ngắn nhất tới mục tiêu trong đồ thị (graph) đang xét — không phải số lần mouse đã đi.</p>
+                  <p>Tường đã xác nhận luôn chặn cạnh. Khi tính phương án khả quan hoặc đường tới ô biên khám phá, cạnh <code>unknown</code> có thể được giả sử là mở; vì thế dữ liệu cảm biến mới có thể làm các số và tuyến đường thay đổi.</p>
+                </div>
+              </div>
+              <div class="ff-math-grid" aria-label="Các công thức Flood Fill">
+                <div class="ff-math-card">
+                  <div class="ff-equation" role="math" aria-label="Khoảng cách tại đích bằng không"><i>d</i>(<i>g</i>) = 0</div>
+                  <small>Mọi ô đích <code>g</code> bắt đầu với khoảng cách bằng 0.</small>
+                </div>
+                <div class="ff-math-card">
+                  <div class="ff-equation" role="math" aria-label="Khoảng cách tại một ô bằng một cộng khoảng cách nhỏ nhất của láng giềng"><i>d</i>(<i>v</i>) = 1 + <span class="operator">min<small>u ∈ N(v)</small></span> <i>d</i>(<i>u</i>)</div>
+                  <small><code>N(v)</code> là tập các ô láng giềng đi được của ô <code>v</code>.</small>
+                </div>
+                <div class="ff-math-card">
+                  <div class="ff-equation" role="math" aria-label="Chọn ô kế tiếp có khoảng cách nhỏ nhất"><i>next</i> = <span class="operator">arg min<small>u ∈ N(v)</small></span> <i>d</i>(<i>u</i>)</div>
+                  <small>Mouse chọn ô thỏa <code>d(u) = d(v) − 1</code>; khi hòa mới xét ưu tiên hướng.</small>
                 </div>
               </div>
               <pre class="ff-doc-pseudocode" data-ff-pseudocode aria-label="Pseudocode đánh số Flood Fill">queue = tất cả target
@@ -1096,10 +1189,10 @@ while queue chưa rỗng:
             </section>
 
             <section id="api-ff-policy" class="ff-doc-section">
-              <h4>Mouse policy: đi theo số giảm dần</h4>
-              <p><code>followDistanceMap()</code> đang ở ô <code>n</code> chỉ nhận ứng viên có <strong>neighbor = n - 1</strong>. Nếu nhiều ô cùng đạt số thấp nhất, heading hiện tại tạo tie-break cố định: <code>forward → turnLeft → turnRight → turnAround</code>. Vì vậy route không random khi hai phía có cùng số.</p>
-              <p>Trong API cardinal, <strong>quay không đổi position</strong>; <strong>forward mới đổi position</strong> sang ô kế tiếp. Do đó để rẽ rồi sang ô bên cạnh, mouse thực thi một action quay, sau đó một action forward. Sensor cập nhật <code>knownMaze</code> thì distance map được tính lại trước quyết định tiếp theo.</p>
-              <p>Nếu số tại mouse là <code>∞</code>, hoặc không có láng giềng đúng <code>n - 1</code>, route được xem là không hợp lệ; policy không tự xuyên tường hay chọn hướng ngẫu nhiên.</p>
+              <h4>Quy tắc di chuyển của mouse: đi theo số giảm dần</h4>
+              <p><code>followDistanceMap()</code> đang ở ô <code>n</code> chỉ nhận ứng viên có giá trị <strong><code>n - 1</code></strong>. Nếu nhiều ô cùng đạt số thấp nhất, hướng hiện tại tạo thứ tự phá hòa cố định: <code>forward → turnLeft → turnRight → turnAround</code>. Vì vậy tuyến đường không chọn ngẫu nhiên khi hai phía có cùng số.</p>
+              <p>Trong API 4 hướng, <strong>quay không đổi vị trí</strong>; chỉ <code>forward</code> mới đổi vị trí sang ô kế tiếp. Do đó để rẽ rồi sang ô bên cạnh, mouse thực thi một thao tác quay, sau đó một thao tác tiến. Cảm biến cập nhật <code>knownMaze</code> thì bản đồ khoảng cách được tính lại trước quyết định tiếp theo.</p>
+              <p>Nếu số tại mouse là <code>∞</code>, hoặc không có láng giềng đúng <code>n - 1</code>, tuyến đường được xem là không hợp lệ; quy tắc không tự xuyên tường hay chọn hướng ngẫu nhiên.</p>
               <pre class="ff-doc-pseudocode" data-ff-pseudocode aria-label="Pseudocode mouse policy">candidates = neighbor đi được có distance = n - 1
 sort candidates theo forward, turnLeft, turnRight, turnAround
 next = candidates[0]
@@ -1108,12 +1201,12 @@ else: forward sang next</pre>
             </section>
 
             <section id="api-ff-frontier" class="ff-doc-section">
-              <h4>Frontier: chọn nơi cần sensor xác nhận</h4>
-              <p>Một ô là ứng viên frontier khi còn ít nhất một <strong>wall state = null</strong>. Nó không đơn giản là “ô chưa từng ghé”, không phải goal cuối và cũng không đồng nghĩa với ô đang hiện <code>∞</code>.</p>
-              <p>Policy <strong>ưu tiên frontier trên optimistic route</strong> của planner đang học. Phần fallback được sắp ổn định theo <code>distance-to-route → distance-to-mouse → row → col</code>. Hệ thống duyệt theo thứ tự đó và lấy ứng viên <strong>đầu tiên</strong> có route <strong>reachable</strong> từ mouse.</p>
-              <p>Frontier được chọn trở thành <strong>target = 0</strong>; BFS đánh lại toàn distance map với cạnh unknown được phép giả định mở. Mouse vẫn tới đó bằng route/action <strong>4 hướng</strong>. Tại frontier, <strong>sensor</strong> ghi tường vào <code>knownMaze</code>, sau đó <strong>proof</strong> và danh sách frontier được tính lại.</p>
+              <h4>Ô biên khám phá (frontier): chọn nơi cần cảm biến xác nhận</h4>
+              <p>Một ô là ứng viên ô biên khám phá khi còn ít nhất một <strong>trạng thái tường bằng <code>null</code></strong>. Nó không đơn giản là “ô chưa từng ghé”, không phải đích cuối và cũng không đồng nghĩa với ô đang hiện <code>∞</code>.</p>
+              <p>Quy tắc <strong>ưu tiên ô biên nằm trên tuyến đường khả quan</strong> của bộ lập đường đang học. Phương án dự phòng được sắp ổn định theo <code>distance-to-route → distance-to-mouse → row → col</code>. Hệ thống duyệt theo thứ tự đó và lấy ứng viên đầu tiên có thể đi tới từ mouse.</p>
+              <p>Ô biên được chọn trở thành <strong>mục tiêu có giá trị 0</strong>; BFS đánh lại toàn bộ bản đồ khoảng cách với cạnh chưa biết được phép giả định là mở. Mouse vẫn tới đó bằng tuyến đường và thao tác <strong>4 hướng</strong>. Tại ô biên, <strong>cảm biến</strong> ghi tường vào <code>knownMaze</code>, sau đó phép chứng minh và danh sách ô biên được tính lại.</p>
               <div class="api-docs-flow">
-                optimistic route → frontier có wall null → kiểm tra reachable → frontier = 0 → BFS → mouse theo số giảm → sensor → knownMaze/proof mới
+                tuyến khả quan → ô biên còn tường null → kiểm tra khả năng đi tới → ô biên = 0 → BFS → mouse theo số giảm → cảm biến → knownMaze/chứng minh mới
               </div>
               <pre class="ff-doc-pseudocode" data-ff-pseudocode aria-label="Pseudocode chọn frontier">preferred = ô wall null trên optimistic route
 fallback = ô wall null sắp theo distance-to-route,
@@ -1126,36 +1219,188 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
             <div class="api-docs-grid">
               <div class="api-docs-card">
                 <h4>Flood Fill (FF)</h4>
-                <p>State là <code>(cell, heading)</code> trên graph 4 hướng. FF chọn đường theo objective lexicographic <code>(steps, turns)</code>: ít bước trước, rồi mới ít lượt quay; tie còn lại dùng thứ tự canonical cố định. Khi explore, mouse chỉ thực thi cardinal action ngang/dọc.</p>
+                <ul>
+                  <li><strong>Không gian tìm kiếm:</strong> ô và hướng hiện tại <code>(cell, heading)</code> trên đồ thị 4 hướng.</li>
+                  <li><strong>Ưu tiên:</strong> ít bước trước, sau đó mới ít lần cua: <code>(steps, turns)</code>.</li>
+                  <li><strong>Khi bằng nhau:</strong> dùng thứ tự cố định tiến → trái → phải → quay đầu để tuyến không thay đổi ngẫu nhiên.</li>
+                  <li><strong>Khi khám phá:</strong> mouse chỉ chạy ngang/dọc và cập nhật tường từ cảm biến.</li>
+                </ul>
               </div>
               <div class="api-docs-card">
                 <h4>FF2</h4>
-                <p>Vẫn là graph 4 hướng, nhưng state giữ chiều dài đoạn thẳng hiện tại. Với <code>r = √0.5</code>, chi phí một đoạn dài <code>x</code> là <code>costM(x) = 0.5x + 0.5(1-r^x)/(1-r)</code>; mỗi 90° quay cộng <code>π/4</code>. Objective là <code>(cost, steps, turns)</code>, rồi tie-break canonical.</p>
+                <ul>
+                  <li><strong>Nền tảng:</strong> vẫn dùng đồ thị 4 hướng và các tường giống FF.</li>
+                  <li><strong>Cải tiến:</strong> phân biệt chi phí cua với lợi thế khi đi thẳng liên tục; trạng thái giữ độ dài đoạn <code>M</code> hiện tại.</li>
+                  <li><strong>Đoạn thẳng:</strong> <code>costM(x) = 0.5x + 0.5(1-r^x)/(1-r)</code>, với <code>r = √0.5</code>; càng đi thẳng lâu, chi phí trung bình mỗi ô càng giảm.</li>
+                  <li><strong>Cua:</strong> mỗi lần quay 90° kết thúc đoạn tăng tốc và cộng <code>π/4</code>.</li>
+                  <li><strong>Kết quả:</strong> có thể chọn tuyến cùng hoặc dài hơn rất ít nhưng ít cua và có đoạn thẳng dài hơn.</li>
+                </ul>
               </div>
               <div class="api-docs-card">
                 <h4>Dijkstra 8 hướng (DK)</h4>
-                <p>Node là pose tại gate-point gồm vị trí, <code>heading8</code> và trạng thái diagonal lane. Chỉ cạnh motion primitive vượt qua full clearance với tường/post mới được thêm. Cost từ source: <code>MH=0.5</code>, <code>M=1</code>, <code>MD=√0.5</code>, <code>R1/L1=0.5+√0.5</code>, <code>R/L=1+√0.5</code>.</p>
+                <ul>
+                  <li><strong>Không gian tìm kiếm:</strong> tư thế tại điểm cổng, gồm vị trí, <code>heading8</code> và trạng thái làn chéo.</li>
+                  <li><strong>Chuyển động:</strong> dùng <code>MH, M, MD, R, L, R1, L1</code> để diễn tả thẳng, chéo và cua liên tục.</li>
+                  <li><strong>An toàn:</strong> chỉ thêm primitive đã kiểm tra đủ khoảng hở với tường và trụ.</li>
+                  <li><strong>Chi phí:</strong> <code>MH=0.5</code>, <code>M=1</code>, <code>MD=√0.5</code>, <code>R1/L1=0.5+√0.5</code>, <code>R/L=1+√0.5</code>.</li>
+                  <li><strong>Kết quả:</strong> Dijkstra chọn tổng chi phí chuyển động nhỏ nhất trên 8 hướng.</li>
+                </ul>
               </div>
               <div class="api-docs-card">
                 <h4>DK2</h4>
-                <p>DK2 dùng cùng graph, pose, primitive và clearance của DK, nhưng thêm <code>mRunLength</code> vào state. Cạnh <code>M</code> thứ <code>x</code> có <code>deltaM(x) = costM(x) - costM(x-1)</code>; primitive khác reset đoạn về 0 và giữ cost DK. Đây là một lần chạy Dijkstra độc lập, không phải lấy route DK rồi rescore.</p>
+                <ul>
+                  <li><strong>Nền tảng:</strong> dùng lại đồ thị 8 hướng, primitive và phép kiểm tra khoảng hở của DK.</li>
+                  <li><strong>Cải tiến:</strong> giống FF2, DK2 thưởng cho đoạn <code>M</code> đi thẳng liên tục và tính riêng chi phí cua/chuyển sang đường chéo.</li>
+                  <li><strong>Trạng thái bổ sung:</strong> <code>mRunLength</code> ghi độ dài đoạn thẳng hiện tại.</li>
+                  <li><strong>Chi phí tăng thêm:</strong> bước <code>M</code> thứ <code>x</code> dùng <code>deltaM(x) = costM(x) - costM(x-1)</code>; primitive khác kết thúc đoạn thẳng.</li>
+                  <li><strong>Tối ưu toàn cục:</strong> DK2 chạy Dijkstra riêng với chi phí mới, không lấy tuyến DK rồi chấm lại.</li>
+                </ul>
               </div>
             </div>
 
-            <h4>Proof: confirmed và optimistic</h4>
-            <p>Mỗi planner chạy hai lần trên <code>knownMaze</code>: <code>confirmed</code> coi cạnh unknown là bị chặn, còn <code>optimistic</code> cho phép đi qua unknown để tạo cận dưới. Chỉ khi cả hai hợp lệ, objective bằng nhau trong epsilon và canonical signature của route cũng giống nhau thì planner mới được chứng minh; bằng cost nhưng khác route chưa đủ.</p>
+            <h4>Chứng minh xác nhận và khả quan</h4>
+            <p>Mỗi bộ lập đường chạy hai lần trên <code>knownMaze</code>: phương án <code>confirmed</code> coi cạnh chưa biết là bị chặn, còn <code>optimistic</code> cho phép đi qua cạnh chưa biết để tạo cận dưới. Chỉ khi cả hai hợp lệ, mục tiêu bằng nhau trong sai số epsilon và chữ ký chuẩn của tuyến đường cũng giống nhau thì kết quả mới được chứng minh; bằng chi phí nhưng khác tuyến vẫn chưa đủ.</p>
 
-            <h4>Lifecycle</h4>
+            <h4>Chu trình xử lý</h4>
             <div class="api-docs-flow">
-              sensor → cập nhật knownMaze → chọn frontier trên route optimistic → đi explore bằng cardinal action → tính lại proof → về start → chạy one-way/speed run bằng route confirmed
+              cảm biến → cập nhật knownMaze → chọn ô biên trên tuyến khả quan → khám phá bằng thao tác 4 hướng → tính lại chứng minh → về điểm xuất phát → chạy một chiều bằng tuyến đã xác nhận
             </div>
-            <p>FF, FF2, DK và DK2 được chứng minh tuần tự. Trong lúc học, mouse chỉ đi 4 hướng tới <code>frontier</code> cần quét; primitive chéo của DK/DK2 chỉ được gửi ở lượt <code>speed run</code> sau proof.</p>
+            <p>FF, FF2, DK và DK2 được chứng minh tuần tự. Trong lúc học, mouse chỉ đi 4 hướng tới ô biên <code>frontier</code> cần quét; primitive chéo của DK/DK2 chỉ được gửi ở lượt chạy tốc độ sau khi đã chứng minh.</p>
+          </section>
+
+          <section id="api-competition-rules">
+            <h3>3. Thể lệ cuộc thi Micromouse tham chiếu IEEE</h3>
+            <div class="note">
+              <strong>Phạm vi:</strong> các con số dưới đây lấy từ
+              <strong>IEEE Region 2 MicroMouse Competition Rules 2020</strong>.
+              Đây là một bộ thể lệ tham chiếu công khai, <strong>không phải luật IEEE toàn cầu</strong>
+              bất biến. Mỗi Region, Student Activities Conference và năm thi có thể đổi
+              thời lượng, penalty, cách tính điểm hoặc quyền chạm robot; luôn đọc rulebook
+              chính thức của đúng giải trước khi chế tạo.
+            </div>
+
+            <div class="api-docs-grid">
+              <div class="api-docs-card">
+                <h4>Robot hợp lệ</h4>
+                <ul>
+                  <li>Robot phải tự hành, <em>self-contained</em>, <strong>không remote</strong> và do đội tự thiết kế/chế tạo.</li>
+                  <li>Chiều dài và rộng không vượt <strong>25 cm</strong>; profile R2 2020 không giới hạn chiều cao.</li>
+                  <li>Không được tách bộ phận trong mê cung; toàn bộ robot phải đi vào vùng đích.</li>
+                  <li>Không nhảy, bay, leo, cắt, đốt, đánh dấu hoặc làm hỏng tường hay mê cung.</li>
+                  <li>Robot được kiểm tra trước lượt thi; trọng tài có quyền yêu cầu giải thích thiết kế và hành vi.</li>
+                </ul>
+              </div>
+              <div class="api-docs-card">
+                <h4>Mê cung, điểm xuất phát và đích</h4>
+                <ul>
+                  <li>Maze gồm <strong>16 × 16</strong> ô; mỗi ô <strong>18 × 18 cm</strong>.</li>
+                  <li>Tường cao <strong>5 cm</strong>, dày <strong>1,2 cm</strong>; rulebook yêu cầu tính đến dung sai chế tạo khoảng 5%.</li>
+                  <li>Điểm xuất phát ở một góc và bị bao bởi ba phía; vạch xuất phát nằm giữa ô góc và ô kế tiếp.</li>
+                  <li>Đích là cổng vào vùng bốn ô trung tâm; bộ thể lệ này quy định một cổng vào vùng đích.</li>
+                  <li>Có thể có nhiều đường tới đích và mê cung phải làm cho cách bám tường đơn thuần không đủ để giải.</li>
+                </ul>
+              </div>
+              <div class="api-docs-card">
+                <h4>Lượt chạy hợp lệ và thời gian</h4>
+                <ul>
+                  <li>Mỗi đội có <strong>10 phút</strong> tiếp cận mê cung, gồm cả thời gian chỉnh robot giữa các lượt chạy.</li>
+                  <li>Được chạy nhiều lần; <strong>thời gian hợp lệ ngắn nhất</strong> là thời gian chính thức.</li>
+                  <li>Đồng hồ bắt đầu khi mép trước robot qua <strong>vạch xuất phát</strong> và dừng khi mép trước qua <strong>vạch đích</strong>.</li>
+                  <li>Mỗi lần rời điểm xuất phát là một lượt mới. Không tới vùng đích thì không ghi thời gian; quay lại điểm xuất phát trước khi tới đích làm lượt đó bị hủy.</li>
+                  <li>Sau khi tới đích, đường về không thuộc thời gian thi. Robot có thể tự về hoặc được lấy ra theo quy định thao tác và mức phạt của giải.</li>
+                </ul>
+              </div>
+              <div class="api-docs-card">
+                <h4>Đội thi, an toàn và trọng tài</h4>
+                <ul>
+                  <li>Sau khi mê cung được công bố, đội <strong>không được cung cấp thông tin mê cung</strong> cho robot; R2 2020 cấm đổi ROM hoặc tải chương trình mới.</li>
+                  <li>Có thể dùng công tắc đã có trên robot và thay pin giữa các lượt, nhưng không được thay đổi trọng lượng robot sau khi bắt đầu 10 phút.</li>
+                  <li>Đội có thể hủy lượt và đưa robot về điểm xuất phát; việc đặt lại có thể chịu mức phạt theo thể lệ.</li>
+                  <li>Không chạm robot trong lượt chạy nếu muốn thời gian chính thức không bị ảnh hưởng.</li>
+                  <li>Trọng tài có quyền dừng lượt, hướng dẫn, xử lý can thiệp thủ công hoặc loại đội để bảo vệ mê cung và tính công bằng.</li>
+                </ul>
+              </div>
+            </div>
+
+            <section id="api-radio-policy">
+              <h4>Kết nối vô tuyến trong lượt chạy chính thức — chính sách tổ chức đề xuất</h4>
+              <div class="note">
+                Phần này là <strong>chính sách tổ chức đề xuất</strong> cho MCU hiện đại,
+                không phải nguyên văn IEEE R2 2020. Luật gốc yêu cầu robot
+                <em>self-contained (no remote controls)</em> và cấm cung cấp thông tin
+                mê cung sau khi mê cung được công bố. Vì vậy nên kiểm soát <strong>luồng dữ liệu</strong>,
+                không cấm MCU chỉ vì chip tích hợp radio.
+              </div>
+              <div class="api-docs-grid">
+                <div class="api-docs-card">
+                  <h4>✅ Cho phép</h4>
+                  <ul>
+                    <li>Ban tổ chức <strong>không cấm MCU có Wi-Fi/Bluetooth</strong>; đội được dùng cùng phần cứng khi phát triển và thi.</li>
+                    <li>Gỡ lỗi qua kết nối không dây trước khi mê cung được công bố.</li>
+                    <li>Dữ liệu giám sát một chiều <strong>robot → màn hình theo dõi</strong>: encoder, gyro, cảm biến, pin, trạng thái lỗi và nhật ký tư thế do robot tự ước lượng.</li>
+                    <li>Robot phải tiếp tục và hoàn tất lượt chạy khi màn hình theo dõi, điểm truy cập hoặc toàn bộ kết nối bị mất.</li>
+                  </ul>
+                </div>
+                <div class="api-docs-card">
+                  <h4>⚠️ Chỉ khi trọng tài chấp thuận</h4>
+                  <ul>
+                    <li>Truyền dữ liệu giám sát trong lượt chạy chính thức, vì thể lệ từng giải có thể yêu cầu tắt hoàn toàn radio.</li>
+                    <li>Lệnh bắt đầu/dừng không dây hoặc chọn chế độ; mặc định nên dùng nút hay công tắc vật lý trên robot.</li>
+                    <li>Đội phải công khai protocol, chiều dữ liệu, tần số/kênh và cho phép kiểm tra <strong>log packet</strong>.</li>
+                    <li>Trọng tài có thể yêu cầu chạy thử khi mất kết nối hoặc yêu cầu <strong>tắt RX/radio</strong>.</li>
+                  </ul>
+                </div>
+                <div class="api-docs-card">
+                  <h4>❌ Cấm trong official run</h4>
+                  <ul>
+                    <li><strong>Điều khiển từ xa</strong>: tốc độ, hướng lái, thao tác, điểm mốc hoặc hành vi khẩn cấp do người hay máy tính quyết định.</li>
+                    <li>Gửi vào robot thông tin tường, mê cung, <strong>tuyến đường</strong>, gợi ý đích, <strong>hiệu chỉnh tư thế (pose correction)</strong> hoặc kết quả từ bộ lập đường bên ngoài.</li>
+                    <li>Tải <strong>firmware</strong>, mô hình, tham số bộ lập đường hay cấu hình chuyển động sau khi mê cung được công bố.</li>
+                    <li>Dùng kết nối ngoài để robot phụ thuộc vào tính toán ngoài robot hoặc quyết định của người vận hành.</li>
+                  </ul>
+                </div>
+                <div class="api-docs-card">
+                  <h4>Cách chứng minh công bằng</h4>
+                  <ul>
+                    <li>Khóa firmware/config official bằng <strong>checksum</strong> trước khi maze được công bố.</li>
+                    <li>Firmware official không đăng ký command handler nhận route/action/pose từ radio.</li>
+                    <li>Lưu nhật ký gói tin có dấu thời gian để chứng minh kênh chỉ gửi dữ liệu ra trong lượt chạy.</li>
+                    <li>Robot vượt bài kiểm tra mất kết nối mà không đổi hành vi bộ lập đường hoặc quỹ đạo dự kiến.</li>
+                    <li>Quyết định cuối cùng thuộc rulebook địa phương và phải được <strong>trọng tài chấp thuận</strong>.</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <h4>Đối chiếu simulator này</h4>
+            <ul>
+              <li>Simulator hỗ trợ import start <strong>hai cửa</strong> để nghiên cứu thuật toán tổng quát; cấu hình đó không tự động hợp lệ theo profile R2 2020 yêu cầu start bị bao ba phía.</li>
+              <li>Vùng hiển thị và bộ lập đường dùng mê cung thật chỉ dành cho phân tích giao diện. Mouse thi hợp lệ phải học qua cảm biến và <code>knownMaze</code>, không được nhận <code>trueMaze</code> hoặc tuyến đường do người vận hành cung cấp.</li>
+              <li>Nút Stop, reset, chạy từng bước và import là công cụ mô phỏng. Việc operator dùng thao tác tương đương trong giải thật phải theo rulebook và quyết định trọng tài.</li>
+              <li>FF/FF2/DK/DK2 đều là cách lập kế hoạch hợp lệ về nguyên tắc nếu robot tự tính và chuyển động không vượt tường, làm hỏng maze hoặc nhận trợ giúp ngoài.</li>
+            </ul>
+
+            <h4>Checklist trước khi dự thi</h4>
+            <ol>
+              <li>Tải đúng thể lệ của Region, sự kiện và năm thi; xác nhận kích thước robot, mê cung, số phút và mức phạt.</li>
+              <li>Kiểm tra robot self-contained, emergency stop, pin, kích thước và khả năng chịu dung sai tường/sàn.</li>
+              <li>Xác nhận định nghĩa start/finish, destination, run mới, abort, operator touch và reset.</li>
+              <li>Khóa firmware trước khi maze lộ; chỉ dùng công tắc/chế độ được rulebook cho phép.</li>
+              <li>Ưu tiên quyết định tại chỗ của judges khi văn bản và tình huống thực tế khác nhau.</li>
+            </ol>
+
+            <h4>Nguồn IEEE công khai</h4>
+            <ul>
+              <li><a data-ieee-rule-source target="_blank" rel="noopener noreferrer" href="https://attend.ieee.org/r2sac-2020/wp-content/uploads/sites/175/2020/01/MicroMouse_Rules_2020.pdf">IEEE Region 2 SAC 2020 — MicroMouse Competition Rules (nguồn chính của chương)</a></li>
+              <li><a data-ieee-rule-source target="_blank" rel="noopener noreferrer" href="https://ewh.ieee.org/reg/2/sac-18/MicromouseRules.pdf">IEEE Region 2 SAC 2018 — Micromouse Rules</a></li>
+              <li><a data-ieee-rule-source target="_blank" rel="noopener noreferrer" href="https://ieeer1.org/wp-content/uploads/2025/01/Micromouse-Competition-Rules.pdf">IEEE Region 1 2025 — Micromouse Competition Rules</a></li>
+            </ul>
           </section>
 
           <section id="api-cardinal-action">
-            <h3>3. executeCardinalAction(request)</h3>
-            <p>Dùng trong explore và điều khiển FF thủ công. Mỗi request chỉ là một action 4 hướng. Quay diễn ra tại ô hiện tại; <code>forward</code> mới thay đổi position.</p>
-            <h4>Request từ web</h4>
+            <h3>4. executeCardinalAction(request)</h3>
+            <p>Dùng trong lúc khám phá và điều khiển FF thủ công. Mỗi yêu cầu chỉ chứa một thao tác 4 hướng. Việc quay diễn ra tại ô hiện tại; chỉ <code>forward</code> mới thay đổi vị trí.</p>
+            <h4>Yêu cầu từ web</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1165,7 +1410,7 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
   "revision": 42
 }</code></pre>
             </div>
-            <h4>Response từ mouse</h4>
+            <h4>Phản hồi từ mouse</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1178,13 +1423,13 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
   "completedAt": 1784200000000
 }</code></pre>
             </div>
-            <p><code>revision</code> hủy response animation/action cũ sau Reset. Hardware có thể ánh xạ nó thành command sequence ID.</p>
+            <p><code>revision</code> hủy phản hồi, hoạt ảnh hoặc thao tác cũ sau khi đặt lại. Phần cứng có thể ánh xạ nó thành mã thứ tự lệnh.</p>
           </section>
 
           <section id="api-sensors">
-            <h3>4. readCardinalSensors(request)</h3>
-            <p>Đọc sensor khi robot đứng trong tâm ô và đang nhìn theo một trong bốn heading. Hardware tối thiểu trả front/left/right; <code>position</code> và <code>back</code> là tùy chọn.</p>
-            <h4>Request</h4>
+            <h3>5. readCardinalSensors(request)</h3>
+            <p>Đọc cảm biến khi robot đứng tại tâm ô và đang nhìn theo một trong bốn hướng. Phần cứng tối thiểu trả về phía trước/trái/phải; <code>position</code> và <code>back</code> là tùy chọn.</p>
+            <h4>Yêu cầu</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1192,7 +1437,7 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
   "position": { "row": 5, "col": 8 }
 }</code></pre>
             </div>
-            <h4>Response tối thiểu</h4>
+            <h4>Phản hồi tối thiểu</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1205,20 +1450,20 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
   "position": { "row": 5, "col": 8 }
 }</code></pre>
             </div>
-            <p><code>true</code> nghĩa là có tường. Nếu trả thêm <code>walls.back</code>, web sẽ cập nhật đủ bốn cạnh. Nếu không có, cạnh sau giữ nguyên trạng thái đã biết/unknown.</p>
+            <p><code>true</code> nghĩa là có tường. Nếu trả thêm <code>walls.back</code>, web sẽ cập nhật đủ bốn cạnh. Nếu không có, cạnh sau giữ nguyên trạng thái đã biết hoặc chưa biết.</p>
           </section>
 
           <section id="api-primitives">
-            <h3>5. executeMotionPrimitive(request)</h3>
-            <p>Dùng cho DK/DK2 speed run sau proof. Planner đã kiểm tra clearance; mouse chỉ thực thi primitive queue liên tục với look-ahead.</p>
+            <h3>6. executeMotionPrimitive(request)</h3>
+            <p>Dùng cho lượt chạy tốc độ DK/DK2 sau khi đã chứng minh. Bộ lập đường đã kiểm tra khoảng hở; mouse chỉ thực thi liên tục hàng đợi primitive và nhìn trước thao tác tiếp theo.</p>
             <div class="api-docs-grid">
-              <div class="api-docs-card"><strong>MH</strong><br />Nửa ô đầu từ tâm start tới gate.</div>
-              <div class="api-docs-card"><strong>M</strong><br />Đi thẳng cardinal một đơn vị planner.</div>
-              <div class="api-docs-card"><strong>MD</strong><br />Đi thẳng chéo giữa hai gate point.</div>
-              <div class="api-docs-card"><strong>R / L</strong><br />Cua liên tục 90° gate-to-gate.</div>
-              <div class="api-docs-card"><strong>R1 / L1</strong><br />Chuyển heading 45° vào hoặc ra diagonal.</div>
+              <div class="api-docs-card"><strong>MH</strong><br />Nửa ô đầu từ tâm điểm xuất phát tới điểm cổng.</div>
+              <div class="api-docs-card"><strong>M</strong><br />Đi thẳng theo trục một đơn vị của bộ lập đường.</div>
+              <div class="api-docs-card"><strong>MD</strong><br />Đi thẳng chéo giữa hai điểm cổng.</div>
+              <div class="api-docs-card"><strong>R / L</strong><br />Cua liên tục 90° từ cổng tới cổng.</div>
+              <div class="api-docs-card"><strong>R1 / L1</strong><br />Chuyển hướng 45° để vào hoặc ra đường chéo.</div>
             </div>
-            <h4>Request primitive</h4>
+            <h4>Yêu cầu primitive</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1228,7 +1473,7 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
   "cost": 1.7071067812
 }</code></pre>
             </div>
-            <h4>Response</h4>
+            <h4>Phản hồi</h4>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1242,8 +1487,8 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
           </section>
 
           <section id="api-speed-run">
-            <h3>6. Gửi toàn route speed run</h3>
-            <p>Web có thể gọi từng primitive như simulator, hoặc transport adapter gửi toàn packet để firmware look-ahead và chạy không dừng giữa action.</p>
+            <h3>7. Gửi toàn bộ tuyến chạy tốc độ</h3>
+            <p>Web có thể gọi từng primitive như trình mô phỏng, hoặc bộ chuyển đổi giao tiếp gửi cả gói để firmware nhìn trước và chạy mà không dừng giữa các thao tác.</p>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>{
@@ -1263,26 +1508,26 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
 }</code></pre>
             </div>
             <ol>
-              <li>Mouse kiểm tra version, checksum, run_id và start pose.</li>
-              <li>Giải nén queue, look-ahead để đặt entry/exit speed.</li>
-              <li>Chạy liên tục; không đặt vận tốc về 0 giữa primitive.</li>
-              <li>Dừng tại goal hoặc khi safety monitor báo lỗi.</li>
+              <li>Mouse kiểm tra phiên bản, mã kiểm tra, <code>run_id</code> và tư thế xuất phát.</li>
+              <li>Giải nén hàng đợi, nhìn trước để đặt tốc độ vào/ra.</li>
+              <li>Chạy liên tục; không đặt vận tốc về 0 giữa các primitive.</li>
+              <li>Dừng tại đích hoặc khi bộ giám sát an toàn báo lỗi.</li>
             </ol>
           </section>
 
           <section id="api-errors">
-            <h3>7. Lỗi và an toàn</h3>
+            <h3>8. Lỗi và an toàn</h3>
             <ul>
-              <li><strong>Emergency stop:</strong> motor stall, encoder/gyro lệch ngưỡng, mất wall reference hoặc bumper kích hoạt.</li>
-              <li>Response lỗi dùng <code>{ "ok": false, "error": "MOTOR_STALL" }</code>.</li>
-              <li>Sai start pose/checksum/version: từ chối chạy, không tự sửa route.</li>
+              <li><strong>Dừng khẩn cấp:</strong> động cơ bị kẹt, encoder/gyro lệch ngưỡng, mất tham chiếu tường hoặc cảm biến va chạm được kích hoạt.</li>
+              <li>Phản hồi lỗi dùng <code>{ "ok": false, "error": "MOTOR_STALL" }</code>.</li>
+              <li>Sai tư thế xuất phát, mã kiểm tra hoặc phiên bản: từ chối chạy, không tự sửa tuyến đường.</li>
               <li><code>run_id</code> chống chạy lại packet cũ hoặc trùng lặp.</li>
-              <li>Khi executor lỗi, web hủy proof planner tương ứng và khóa các nút one-way.</li>
+              <li>Khi bộ thực thi lỗi, web hủy chứng minh của bộ lập đường tương ứng và khóa các nút chạy một chiều.</li>
             </ul>
           </section>
 
           <section id="api-adapter">
-            <h3>8. Ví dụ HardwareMouse adapter</h3>
+            <h3>9. Ví dụ bộ chuyển đổi HardwareMouse</h3>
             <div class="api-docs-code">
               <button class="api-docs-copy" data-copy-code>Copy</button>
               <pre><code>class HardwareMouse extends MouseAdapter {
@@ -1302,7 +1547,7 @@ mouse đi 4 hướng theo distance giảm dần rồi đọc sensor</pre>
 // Thay đúng một dòng; planner và UI không đổi.
 const mouseApi = new HardwareMouse();</code></pre>
             </div>
-            <p>Transport có thể là UART framing, HTTP JSON hoặc WebSocket. Adapter chịu trách nhiệm serialize/timeout/retry; planner chỉ thấy object contract ở trên.</p>
+            <p>Lớp giao tiếp có thể dùng khung UART, HTTP JSON hoặc WebSocket. Bộ chuyển đổi chịu trách nhiệm tuần tự hóa, giới hạn thời gian và thử lại; bộ lập đường chỉ thấy giao ước đối tượng ở trên.</p>
           </section>
         </article>
       </div>
@@ -1495,25 +1740,25 @@ const mouseApi = new HardwareMouse();</code></pre>
       returnHome: "🎯 Đang tối ưu FF",
       explore: "🎯 Đang tối ưu FF",
       finalReturn: "🎯 Đang tối ưu FF",
-      finalRun: "⚡ Speed Run: chạy đường ngắn nhất đã học",
+      finalRun: "⚡ Lượt chạy tốc độ: chạy đường ngắn nhất đã học",
       optimalToGoal: "♻️ Đường tối ưu: start → đích",
       optimalToStart: "♻️ Đường tối ưu: đích → start",
-      learnDk: "🧭 FF đang học frontier cho DK",
+      learnDk: "🧭 FF đang học ô biên cho DK",
       learnFf: "🎯 Đang tối ưu FF",
-      learnFf2: "🧭 FF đang học frontier cho FF2",
-      learnDk2: "🧭 FF đang học frontier cho DK2",
+      learnFf2: "🧭 FF đang học ô biên cho FF2",
+      learnDk2: "🧭 FF đang học ô biên cho DK2",
       returnForAll: "↩️ Đang quay về start",
       allReady: "✅ FF/FF2/DK/DK2 đã sẵn sàng chạy một chiều",
-      ff2Run: "⚡ FF2 speed run: start → đích",
-      ff2Complete: "🏁 FF2 speed run đã tới đích",
-      dk2Run: "⚡ DK2 speed run: start → đích",
-      dk2Complete: "🏁 DK2 speed run đã tới đích",
+      ff2Run: "⚡ FF2 chạy tốc độ: xuất phát → đích",
+      ff2Complete: "🏁 FF2 đã chạy tốc độ tới đích",
+      dk2Run: "⚡ DK2 chạy tốc độ: xuất phát → đích",
+      dk2Complete: "🏁 DK2 đã chạy tốc độ tới đích",
       returnForDk: "↩️ Đang quay về start",
       dkReady: "✅ FF/FF2/DK/DK2 đã sẵn sàng chạy một chiều",
-      dkRun: "⚡ DK speed run: start → đích",
-      dkComplete: "🏁 DK speed run đã tới đích",
-      ffRun: "⚡ FF speed run: start → đích",
-      ffComplete: "🏁 FF speed run đã tới đích",
+      dkRun: "⚡ DK chạy tốc độ: xuất phát → đích",
+      dkComplete: "🏁 DK đã chạy tốc độ tới đích",
+      ffRun: "⚡ FF chạy tốc độ: xuất phát → đích",
+      ffComplete: "🏁 FF đã chạy tốc độ tới đích",
       unreachable: "⛔ Không có đường tới mục tiêu"
     };
 
@@ -4873,7 +5118,7 @@ const mouseApi = new HardwareMouse();</code></pre>
           ).text
         : "như DK";
       truthMotionDk2CostText.textContent = truthMotionDk2Visible
-        ? `Tổng cost: ${truthMotionDk2Plan.cost.toFixed(2)}`
+        ? `Tổng chi phí: ${truthMotionDk2Plan.cost.toFixed(2)}`
         : "";
       if (!truthMotionPlan.valid) {
         truthMotionRouteText.textContent =
@@ -4886,7 +5131,7 @@ const mouseApi = new HardwareMouse();</code></pre>
       truthMotionRouteText.textContent =
         compressTruthMotionPrimitives(truthMotionPlan.primitives).text;
       truthMotionCostText.textContent =
-        `Tổng cost: ${truthMotionPlan.cost.toFixed(2)}`;
+        `Tổng chi phí: ${truthMotionPlan.cost.toFixed(2)}`;
     }
 
     function getTruthMotionDisplayPoints(plan) {
@@ -5093,13 +5338,13 @@ const mouseApi = new HardwareMouse();</code></pre>
       const summary = getTruthFloodRouteSummary();
       truthFloodRouteText.textContent = summary.text;
       truthFloodCostText.textContent = Number.isFinite(summary.cost)
-        ? `Tổng cost: ${summary.cost.toFixed(2)}`
-        : "Tổng cost: ∞";
+        ? `Tổng chi phí: ${summary.cost.toFixed(2)}`
+        : "Tổng chi phí: ∞";
       const ff2 = getTruthFlood2RouteSummary();
       truthFlood2Row.hidden = false;
       truthFlood2RouteText.textContent = ff2.visible ? ff2.text : "như FF";
       truthFlood2CostText.textContent = ff2.visible
-        ? `Tổng cost: ${ff2.cost.toFixed(2)}`
+        ? `Tổng chi phí: ${ff2.cost.toFixed(2)}`
         : "";
     }
 
@@ -6341,8 +6586,8 @@ const mouseApi = new HardwareMouse();</code></pre>
         warning = `
           <br>
           ⚠️ Lượt đầu tới đích: <strong>${firstOutboundSteps}</strong> bước,
-          nhưng shortest path thật là <strong>${trueShortest}</strong> bước.
-          Mouse đang tiếp tục học maze.
+          nhưng đường ngắn nhất thật là <strong>${trueShortest}</strong> bước.
+          Mouse đang tiếp tục học mê cung.
         `;
       }
 
@@ -6350,11 +6595,11 @@ const mouseApi = new HardwareMouse();</code></pre>
         <strong>${getPhaseLabel()}</strong><br>
         Vị trí mouse: (${mouse.row + 1}, ${mouse.col + 1})<br>
         Hướng nhìn: <strong>${getHeadingLabel(mouseHeading)}</strong><br>
-        Action vừa rồi: <strong>${getMotionActionLabel()}</strong><br>
-        Action tiếp theo: <strong>${getMotionActionLabel(getNextMotionAction())}</strong><br>
+        Thao tác vừa rồi: <strong>${getMotionActionLabel()}</strong><br>
+        Thao tác tiếp theo: <strong>${getMotionActionLabel(getNextMotionAction())}</strong><br>
         Flood Fill tại ô hiện tại:
         <strong>${floodValue === Infinity ? "∞" : floodValue}</strong><br>
-        Ô đã quét sensor đủ: <strong>${scannedCells}/${ROWS * COLS}</strong><br><br>
+        Ô đã quét đủ cảm biến: <strong>${scannedCells}/${ROWS * COLS}</strong><br><br>
 
         Đường đã xác nhận: <strong>${confirmedLabel}</strong><br>
         chi phí xác nhận: <strong>${confirmedCostLabel}</strong><br>
@@ -6367,11 +6612,11 @@ const mouseApi = new HardwareMouse();</code></pre>
             ? item.confirmed.cost.toFixed(2) : "∞";
           return `Bước ${name}: <strong>${Number.isFinite(item.confirmed.steps) ? item.confirmed.steps : "∞"}</strong><br>` +
             `Cua ${name}: <strong>${Number.isFinite(item.confirmed.turns) ? item.confirmed.turns : "∞"}</strong><br>` +
-            `Cost ${name}: <strong>${cost} ${getPlannerOptimizationStatus(key, item)}</strong><br><br>`;
+            `Chi phí ${name}: <strong>${cost} ${getPlannerOptimizationStatus(key, item)}</strong><br><br>`;
         }).join("")}
 
-        Lượt đầu tới goal: <strong>${firstOutboundSteps}</strong> bước<br>
-        Speed Run: <strong>${finalRunSteps}</strong> bước<br>
+        Lượt đầu tới đích: <strong>${firstOutboundSteps}</strong> bước<br>
+        Lượt chạy tốc độ: <strong>${finalRunSteps}</strong> bước<br>
         Tiến: <strong>${forwardActions}</strong> ·
         Trái: <strong>${leftTurnActions}</strong> ·
         Phải: <strong>${rightTurnActions}</strong> ·
@@ -6841,8 +7086,8 @@ const mouseApi = new HardwareMouse();</code></pre>
           plannerKey, display.selected
         );
         elements.cost.textContent = Number.isFinite(display.selected.cost)
-          ? `Tổng cost: ${display.selected.cost.toFixed(2)}`
-          : "Tổng cost: ∞";
+          ? `Tổng chi phí: ${display.selected.cost.toFixed(2)}`
+          : "Tổng chi phí: ∞";
       }
     }
 
